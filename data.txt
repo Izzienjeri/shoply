@@ -1,6 +1,250 @@
+
+
+
 # Extracted Python Code
-# Date: 2025-04-26
-# Files Included: 2
+# Date and Time: 2025-04-27 01:53:14
+# Files Included: 5
+
+# === ./server/run.py ===
+from app import create_app
+
+#creating flask app instance 
+app = create_app()
+
+if __name__ =='__main__':
+    app.run(debug=True)
+
+# === ./server/migrations/env.py ===
+import logging
+from logging.config import fileConfig
+
+from flask import current_app
+
+from alembic import context
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+fileConfig(config.config_file_name)
+logger = logging.getLogger('alembic.env')
+
+
+def get_engine():
+    try:
+        # this works with Flask-SQLAlchemy<3 and Alchemical
+        return current_app.extensions['migrate'].db.get_engine()
+    except (TypeError, AttributeError):
+        # this works with Flask-SQLAlchemy>=3
+        return current_app.extensions['migrate'].db.engine
+
+
+def get_engine_url():
+    try:
+        return get_engine().url.render_as_string(hide_password=False).replace(
+            '%', '%%')
+    except AttributeError:
+        return str(get_engine().url).replace('%', '%%')
+
+
+# add your model's MetaData object here
+# for 'autogenerate' support
+# from myapp import mymodel
+# target_metadata = mymodel.Base.metadata
+config.set_main_option('sqlalchemy.url', get_engine_url())
+target_db = current_app.extensions['migrate'].db
+
+# other values from the config, defined by the needs of env.py,
+# can be acquired:
+# my_important_option = config.get_main_option("my_important_option")
+# ... etc.
+
+
+def get_metadata():
+    if hasattr(target_db, 'metadatas'):
+        return target_db.metadatas[None]
+    return target_db.metadata
+
+
+def run_migrations_offline():
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url, target_metadata=get_metadata(), literal_binds=True
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online():
+    """Run migrations in 'online' mode.
+
+    In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    """
+
+    # this callback is used to prevent an auto-migration from being generated
+    # when there are no changes to the schema
+    # reference: http://alembic.zzzcomputing.com/en/latest/cookbook.html
+    def process_revision_directives(context, revision, directives):
+        if getattr(config.cmd_opts, 'autogenerate', False):
+            script = directives[0]
+            if script.upgrade_ops.is_empty():
+                directives[:] = []
+                logger.info('No changes in schema detected.')
+
+    conf_args = current_app.extensions['migrate'].configure_args
+    if conf_args.get("process_revision_directives") is None:
+        conf_args["process_revision_directives"] = process_revision_directives
+
+    connectable = get_engine()
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=get_metadata(),
+            **conf_args
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+# === ./server/app/models.py ===
+import uuid
+from datetime import datetime
+from sqlalchemy.dialects.mysql import DECIMAL
+
+from . import db, bcrypt
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
+class User(db.Model):
+    __tablename__ = 'users'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    name = db.Column(db.String(100), nullable=True)
+    address = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    cart = db.relationship('Cart', back_populates='user', uselist=False, cascade="all, delete-orphan")
+    orders = db.relationship('Order', back_populates='user', lazy=True, cascade="all, delete-orphan")
+
+    def set_password(self, password):
+        """Hashes the password and stores it."""
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def check_password(self, password):
+        """Checks if the provided password matches the stored hash."""
+        return bcrypt.check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f"<User {self.email}>"
+
+class Product(db.Model):
+    __tablename__ = 'products'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    price = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
+    stock_quantity = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    image_url = db.Column(db.String(255), nullable=True)
+    cart_items = db.relationship('CartItem', back_populates='product', lazy=True)
+    order_items = db.relationship('OrderItem', back_populates='product', lazy=True)
+
+    def __repr__(self):
+        return f"<Product {self.name}>"
+
+class Cart(db.Model):
+    __tablename__ = 'carts'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', back_populates='cart')
+    items = db.relationship('CartItem', back_populates='cart', lazy='dynamic', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Cart {self.id} for User {self.user_id}>"
+
+class CartItem(db.Model):
+    __tablename__ = 'cart_items'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    cart_id = db.Column(db.String(36), db.ForeignKey('carts.id'), nullable=False)
+    product_id = db.Column(db.String(36), db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+
+    __table_args__ = (db.UniqueConstraint('cart_id', 'product_id', name='_cart_product_uc'),)
+
+    cart = db.relationship('Cart', back_populates='items')
+    product = db.relationship('Product', back_populates='cart_items')
+
+    def __repr__(self):
+        return f"<CartItem Product {self.product_id} Qty {self.quantity} in Cart {self.cart_id}>"
+
+
+class Order(db.Model):
+    __tablename__ = 'orders'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    total_price = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
+    status = db.Column(db.String(50), nullable=False, default='pending')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    shipped_at = db.Column(db.DateTime, nullable=True)
+    shipping_address = db.Column(db.Text, nullable=True)
+    billing_address = db.Column(db.Text, nullable=True)
+    payment_gateway_ref = db.Column(db.String(255), nullable=True)
+
+    user = db.relationship('User', back_populates='orders')
+    items = db.relationship('OrderItem', back_populates='order', lazy='dynamic', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Order {self.id} Status {self.status} by User {self.user_id}>"
+
+class OrderItem(db.Model):
+    __tablename__ = 'order_items'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    order_id = db.Column(db.String(36), db.ForeignKey('orders.id'), nullable=False)
+    product_id = db.Column(db.String(36), db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    price_at_purchase = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
+
+    order = db.relationship('Order', back_populates='items')
+    product = db.relationship('Product', back_populates='order_items')
+
+    def __repr__(self):
+        return f"<OrderItem Product {self.product_id} Qty {self.quantity} Price {self.price_at_purchase} in Order {self.order_id}>"
 
 # === ./server/app/config.py ===
 import os
@@ -42,13 +286,14 @@ jwt = JWTManager()
 bcrypt = Bcrypt()
 ma = Marshmallow()
 cors = CORS()
-api = Api()
+api = Api(prefix="/api")
 
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    print(f"DEBUG: Connecting to DB: {app.config['SQLALCHEMY_DATABASE_URI']}") # <-- Add this line
     #initializinbg extensions with the app instance
     db.init_app(app)
     migrate.init_app(app,db)
@@ -56,7 +301,7 @@ def create_app(config_class=Config):
     bcrypt.init_app(app)
     ma.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
-    api.init_app(app, prefix="/api")
+    api.init_app(app)
 
     #return the app
     @app.route('/')

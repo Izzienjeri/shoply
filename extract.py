@@ -25,9 +25,10 @@ def extract_python_code(base_dir='.'):
 if __name__ == "__main__":
     code_output, file_count = extract_python_code()
 
-    # Prepare header
+    # Prepare header with date and time
+    now = datetime.now()
     header = f"""# Extracted Python Code
-# Date: {datetime.now().strftime("%Y-%m-%d")}
+# Date and Time: {now.strftime("%Y-%m-%d %H:%M:%S")}
 # Files Included: {file_count}
 
 """

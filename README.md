@@ -23,3 +23,6 @@ shoply_backend/
 ├── .gitignore          # Files/folders to ignore in Git
 └── Pipfile
 └── Pipfile.lock
+
+
+
