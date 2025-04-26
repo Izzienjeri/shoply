@@ -1,4 +1,1 @@
-##Initial; installations
-
-pipenv install flask flask-restful flask-sqlalchemy PyMySQL flask-jwt-extended python-dotenv Flask-Migrate flask-cors flask-bcrypt flask-marshmallow marshmallow-sqlalchemy
-
+.env
