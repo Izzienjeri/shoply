@@ -43,13 +43,13 @@ Follow these steps to set up and run the project locally:
 
 1.  **Clone the Repository:**
     ```bash
-    git clone <your-repository-url>
-    cd <repository-directory>
+    git clone git@github.com:Izzienjeri/shoply.git
+    cd shoply
     ```
-    *(Replace `<your-repository-url>` and `<repository-directory>` with your actual details)*
+
 
 2.  **Install Dependencies using Pipenv:**
-    *(This step assumes a `Pipfile` exists in the repository root. If not, you'll need to create it by running `pipenv install flask flask-sqlalchemy ...` for all required packages first).*
+    *(This step assumes a `Pipfile` exists in the repository root. If not, you'll need to create it by running `pipenv install flask flask-restful flask-sqlalchemy pymysql flask-jwt-extended python-dotenv flask-migrate flask-cors flask-bcrypt flask-marshmallow marshmallow-sqlalchemy cryptography` for all required packages first).*
 
     Navigate to the project's root directory (the one containing the `Pipfile` and the `server` folder) and run:
     ```bash
@@ -118,28 +118,6 @@ Follow these steps to set up and run the project locally:
     ```bash
     exit
     ```
-
-## Project Structure (Server)
-.
-├── Pipfile # Pipenv dependency file
-├── Pipfile.lock # Pipenv lock file for deterministic builds
-├── server/
-│ ├── app/ # Core application module
-│ │ ├── init.py # Application factory, extension initialization
-│ │ ├── config.py # Configuration settings
-│ │ ├── models.py # SQLAlchemy database models
-│ │ ├── schemas.py # Marshmallow serialization/validation schemas
-│ │ └── resources/ # API resources (e.g., auth.py)
-│ │ └── auth.py # Authentication endpoints (signup, login, logout)
-│ ├── migrations/ # Database migration scripts (Alembic) 
-│ │ ├── versions/ # Individual migration files
-│ │ │ └── 7c51b222ed8a_...py # Initial schema migration
-│ │ ├── env.py # Alembic environment configuration
-│ │ └── ... # Other Alembic files
-│ ├── run.py # Main entry point to run the Flask app
-│ └── .env # Environment variables (MUST be created manually)
-└── ... # Other project files (e.g., README.md)
-
 
 ## Available API Endpoints (Current)
 
