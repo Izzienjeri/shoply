@@ -32,7 +32,7 @@ class UserRegistration(Resource):
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
 
-        if User.query.filter_by(user_data.email).first():
+        if User.query.filter_by(email=user_data.email).first():
             return {"message": "User with this email already exists"}, 409
 
         user = user_data
