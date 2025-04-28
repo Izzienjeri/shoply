@@ -54,9 +54,7 @@ class UserRegistration(Resource):
 
 class UserLogin(Resource):
     def post(self):
-        """
-        Handles user login and JWT creation.
-        """
+       
         json_data = request.get_json()
         if not json_data:
             return {"message": "No input data provided"}, 400
