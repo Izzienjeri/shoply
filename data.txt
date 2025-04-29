@@ -1,6 +1,6 @@
 # Extracted Python Code
-# Date and Time: 2025-04-29 13:31:17
-# Files Included: 8
+# Date and Time: 2025-04-29 15:14:08
+# Files Included: 10
 
 # === ./server/run.py ===
 from app import create_app
@@ -126,12 +126,12 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-# === ./server/migrations/versions/7c51b222ed8a_create_initial_database_tables_for_.py ===
-"""Create initial database tables for Shoply
+# === ./server/migrations/versions/1ae97819e612_done.py ===
+"""done
 
-Revision ID: 7c51b222ed8a
+Revision ID: 1ae97819e612
 Revises: 
-Create Date: 2025-04-27 01:55:31.209342
+Create Date: 2025-04-29 15:08:25.493463
 
 """
 from alembic import op
@@ -139,7 +139,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '7c51b222ed8a'
+revision = '1ae97819e612'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -466,22 +466,10 @@ def check_if_token_in_blocklist(jwt_header, jwt_payload):
     jti = jwt_payload["jti"]
     return jti in BLOCKLIST
 
-@jwt.revoked_token_loader
-def revoked_token_callback(jwt_header, jwt_payload):
-    return jsonify({"description": "The token has been revoked.", "error": "token_revoked"}), 401
-
-@jwt.expired_token_loader
-def expired_token_callback(jwt_header, jwt_payload):
-    return jsonify({"message": "The token has expired.", "error": "token_expired"}), 401
-
-@jwt.invalid_token_loader
-def invalid_token_callback(error):
-    return jsonify({"message": "Signature verification failed.", "error": "invalid_token"}), 401
 
 @jwt.unauthorized_loader
 def missing_token_callback(error):
     return jsonify({"description": "Request does not contain an access token.", "error": "authorization_required"}), 401
-
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -499,9 +487,12 @@ def create_app(config_class=Config):
     from . import models
 
     from .resources.auth import auth_bp
+    from .resources.product import product_bp
+    from .resources.cart import cart_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-
+    app.register_blueprint(product_bp, url_prefix='/api/products')
+    app.register_blueprint(cart_bp, url_prefix='/api/cart')
 
 
 
@@ -510,6 +501,292 @@ def create_app(config_class=Config):
         return "Shoply Backend is running!"
 
     return app
+
+# === ./server/app/resources/cart.py ===
+from flask import request, Blueprint, jsonify
+from flask_restful import Resource, Api, abort
+from marshmallow import ValidationError, fields
+from sqlalchemy.orm import joinedload
+
+from .. import db, ma
+from ..models import Cart, CartItem, Product, User
+from ..schemas import cart_schema
+
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
+cart_bp = Blueprint('cart', __name__)
+cart_api = Api(cart_bp)
+
+def get_or_create_cart(user_id):
+    """Finds the user's cart or creates one if it doesn't exist."""
+    user = User.query.get(user_id)
+    if not user:
+        abort(404, message="User not found.")
+
+    cart = Cart.query.filter_by(user_id=user_id).first()
+    if not cart:
+        cart = Cart(user_id=user_id)
+        db.session.add(cart)
+    return cart
+
+class AddToCartSchema(ma.Schema):
+    product_id = fields.Str(required=True)
+    quantity = fields.Int(required=True, validate=lambda q: q > 0)
+
+add_to_cart_schema = AddToCartSchema()
+
+
+class CartResource(Resource):
+    @jwt_required()
+    def get(self):
+        """
+        Fetches the current user's cart contents.
+        """
+        user_id = get_jwt_identity()
+        cart = get_or_create_cart(user_id)
+
+
+        if cart.id is None:
+             try:
+                 db.session.commit()
+             except Exception as e:
+                 db.session.rollback()
+                 print(f"Error committing new cart: {e}")
+                 abort(500, message="Could not retrieve or create cart.")
+
+        return cart_schema.dump(cart), 200
+
+    @jwt_required()
+    def post(self):
+        """
+        Adds a product to the current user's cart or updates its quantity.
+        """
+        user_id = get_jwt_identity()
+        json_data = request.get_json()
+        if not json_data:
+            abort(400, message="No input data provided")
+
+        try:
+            data = add_to_cart_schema.load(json_data)
+        except ValidationError as err:
+            abort(400, message=err.messages)
+
+        product_id = data['product_id']
+        quantity_to_add = data['quantity']
+
+        cart = get_or_create_cart(user_id)
+        product = Product.query.get(product_id)
+
+        if not product:
+            abort(404, message=f"Product with ID {product_id} not found.")
+
+        if product.stock_quantity < quantity_to_add:
+             abort(400, message=f"Insufficient stock for Product ID {product_id}. Available: {product.stock_quantity}")
+
+        cart_item = cart.items.filter_by(product_id=product_id).first()
+
+        if cart_item:
+            new_quantity = cart_item.quantity + quantity_to_add
+            if product.stock_quantity < new_quantity:
+                 abort(400, message=f"Insufficient stock to increase quantity for Product ID {product_id}. Available: {product.stock_quantity}, In Cart: {cart_item.quantity}")
+            cart_item.quantity = new_quantity
+        else:
+            cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity_to_add)
+            db.session.add(cart_item)
+            if cart.id is None:
+                try:
+                    db.session.flush()
+                    cart_item.cart_id = cart.id
+                except Exception as e:
+                     db.session.rollback()
+                     print(f"Error flushing cart for item add: {e}")
+                     abort(500, message="Error adding item to cart.")
+
+
+        try:
+            db.session.commit()
+            cart_updated = Cart.query.options(
+                joinedload(Cart.items).joinedload(CartItem.product)
+            ).get(cart.id)
+            return cart_schema.dump(cart_updated), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error committing cart changes: {e}")
+            if "UniqueViolation" in str(e) or "_cart_product_uc" in str(e):
+                 abort(409, message="Item already exists in cart or concurrent modification error.")
+            abort(500, message="An error occurred while updating the cart.")
+
+
+class CartItemResource(Resource):
+
+    @jwt_required()
+    def put(self, item_id):
+        """
+        Updates the quantity of a specific item in the cart.
+        """
+        user_id = get_jwt_identity()
+        cart = get_or_create_cart(user_id)
+
+        json_data = request.get_json()
+        if not json_data or 'quantity' not in json_data:
+             abort(400, message="Quantity is required.")
+
+        try:
+            new_quantity = int(json_data['quantity'])
+            if new_quantity <= 0:
+                abort(400, message="Quantity must be positive.")
+        except ValueError:
+            abort(400, message="Quantity must be an integer.")
+
+        cart_item = CartItem.query.filter_by(id=item_id, cart_id=cart.id).first()
+        if not cart_item:
+            abort(404, message=f"Cart item with ID {item_id} not found in your cart.")
+
+        product = Product.query.get(cart_item.product_id)
+        if not product:
+             abort(404, message=f"Product associated with cart item not found.")
+
+        if product.stock_quantity < new_quantity:
+            abort(400, message=f"Insufficient stock for Product ID {product.id}. Available: {product.stock_quantity}")
+
+        cart_item.quantity = new_quantity
+
+        try:
+            db.session.commit()
+            cart_updated = Cart.query.options(
+                joinedload(Cart.items).joinedload(CartItem.product)
+            ).get(cart.id)
+            return cart_schema.dump(cart_updated), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error updating cart item: {e}")
+            abort(500, message="An error occurred while updating the cart item.")
+
+
+    @jwt_required()
+    def delete(self, item_id):
+        """
+        Removes a specific item from the cart.
+        """
+        user_id = get_jwt_identity()
+        cart = get_or_create_cart(user_id)
+
+        cart_item = CartItem.query.filter_by(id=item_id, cart_id=cart.id).first()
+        if not cart_item:
+            abort(404, message=f"Cart item with ID {item_id} not found in your cart.")
+
+        try:
+            db.session.delete(cart_item)
+            db.session.commit()
+            cart_updated = Cart.query.options(
+                joinedload(Cart.items).joinedload(CartItem.product)
+            ).get(cart.id)
+            return cart_schema.dump(cart_updated), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting cart item: {e}")
+            abort(500, message="An error occurred while removing the item from the cart.")
+
+
+cart_api.add_resource(CartResource, '/')
+cart_api.add_resource(CartItemResource, '/items/<string:item_id>')
+
+# === ./server/app/resources/product.py ===
+from flask import request, Blueprint, jsonify
+from flask_restful import Resource, Api, abort
+from marshmallow import ValidationError
+
+from .. import db
+from ..models import Product
+from ..schemas import product_schema, products_schema
+
+product_bp = Blueprint('products', __name__, url_prefix='/products')
+product_api = Api(product_bp)
+
+
+class ProductList(Resource):
+    def get(self):
+        """
+        Fetches all products.
+        """
+        products = Product.query.all()
+        return products_schema.dump(products), 200
+
+    def post(self):
+        """
+        Creates a new product.
+        (Currently public, add admin check later if needed)
+        """
+        json_data = request.get_json()
+        if not json_data:
+            return {"message": "No input data provided"}, 400
+
+        try:
+            new_product = product_schema.load(json_data, session=db.session)
+        except ValidationError as err:
+            return {"message": "Validation errors", "errors": err.messages}, 400
+
+        try:
+            db.session.add(new_product)
+            db.session.commit()
+            return product_schema.dump(new_product), 201
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error creating product: {e}")
+            abort(500, message="An error occurred while creating the product.")
+
+
+class ProductDetail(Resource):
+    def get(self, product_id):
+        """
+        Fetches a single product by its UUID.
+        """
+        product = Product.query.get_or_404(product_id, description=f"Product with ID {product_id} not found.")
+        return product_schema.dump(product), 200
+
+    def patch(self, product_id):
+        """
+        Updates an existing product partially.
+        (Currently public, add admin check later if needed)
+        """
+        product = Product.query.get_or_404(product_id, description=f"Product with ID {product_id} not found.")
+
+        json_data = request.get_json()
+        if not json_data:
+            return {"message": "No input data provided"}, 400
+
+        try:
+            updated_product = product_schema.load(
+                json_data,
+                instance=product,
+                partial=True,
+                session=db.session
+            )
+        except ValidationError as err:
+            return {"message": "Validation errors", "errors": err.messages}, 400
+
+        try:
+            db.session.commit()
+            return product_schema.dump(updated_product), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error updating product {product_id}: {e}")
+            abort(500, message="An error occurred while updating the product.")
+
+    def delete(self, product_id):
+        product = Product.query.get_or_404(product_id)
+        try:
+            db.session.delete(product)
+            db.session.commit()
+            return '', 204
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting product {product_id}: {e}")
+            abort(500, message="An error occurred while deleting the product.")
+
+
+product_api.add_resource(ProductList, '/')
+product_api.add_resource(ProductDetail, '/<string:product_id>')
 
 # === ./server/app/resources/auth.py ===
 from flask import request, jsonify, Blueprint
