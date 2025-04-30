@@ -1,13 +1,27 @@
-# Mini E-Commerce Site Backend (Shoply - WIP)
+# Mini E-Commerce Site Backend (Shoply - Day 2 Update)
 
-This repository contains the backend server code for a mini e-commerce application, built using Flask.
+This repository contains the backend server code for a mini e-commerce application, built using Flask. We are building this step-by-step.
 
-As of the current version, the backend provides:
+## Day 2 Update
+
+Today, we focused on bringing the core e-commerce functionality to life by implementing:
+
+1.  **Product API Endpoints:** Added full CRUD (Create, Read, Update, Delete) operations for products under `/api/products`. This allows listing all products, viewing details of a single product, adding new products (individually or in bulk), updating existing ones, and deleting them.
+2.  **Shopping Cart API Endpoints:** Implemented endpoints under `/api/cart` for users to manage their shopping carts. This includes viewing the cart, adding products, updating the quantity of items already in the cart, and removing items. These endpoints are protected and require user authentication (JWT).
+3.  **Database Schema Finalized (Initial):** The database migration (`1ae97819e612_done.py`) now reflects the complete initial schema including `users`, `products`, `carts`, `cart_items`, `orders`, and `order_items` tables with their relationships.
+4.  **Enhanced Schemas:** Updated Marshmallow schemas (`app/schemas.py`) to handle validation and serialization for Products and Cart Items, including nested display of product details within the cart.
+5.  **Refined Models:** Updated SQLAlchemy models (`app/models.py`) with relationships and helper methods (like password handling).
+
+---
+
+## Current Features (As of Day 2 End)
 
 *   Basic Flask application structure.
 *   Database models for Users, Products, Carts, Orders, and their respective items using Flask-SQLAlchemy.
-*   Database migrations setup using Flask-Migrate and Alembic.
+*   Database migrations setup using Flask-Migrate and Alembic (Initial schema fully migrated).
 *   User Authentication API endpoints (signup, login, logout) using Flask-RESTful and Flask-JWT-Extended for token-based authentication.
+*   **Product Management API endpoints** (List, Create, View, Update, Delete).
+*   **Shopping Cart API endpoints** (View, Add Item, Update Item Quantity, Remove Item - requires authentication).
 *   Password hashing using Flask-Bcrypt.
 *   Data serialization and validation using Flask-Marshmallow.
 *   Configuration management using environment variables (`.env`).
@@ -43,10 +57,9 @@ Follow these steps to set up and run the project locally:
 
 1.  **Clone the Repository:**
     ```bash
-    git clone git@github.com:Izzienjeri/shoply.git
+    git clone https://github.com/Izzienjeri/shoply 
     cd shoply
     ```
-
 
 2.  **Install Dependencies using Pipenv:**
     *(This step assumes a `Pipfile` exists in the repository root. If not, you'll need to create it by running `pipenv install flask flask-restful flask-sqlalchemy pymysql flask-jwt-extended python-dotenv flask-migrate flask-cors flask-bcrypt flask-marshmallow marshmallow-sqlalchemy cryptography` for all required packages first).*
@@ -102,7 +115,7 @@ Follow these steps to set up and run the project locally:
         ```bash
         flask db upgrade
         ```
-        This command uses the migration script (`./server/migrations/versions/7c51b222ed8a_...py`) to create the necessary tables (`users`, `products`, `carts`, `orders`, etc.) in your database based on the models defined in `./server/app/models.py`.
+        This command uses the migration scripts (like `server/migrations/versions/1ae97819e612_done.py`) to create or update the necessary tables (`users`, `products`, `carts`, `orders`, etc.) in your database based on the models defined in `server/app/models.py`.
 
 6.  **Run the Application:**
     *   (Ensure you are still in the `pipenv shell` and in the project root directory).
@@ -119,13 +132,26 @@ Follow these steps to set up and run the project locally:
     exit
     ```
 
-## Available API Endpoints (Current)
+## Available API Endpoints (As of Day 2)
 
 All endpoints are prefixed with `/api`.
 
 *   **Authentication:** (`/api/auth`)
-    *   `POST /api/auth/signup`: Register a new user. Requires `email` and `password` (min 8 chars) in the JSON body. Optional: `name`, `address`.
-    *   `POST /api/auth/login`: Log in a user. Requires `email` and `password` in the JSON body. Returns an `access_token`.
-    *   `POST /api/auth/logout`: Log out the current user. Requires a valid `Authorization: Bearer <token>` header. Invalidates the current token.
+    *   `POST /signup`: Register a new user. Requires `email` and `password` (min 8 chars) in the JSON body. Optional: `name`, `address`.
+    *   `POST /login`: Log in a user. Requires `email` and `password` in the JSON body. Returns an `access_token`.
+    *   `POST /logout`: Log out the current user. Requires a valid `Authorization: Bearer <token>` header. Invalidates the current token.
 
-*(Note: Endpoints for Products, Cart, and Orders are defined by models and schemas but corresponding API resources are not yet implemented in the provided code.)*
+*   **Products:** (`/api/products`) - *Currently Public*
+    *   `GET /`: List all products.
+    *   `POST /`: Create a new product (expects a single JSON product object) or multiple products (expects a JSON array of product objects). Requires `name`, `price`, `stock_quantity`. Optional: `description`, `image_url`.
+    *   `GET /<string:product_id>`: Get details of a specific product by its UUID.
+    *   `PATCH /<string:product_id>`: Partially update a specific product. Send only the fields to update in the JSON body.
+    *   `DELETE /<string:product_id>`: Delete a specific product.
+
+*   **Cart:** (`/api/cart`) - *Requires Authentication* (`Authorization: Bearer <token>` header)
+    *   `GET /`: Get the current user's cart contents.
+    *   `POST /`: Add a product to the cart or update quantity if it already exists. Requires `product_id` and `quantity` (positive integer) in the JSON body. Checks against product stock.
+    *   `PUT /items/<string:item_id>`: Update the quantity of a specific item *already in the cart*. Requires `quantity` (positive integer) in the JSON body. Checks against product stock. `item_id` refers to the `CartItem` UUID.
+    *   `DELETE /items/<string:item_id>`: Remove a specific item from the cart. `item_id` refers to the `CartItem` UUID.
+
+*(Note: Order-related API endpoints are defined by models and schemas but corresponding API resources `/api/orders` are planned for a future step.)*

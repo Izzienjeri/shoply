@@ -22,22 +22,10 @@ def check_if_token_in_blocklist(jwt_header, jwt_payload):
     jti = jwt_payload["jti"]
     return jti in BLOCKLIST
 
-@jwt.revoked_token_loader
-def revoked_token_callback(jwt_header, jwt_payload):
-    return jsonify({"description": "The token has been revoked.", "error": "token_revoked"}), 401
-
-@jwt.expired_token_loader
-def expired_token_callback(jwt_header, jwt_payload):
-    return jsonify({"message": "The token has expired.", "error": "token_expired"}), 401
-
-@jwt.invalid_token_loader
-def invalid_token_callback(error):
-    return jsonify({"message": "Signature verification failed.", "error": "invalid_token"}), 401
 
 @jwt.unauthorized_loader
 def missing_token_callback(error):
     return jsonify({"description": "Request does not contain an access token.", "error": "authorization_required"}), 401
-
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -55,9 +43,12 @@ def create_app(config_class=Config):
     from . import models
 
     from .resources.auth import auth_bp
+    from .resources.product import product_bp
+    from .resources.cart import cart_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-
+    app.register_blueprint(product_bp, url_prefix='/api/products')
+    app.register_blueprint(cart_bp, url_prefix='/api/cart')
 
 
 

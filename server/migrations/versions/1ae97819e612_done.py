@@ -1,8 +1,8 @@
-"""Create initial database tables for Shoply
+"""done
 
-Revision ID: 7c51b222ed8a
+Revision ID: 1ae97819e612
 Revises: 
-Create Date: 2025-04-27 01:55:31.209342
+Create Date: 2025-04-29 15:08:25.493463
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '7c51b222ed8a'
+revision = '1ae97819e612'
 down_revision = None
 branch_labels = None
 depends_on = None
