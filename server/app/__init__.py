@@ -45,11 +45,14 @@ def create_app(config_class=Config):
     from .resources.auth import auth_bp
     from .resources.product import product_bp
     from .resources.cart import cart_bp
+    from .resources.order import order_bp
+    from .resources.payment import payment_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(product_bp, url_prefix='/api/products')
     app.register_blueprint(cart_bp, url_prefix='/api/cart')
-
+    app.register_blueprint(order_bp, url_prefix='/api/orders')
+    app.register_blueprint(payment_bp, url_prefix='/api/payments')
 
 
     @app.route('/')
