@@ -1,6 +1,6 @@
 # Extracted Python Code
-# Date and Time: 2025-05-01 22:41:16
-# Files Included: 10
+# Date and Time: 2025-05-02 00:02:49
+# Files Included: 13
 
 # === ./server/run.py ===
 from app import create_app
@@ -426,20 +426,40 @@ load_dotenv()
 class Config:
     SECRET_KEY = os.getenv('SECRET_KEY')
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
     DATABASE_USER = os.getenv('DATABASE_USER')
     DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
     DATABASE_HOST = os.getenv('DATABASE_HOST')
     DATABASE_PORT = os.getenv('DATABASE_PORT')
     DATABASE_NAME = os.getenv('DATABASE_NAME')
-
     SQLALCHEMY_DATABASE_URI = (
         f"mysql+pymysql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}"
     )
 
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ['access']
+
+    DARAJA_ENVIRONMENT = os.getenv('DARAJA_ENVIRONMENT', 'sandbox')
+    DARAJA_CONSUMER_KEY = os.getenv('DARAJA_CONSUMER_KEY')
+    DARAJA_CONSUMER_SECRET = os.getenv('DARAJA_CONSUMER_SECRET')
+    DARAJA_SHORTCODE = os.getenv('DARAJA_SHORTCODE')
+    DARAJA_PASSKEY = os.getenv('DARAJA_PASSKEY')
+    DARAJA_TRANSACTION_TYPE = os.getenv('DARAJA_TRANSACTION_TYPE', 'CustomerPayBillOnline')
+    DARAJA_CALLBACK_URL_BASE = os.getenv('DARAJA_CALLBACK_URL_BASE')
+
+    if DARAJA_ENVIRONMENT == 'production':
+        DARAJA_AUTH_URL = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
+        DARAJA_STK_PUSH_URL = 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+    else:
+        DARAJA_AUTH_URL = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
+        DARAJA_STK_PUSH_URL = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+
+    DARAJA_CALLBACK_URL = f"{DARAJA_CALLBACK_URL_BASE.rstrip('/')}/api/payments/callback"
+
+
+    if not all([DARAJA_CONSUMER_KEY, DARAJA_CONSUMER_SECRET, DARAJA_SHORTCODE, DARAJA_PASSKEY, DARAJA_CALLBACK_URL_BASE]):
+        print("WARNING: Essential Daraja configuration missing in environment variables!")
 
 # === ./server/app/__init__.py ===
 import os
@@ -489,11 +509,14 @@ def create_app(config_class=Config):
     from .resources.auth import auth_bp
     from .resources.product import product_bp
     from .resources.cart import cart_bp
+    from .resources.order import order_bp
+    from .resources.payment import payment_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(product_bp, url_prefix='/api/products')
     app.register_blueprint(cart_bp, url_prefix='/api/cart')
-
+    app.register_blueprint(order_bp, url_prefix='/api/orders')
+    app.register_blueprint(payment_bp, url_prefix='/api/payments')
 
 
     @app.route('/')
@@ -691,6 +714,125 @@ class CartItemResource(Resource):
 cart_api.add_resource(CartResource, '/')
 cart_api.add_resource(CartItemResource, '/items/<string:item_id>')
 
+# === ./server/app/resources/order.py ===
+from flask import request, Blueprint, jsonify
+from flask_restful import Resource, Api, abort
+from marshmallow import fields, Schema, ValidationError
+from sqlalchemy.orm import joinedload
+
+from .. import db, ma
+from ..models import Order, OrderItem, User, Cart, Product, CartItem
+from ..schemas import order_schema, orders_schema
+
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from ..utils.daraja_client import initiate_stk_push
+
+order_bp = Blueprint('orders', __name__)
+order_api = Api(order_bp)
+
+pending_checkouts = {}
+
+class CheckoutInputSchema(ma.Schema):
+    phone_number = fields.Str(required=True, validate=lambda p: p.startswith('254') and len(p) == 12 and p.isdigit())
+
+checkout_input_schema = CheckoutInputSchema()
+
+class OrderList(Resource):
+    @jwt_required()
+    def get(self):
+        """Fetches the current user's past orders."""
+        user_id = get_jwt_identity()
+        user_orders = Order.query.options(
+            joinedload(Order.items).joinedload(OrderItem.product)
+        ).filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
+        return orders_schema.dump(user_orders), 200
+
+    @jwt_required()
+    def post(self):
+        """
+        Initiates the checkout process (triggers STK Push).
+        Does NOT create the order directly.
+        """
+        user_id = get_jwt_identity()
+
+        json_data = request.get_json()
+        if not json_data:
+             abort(400, message="Missing checkout data (e.g., phone_number).")
+        try:
+            checkout_data = checkout_input_schema.load(json_data)
+        except ValidationError as err:
+            abort(400, message=err.messages)
+
+        phone_number = checkout_data['phone_number']
+
+        cart = Cart.query.filter_by(user_id=user_id).options(
+            joinedload(Cart.items).joinedload(CartItem.product)
+        ).first()
+
+        if not cart or not cart.items:
+            abort(400, message="Your cart is empty.")
+
+        total_price = 0
+        items_to_process = []
+        for item in cart.items:
+            if not item.product:
+                 abort(500, message=f"Product data missing for cart item {item.id}.")
+            if item.product.stock_quantity < item.quantity:
+                abort(400, message=f"Insufficient stock for '{item.product.name}'. Available: {item.product.stock_quantity}")
+            total_price += item.product.price * item.quantity
+            items_to_process.append(item)
+
+        if total_price <= 0:
+            abort(400, message="Cart total must be positive.")
+
+        account_ref = f"CART_{cart.id[:8]}"
+        amount = total_price
+
+        stk_response, status_code = initiate_stk_push(
+            phone_number=phone_number,
+            amount=amount,
+            order_id=account_ref,
+            description=f"Payment for Shoply Cart {cart.id[:8]}"
+        )
+
+        if status_code >= 400 or stk_response.get("ResponseCode", "1") != "0":
+            error_msg = stk_response.get("errorMessage", "Failed to initiate STK push.")
+            error_msg = stk_response.get("ResponseDescription", error_msg)
+            abort(status_code if status_code >= 400 else 500, message=error_msg)
+
+        checkout_request_id = stk_response.get('CheckoutRequestID')
+        if not checkout_request_id:
+             abort(500, message="STK Push initiated but CheckoutRequestID was missing in response.")
+
+        pending_checkouts[checkout_request_id] = {
+            'user_id': user_id,
+            'cart_id': cart.id,
+            'total_price': float(total_price),
+        }
+        print(f"DEBUG: Stored pending checkout: {checkout_request_id} -> {pending_checkouts[checkout_request_id]}")
+
+        return {
+            "message": "STK Push initiated successfully. Please check your phone to authorize payment.",
+            "CheckoutRequestID": checkout_request_id,
+            "ResponseDescription": stk_response.get("ResponseDescription", "Success")
+        }, 200
+
+
+class OrderDetail(Resource):
+    @jwt_required()
+    def get(self, order_id):
+        """Fetches details of a specific order belonging to the user."""
+        user_id = get_jwt_identity()
+        order = Order.query.options(
+            joinedload(Order.items).joinedload(OrderItem.product)
+        ).filter_by(id=order_id, user_id=user_id).first_or_404(
+            description=f"Order with ID {order_id} not found or does not belong to user."
+        )
+        return order_schema.dump(order), 200
+
+order_api.add_resource(OrderList, '/')
+order_api.add_resource(OrderDetail, '/<string:order_id>')
+
 # === ./server/app/resources/product.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
@@ -810,6 +952,150 @@ class ProductDetail(Resource):
 product_api.add_resource(ProductList, '/')
 product_api.add_resource(ProductDetail, '/<string:product_id>')
 
+# === ./server/app/resources/payment.py ===
+from flask import request, Blueprint, jsonify
+from flask_restful import Resource, Api, abort
+from decimal import Decimal
+from sqlalchemy.orm import joinedload 
+
+from .. import db
+from ..models import Order, OrderItem, Product, Cart, CartItem
+
+from .order import pending_checkouts
+
+
+payment_bp = Blueprint('payments', __name__)
+payment_api = Api(payment_bp)
+
+class DarajaCallback(Resource):
+    def post(self):
+        """
+        Handles the callback from Daraja after STK Push completion.
+        This endpoint MUST be publicly accessible (use ngrok for dev).
+        """
+        print("--- Daraja Callback Received ---")
+        callback_data = request.get_json()
+        print(f"Callback Data: {callback_data}")
+
+        if not callback_data or 'Body' not in callback_data or 'stkCallback' not in callback_data['Body']:
+             print("ERROR: Invalid callback format")
+             return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
+
+        stk_callback = callback_data['Body']['stkCallback']
+        result_code = stk_callback.get('ResultCode')
+        checkout_request_id = stk_callback.get('CheckoutRequestID')
+        result_desc = stk_callback.get('ResultDesc', 'No description')
+
+        if not checkout_request_id:
+            print("ERROR: CheckoutRequestID missing in callback.")
+            return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
+
+        print(f"DEBUG: Looking for CheckoutRequestID: {checkout_request_id} in pending_checkouts")
+        checkout_info = pending_checkouts.pop(checkout_request_id, None)
+
+        if not checkout_info:
+            print(f"ERROR: CheckoutRequestID {checkout_request_id} not found in pending checkouts or already processed.")
+            return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
+
+        user_id = checkout_info['user_id']
+        cart_id = checkout_info['cart_id']
+        expected_total = Decimal(str(checkout_info['total_price']))
+
+        print(f"DEBUG: Found checkout info for User {user_id}, Cart {cart_id}")
+
+        if result_code == 0:
+            print(f"SUCCESS: Payment successful for {checkout_request_id}. ResultDesc: {result_desc}")
+
+            amount_paid = Decimal('0.00')
+            mpesa_receipt = None
+            phone_number_paid = None
+            transaction_date = None
+            if 'CallbackMetadata' in stk_callback and 'Item' in stk_callback['CallbackMetadata']:
+                metadata = stk_callback['CallbackMetadata']['Item']
+                for item in metadata:
+                    if item.get('Name') == 'Amount':
+                        amount_paid = Decimal(str(item.get('Value', 0)))
+                    elif item.get('Name') == 'MpesaReceiptNumber':
+                        mpesa_receipt = item.get('Value')
+                    elif item.get('Name') == 'PhoneNumber':
+                        phone_number_paid = item.get('Value')
+                    elif item.get('Name') == 'TransactionDate':
+                        transaction_date = item.get('Value')
+
+            print(f"DEBUG: Amount Paid: {amount_paid}, Expected: {expected_total}, Receipt: {mpesa_receipt}")
+
+
+            try:
+                with db.session.begin_nested():
+                    cart_items = CartItem.query.filter_by(cart_id=cart_id).options(
+                        joinedload(CartItem.product)
+                    ).all()
+
+                    if not cart_items:
+                         print(f"ERROR: No items found for Cart {cart_id} during callback processing.")
+                         raise ValueError("Cart items missing during order creation.")
+
+
+                    current_total_price = Decimal('0.00')
+                    products_to_update = []
+                    order_items_to_create = []
+
+                    for item in cart_items:
+                        if not item.product:
+                             raise ValueError(f"Product data missing for cart item {item.id} during order creation.")
+                        if item.product.stock_quantity < item.quantity:
+                             raise ValueError(f"Insufficient stock for '{item.product.name}' during final order creation.")
+
+                        current_total_price += item.product.price * item.quantity
+                        products_to_update.append({'product': item.product, 'quantity': item.quantity})
+                        order_items_to_create.append({
+                             'product_id': item.product_id,
+                             'quantity': item.quantity,
+                             'price_at_purchase': item.product.price
+                        })
+
+
+
+                    new_order = Order(
+                        user_id=user_id,
+                        total_price=current_total_price,
+                        status='paid',
+                        payment_gateway_ref=mpesa_receipt
+                    )
+                    db.session.add(new_order)
+                    db.session.flush()
+
+                    for item_data in order_items_to_create:
+                         order_item = OrderItem(
+                             order_id=new_order.id,
+                             product_id=item_data['product_id'],
+                             quantity=item_data['quantity'],
+                             price_at_purchase=item_data['price_at_purchase']
+                         )
+                         db.session.add(order_item)
+
+                    for prod_data in products_to_update:
+                         prod_data['product'].stock_quantity -= prod_data['quantity']
+
+                    CartItem.query.filter_by(cart_id=cart_id).delete()
+
+                db.session.commit()
+                print(f"SUCCESS: Order {new_order.id} created successfully for User {user_id}.")
+
+            except ValueError as ve:
+                 db.session.rollback()
+                 print(f"ERROR: Stock validation failed during final order creation for Cart {cart_id}. Reason: {ve}")
+            except Exception as e:
+                 db.session.rollback()
+                 print(f"ERROR: Failed to create order or update stock for Cart {cart_id} / User {user_id}. Error: {e}")
+
+        else:
+            print(f"FAILURE: Payment failed for {checkout_request_id}. ResultCode: {result_code}, ResultDesc: {result_desc}")
+
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
+
+payment_api.add_resource(DarajaCallback, '/callback')
+
 # === ./server/app/resources/auth.py ===
 from flask import request, jsonify, Blueprint
 from flask_restful import Resource, Api
@@ -900,3 +1186,122 @@ class UserLogout(Resource):
 auth_api.add_resource(UserRegistration, '/signup')
 auth_api.add_resource(UserLogin, '/login')
 auth_api.add_resource(UserLogout, '/logout')
+
+# === ./server/app/utils/daraja_client.py ===
+import base64
+import requests
+from datetime import datetime
+from flask import current_app, jsonify
+import time
+
+token_cache = {}
+
+def get_daraja_access_token():
+    """Fetches a new Daraja access token or returns a cached one."""
+    global token_cache
+    current_time = time.time()
+
+    if token_cache and token_cache.get('expires_at', 0) > current_time:
+        print("DEBUG: Using cached Daraja token")
+        return token_cache['token']
+
+    print("DEBUG: Fetching new Daraja token")
+    consumer_key = current_app.config['DARAJA_CONSUMER_KEY']
+    consumer_secret = current_app.config['DARAJA_CONSUMER_SECRET']
+    auth_url = current_app.config['DARAJA_AUTH_URL']
+
+    if not consumer_key or not consumer_secret:
+        print("ERROR: Daraja consumer key or secret not configured.")
+        return None
+
+    try:
+        response = requests.get(auth_url, auth=(consumer_key, consumer_secret))
+        response.raise_for_status()
+        token_data = response.json()
+
+        expires_in = int(token_data.get('expires_in', 3599))
+        token_cache = {
+            'token': token_data['access_token'],
+            'expires_at': current_time + expires_in - 60
+        }
+        print("DEBUG: Fetched and cached new Daraja token.")
+        return token_data['access_token']
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to get Daraja access token: {e}")
+        print(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
+        print(f"Response text: {response.text if 'response' in locals() else 'N/A'}")
+        return None
+    except KeyError:
+        print(f"ERROR: 'access_token' or 'expires_in' not found in Daraja auth response: {token_data}")
+        return None
+
+
+def generate_daraja_password(shortcode, passkey, timestamp):
+    """Generates the Base64 encoded password for Daraja API calls."""
+    password_str = f"{shortcode}{passkey}{timestamp}"
+    password_bytes = password_str.encode('utf-8')
+    encoded_password = base64.b64encode(password_bytes).decode('utf-8')
+    return encoded_password
+
+
+def initiate_stk_push(phone_number, amount, order_id, description="Shoply Purchase"):
+    """Initiates an STK Push request."""
+    access_token = get_daraja_access_token()
+    if not access_token:
+        return {"error": "Failed to obtain Daraja access token"}, 500
+
+    stk_push_url = current_app.config['DARAJA_STK_PUSH_URL']
+    shortcode = current_app.config['DARAJA_SHORTCODE']
+    passkey = current_app.config['DARAJA_PASSKEY']
+    callback_url = current_app.config['DARAJA_CALLBACK_URL']
+    transaction_type = current_app.config['DARAJA_TRANSACTION_TYPE']
+
+    amount = int(round(float(amount)))
+    if not phone_number.startswith('254') or not phone_number.isdigit() or len(phone_number) != 12:
+         print(f"ERROR: Invalid phone number format: {phone_number}")
+         return {"error": "Invalid phone number format. Use 254XXXXXXXXX."}, 400
+
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    password = generate_daraja_password(shortcode, passkey, timestamp)
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    payload = {
+        "BusinessShortCode": shortcode,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": transaction_type,
+        "Amount": amount,
+        "PartyA": phone_number,
+        "PartyB": shortcode,
+        "PhoneNumber": phone_number,
+        "CallBackURL": callback_url,
+        "AccountReference": str(order_id),
+        "TransactionDesc": description
+    }
+
+    print(f"DEBUG: Initiating STK Push with payload: {payload}")
+
+    try:
+        response = requests.post(stk_push_url, json=payload, headers=headers)
+        response.raise_for_status()
+        response_data = response.json()
+        print(f"DEBUG: STK Push Response: {response_data}")
+        return response_data, 200
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: STK Push request failed: {e}")
+        print(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
+        print(f"Response text: {response.text if 'response' in locals() else 'N/A'}")
+        error_message = "Failed to initiate payment."
+        try:
+            error_details = response.json()
+            error_message = error_details.get('errorMessage', error_message)
+        except:
+            pass
+        return {"error": error_message}, getattr(response, 'status_code', 500)
+    except Exception as e:
+        print(f"ERROR: Unexpected error during STK Push: {e}")
+        return {"error": "An unexpected error occurred during payment initiation."}, 500

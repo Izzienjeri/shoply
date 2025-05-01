@@ -94,11 +94,11 @@ class Order(db.Model):
     payment_gateway_ref = db.Column(db.String(255), nullable=True)
 
     user = db.relationship('User', back_populates='orders')
-    items = db.relationship('OrderItem', back_populates='order', lazy='dynamic', cascade="all, delete-orphan")
+    items = db.relationship('OrderItem', back_populates='order', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Order {self.id} Status {self.status} by User {self.user_id}>"
-
+    
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
 
