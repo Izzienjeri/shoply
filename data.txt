@@ -1,6 +1,6 @@
 # Extracted Python Code
-# Date and Time: 2025-05-02 00:02:49
-# Files Included: 13
+# Date and Time: 2025-05-02 04:14:41
+# Files Included: 14
 
 # === ./server/run.py ===
 from app import create_app
@@ -397,11 +397,11 @@ class Order(db.Model):
     payment_gateway_ref = db.Column(db.String(255), nullable=True)
 
     user = db.relationship('User', back_populates='orders')
-    items = db.relationship('OrderItem', back_populates='order', lazy='dynamic', cascade="all, delete-orphan")
+    items = db.relationship('OrderItem', back_populates='order', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Order {self.id} Status {self.status} by User {self.user_id}>"
-
+    
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
 
@@ -719,6 +719,7 @@ from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from marshmallow import fields, Schema, ValidationError
 from sqlalchemy.orm import joinedload
+from decimal import Decimal
 
 from .. import db, ma
 from ..models import Order, OrderItem, User, Cart, Product, CartItem
@@ -751,7 +752,7 @@ class OrderList(Resource):
     def post(self):
         """
         Initiates the checkout process (triggers STK Push).
-        Does NOT create the order directly.
+        Does NOT create the order directly. This happens in the callback.
         """
         user_id = get_jwt_identity()
 
@@ -765,28 +766,35 @@ class OrderList(Resource):
 
         phone_number = checkout_data['phone_number']
 
-        cart = Cart.query.filter_by(user_id=user_id).options(
-            joinedload(Cart.items).joinedload(CartItem.product)
-        ).first()
+        cart = Cart.query.filter_by(user_id=user_id).first()
 
-        if not cart or not cart.items:
+        if not cart:
+             abort(400, message="Your cart is empty.")
+
+        cart_items_with_products = cart.items.options(
+            joinedload(CartItem.product)
+        ).all()
+
+        if not cart_items_with_products:
             abort(400, message="Your cart is empty.")
 
-        total_price = 0
-        items_to_process = []
-        for item in cart.items:
+        total_price = Decimal('0.0')
+
+        for item in cart_items_with_products:
             if not item.product:
                  abort(500, message=f"Product data missing for cart item {item.id}.")
+
             if item.product.stock_quantity < item.quantity:
                 abort(400, message=f"Insufficient stock for '{item.product.name}'. Available: {item.product.stock_quantity}")
-            total_price += item.product.price * item.quantity
-            items_to_process.append(item)
+
+            total_price += Decimal(item.product.price) * Decimal(item.quantity)
+
 
         if total_price <= 0:
             abort(400, message="Cart total must be positive.")
 
         account_ref = f"CART_{cart.id[:8]}"
-        amount = total_price
+        amount = float(total_price)
 
         stk_response, status_code = initiate_stk_push(
             phone_number=phone_number,
@@ -1305,3 +1313,154 @@ def initiate_stk_push(phone_number, amount, order_id, description="Shoply Purcha
     except Exception as e:
         print(f"ERROR: Unexpected error during STK Push: {e}")
         return {"error": "An unexpected error occurred during payment initiation."}, 500
+
+# === ./main/node_modules/flatted/python/flatted.py ===
+# ISC License
+#
+# Copyright (c) 2018-2025, Andrea Giammarchi, @WebReflection
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+# OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+import json as _json
+
+class _Known:
+    def __init__(self):
+        self.key = []
+        self.value = []
+
+class _String:
+    def __init__(self, value):
+        self.value = value
+
+
+def _array_keys(value):
+    keys = []
+    i = 0
+    for _ in value:
+        keys.append(i)
+        i += 1
+    return keys
+
+def _object_keys(value):
+    keys = []
+    for key in value:
+        keys.append(key)
+    return keys
+
+def _is_array(value):
+    return isinstance(value, (list, tuple))
+
+def _is_object(value):
+    return isinstance(value, dict)
+
+def _is_string(value):
+    return isinstance(value, str)
+
+def _index(known, input, value):
+    input.append(value)
+    index = str(len(input) - 1)
+    known.key.append(value)
+    known.value.append(index)
+    return index
+
+def _loop(keys, input, known, output):
+    for key in keys:
+        value = output[key]
+        if isinstance(value, _String):
+            _ref(key, input[int(value.value)], input, known, output)
+
+    return output
+
+def _ref(key, value, input, known, output):
+    if _is_array(value) and value not in known:
+        known.append(value)
+        value = _loop(_array_keys(value), input, known, value)
+    elif _is_object(value) and value not in known:
+        known.append(value)
+        value = _loop(_object_keys(value), input, known, value)
+
+    output[key] = value
+
+def _relate(known, input, value):
+    if _is_string(value) or _is_array(value) or _is_object(value):
+        try:
+            return known.value[known.key.index(value)]
+        except:
+            return _index(known, input, value)
+
+    return value
+
+def _transform(known, input, value):
+    if _is_array(value):
+        output = []
+        for val in value:
+            output.append(_relate(known, input, val))
+        return output
+
+    if _is_object(value):
+        obj = {}
+        for key in value:
+            obj[key] = _relate(known, input, value[key])
+        return obj
+
+    return value
+
+def _wrap(value):
+    if _is_string(value):
+        return _String(value)
+
+    if _is_array(value):
+        i = 0
+        for val in value:
+            value[i] = _wrap(val)
+            i += 1
+
+    elif _is_object(value):
+        for key in value:
+            value[key] = _wrap(value[key])
+
+    return value
+
+def parse(value, *args, **kwargs):
+    json = _json.loads(value, *args, **kwargs)
+    wrapped = []
+    for value in json:
+        wrapped.append(_wrap(value))
+
+    input = []
+    for value in wrapped:
+        if isinstance(value, _String):
+            input.append(value.value)
+        else:
+            input.append(value)
+
+    value = input[0]
+
+    if _is_array(value):
+        return _loop(_array_keys(value), input, [value], value)
+
+    if _is_object(value):
+        return _loop(_object_keys(value), input, [value], value)
+
+    return value
+
+
+def stringify(value, *args, **kwargs):
+    known = _Known()
+    input = []
+    output = []
+    i = int(_index(known, input, value))
+    while i < len(input):
+        output.append(_transform(known, input, input[i]))
+        i += 1
+    return _json.dumps(output, *args, **kwargs)

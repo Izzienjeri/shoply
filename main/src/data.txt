@@ -1,0 +1,745 @@
+# Extracted Code (.ts, .tsx, .css)
+# Date and Time: 2025-05-02 02:29:39
+# Files Included: 11
+
+# === lib/utils.ts ===
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+# === lib/api.ts ===
+import { getAuthToken, clearAuthToken } from './auth';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+interface RequestOptions extends RequestInit {
+  needsAuth?: boolean;
+  isFormData?: boolean;
+}
+
+async function request<T>(
+  endpoint: string,
+  options: RequestOptions = {}
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const headers: HeadersInit = options.isFormData ? {} : { 'Content-Type': 'application/json' };
+  let body = options.body;
+
+  if (options.needsAuth) {
+    const token = getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      console.warn('Auth token needed but not found for', endpoint);
+    }
+  }
+
+  if (body && !options.isFormData && typeof body !== 'string') {
+     body = JSON.stringify(body);
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      body,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+         console.error('Unauthorized request to', endpoint);
+      }
+      let errorData;
+      try {
+         errorData = await response.json();
+      } catch (parseError) {
+         errorData = { message: response.statusText };
+      }
+      console.error(`API Error (${response.status}):`, errorData);
+      throw new Error(errorData?.message || `Request failed with status ${response.status}`);
+    }
+
+    if (response.status === 204) {
+      return null as T;
+    }
+
+    return await response.json() as T;
+
+  } catch (error) {
+    console.error('Network or API request error:', error);
+    throw error;
+  }
+}
+
+export const apiClient = {
+  get: <T>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(endpoint, { ...options, method: 'GET' }),
+
+  post: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(endpoint, { ...options, method: 'POST', body }),
+
+  put: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(endpoint, { ...options, method: 'PUT', body }),
+
+  patch: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(endpoint, { ...options, method: 'PATCH', body }),
+
+  delete: <T>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(endpoint, { ...options, method: 'DELETE' }),
+};
+
+# === lib/types.ts ===
+export interface User {
+    id: string;
+    email: string;
+    name?: string;
+    address?: string;
+    created_at: string;
+  }
+  
+  export interface Product {
+    id: string;
+    name: string;
+    description?: string;
+    price: string;
+    stock_quantity: number;
+    created_at: string;
+    updated_at: string;
+    image_url?: string;
+  }
+  
+  export interface CartItem {
+    id: string;
+    product_id: string;
+    quantity: number;
+    product: Pick<Product, 'id' | 'name' | 'price' | 'image_url'>;
+  }
+  
+  export interface Cart {
+    id: string;
+    user_id: string;
+    created_at: string;
+    updated_at: string;
+    items: CartItem[];
+  }
+  
+  export interface OrderItem {
+    id: string;
+    product_id: string;
+    quantity: number;
+    price_at_purchase: string;
+    product: Pick<Product, 'id' | 'name' | 'image_url'>;
+  }
+  
+  export interface Order {
+    id: string;
+    user_id: string;
+    total_price: string;
+    status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
+    created_at: string;
+    updated_at: string;
+    shipped_at?: string;
+    shipping_address?: string;
+    billing_address?: string;
+    payment_gateway_ref?: string;
+    items: OrderItem[];
+  }
+  
+  export interface ApiErrorResponse {
+      message: string;
+      errors?: Record<string, string[]>;
+  }
+  
+  export interface LoginResponse {
+      message: string;
+      access_token: string;
+  }
+  
+  export interface SignupResponse {
+      message: string;
+      user: User;
+  }
+
+# === app/globals.css ===
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  fontFamily: {
+    sans: ['var(--font-montserrat)', 'sans-serif'],
+    serif: ['var(--font-playfair)', 'serif'],
+    mono: ['var(--font-geist-mono, monospace)']
+  },
+
+
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.147 0.004 49.25);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.147 0.004 49.25);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.147 0.004 49.25);
+  --primary: oklch(0.216 0.006 56.043);
+  --primary-foreground: oklch(0.985 0.001 106.423);
+  --secondary: oklch(0.97 0.001 106.424);
+  --secondary-foreground: oklch(0.216 0.006 56.043);
+  --muted: oklch(0.97 0.001 106.424);
+  --muted-foreground: oklch(0.553 0.013 58.071);
+  --accent: oklch(0.97 0.001 106.424);
+  --accent-foreground: oklch(0.216 0.006 56.043);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.923 0.003 48.717);
+  --input: oklch(0.923 0.003 48.717);
+  --ring: oklch(0.709 0.01 56.259);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0.001 106.423);
+  --sidebar-foreground: oklch(0.147 0.004 49.25);
+  --sidebar-primary: oklch(0.216 0.006 56.043);
+  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-accent: oklch(0.97 0.001 106.424);
+  --sidebar-accent-foreground: oklch(0.216 0.006 56.043);
+  --sidebar-border: oklch(0.923 0.003 48.717);
+  --sidebar-ring: oklch(0.709 0.01 56.259);
+}
+
+.dark {
+  --background: oklch(0.147 0.004 49.25);
+  --foreground: oklch(0.985 0.001 106.423);
+  --card: oklch(0.216 0.006 56.043);
+  --card-foreground: oklch(0.985 0.001 106.423);
+  --popover: oklch(0.216 0.006 56.043);
+  --popover-foreground: oklch(0.985 0.001 106.423);
+  --primary: oklch(0.923 0.003 48.717);
+  --primary-foreground: oklch(0.216 0.006 56.043);
+  --secondary: oklch(0.268 0.007 34.298);
+  --secondary-foreground: oklch(0.985 0.001 106.423);
+  --muted: oklch(0.268 0.007 34.298);
+  --muted-foreground: oklch(0.709 0.01 56.259);
+  --accent: oklch(0.268 0.007 34.298);
+  --accent-foreground: oklch(0.985 0.001 106.423);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.553 0.013 58.071);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.216 0.006 56.043);
+  --sidebar-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-accent: oklch(0.268 0.007 34.298);
+  --sidebar-accent-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.553 0.013 58.071);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+# === app/layout.tsx ===
+import type { Metadata } from "next";
+import "./globals.css";
+import { Playfair_Display, Montserrat } from 'next/font/google';
+import { cn } from "@/lib/utils";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { CartProvider } from "@/contexts/CartContext";
+import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
+import { Toaster } from "@/components/ui/sonner";
+
+const montserrat = Montserrat({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-montserrat'
+});
+
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-playfair'
+});
+
+export const metadata: Metadata = {
+  title: "Artistry Haven",
+  description: "Discover and purchase unique artwork online.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={cn(
+          "min-h-screen bg-background font-sans antialiased flex flex-col",
+          montserrat.variable,
+          playfair.variable
+        )}
+      >
+        <AuthProvider>
+          <CartProvider>
+            <Navbar />
+            <main className="flex-grow container mx-auto px-4 py-8">
+              {children}
+            </main>
+            <Footer />
+            <Toaster richColors position="top-right" />
+          </CartProvider>
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}
+
+# === app/page.tsx ===
+// src/app/page.tsx
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+
+export default function Home() {
+  return (
+    <div className="flex flex-col items-center justify-center text-center space-y-6">
+      <h1 className="text-4xl font-bold font-serif tracking-tight lg:text-5xl text-primary">
+        Welcome to Artistry Haven
+      </h1>
+      <p className="max-w-xl text-lg text-muted-foreground">
+        Discover unique and captivating artwork from talented artists around the world. Find the perfect piece to inspire your space.
+      </p>
+      <div>
+        <Link href="/products">
+          <Button size="lg">Explore Artwork</Button>
+        </Link>
+      </div>
+      {/* Optional: Add featured products section later */}
+    </div>
+  );
+}
+
+# === contexts/AuthContext.tsx ===
+'use client';
+
+import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
+import { User, ApiErrorResponse } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+
+export const getAuthToken = (): string | null => {
+   if (typeof window === 'undefined') return null;
+   return localStorage.getItem('authToken');
+};
+
+const setAuthToken = (token: string | null): void => {
+   if (typeof window === 'undefined') return;
+   if (token) {
+      localStorage.setItem('authToken', token);
+   } else {
+      localStorage.removeItem('authToken');
+   }
+};
+
+export const clearAuthToken = (): void => setAuthToken(null);
+
+
+interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (userData: any) => Promise<void>;
+  logout: () => Promise<void>;
+  fetchUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(getAuthToken());
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const fetchUser = useCallback(async () => {
+    if (!token) {
+       setUser(null);
+       setIsLoading(false);
+       return;
+    }
+    setIsLoading(true);
+    try {
+       console.log("Simulating fetching user based on token (replace with actual GET /api/auth/me)");
+       setUser({ id: 'dummy-id', email: 'logged-in@example.com', created_at: new Date().toISOString() });
+    } catch (error) {
+       console.error("Failed to fetch user:", error);
+       setAuthToken(null);
+       setToken(null);
+       setUser(null);
+    } finally {
+       setIsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+     fetchUser();
+  }, [fetchUser]);
+
+  const login = async (email: string, password: string) => {
+     setIsLoading(true);
+     try {
+         const response = await apiClient.post<{ access_token: string }>('/auth/login', { email, password });
+         setAuthToken(response.access_token);
+         setToken(response.access_token);
+         await fetchUser();
+     } catch (error) {
+         console.error("Login failed:", error);
+         setAuthToken(null);
+         setToken(null);
+         setUser(null);
+         throw error;
+     } finally {
+         setIsLoading(false);
+     }
+  };
+
+ const signup = async (userData: any) => {
+    setIsLoading(true);
+     try {
+         await apiClient.post('/auth/signup', userData);
+     } catch (error) {
+         console.error("Signup failed:", error);
+         throw error;
+     } finally {
+        setIsLoading(false);
+     }
+ };
+
+  const logout = async () => {
+     setIsLoading(true);
+     try {
+        if (token) {
+           await apiClient.post('/auth/logout', {}, { needsAuth: true });
+        }
+     } catch (error) {
+         console.error("Logout API call failed:", error);
+     } finally {
+        setAuthToken(null);
+        setToken(null);
+        setUser(null);
+        setIsLoading(false);
+        window.location.href = '/';
+     }
+  };
+
+  const isAuthenticated = !isLoading && !!user && !!token;
+
+  return (
+    <AuthContext.Provider value={{ user, token, isLoading, isAuthenticated, login, signup, logout, fetchUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+# === contexts/CartContext.tsx ===
+'use client';
+
+import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
+import { Cart, CartItem, Product } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+import { useAuth } from './AuthContext'; // Use auth context to know if user is logged in
+
+interface CartContextType {
+  cart: Cart | null;
+  isLoading: boolean;
+  itemCount: number;
+  totalPrice: number; // Calculate this
+  fetchCart: () => Promise<void>;
+  addToCart: (productId: string, quantity: number) => Promise<void>;
+  updateCartItem: (itemId: string, quantity: number) => Promise<void>;
+  removeFromCart: (itemId: string) => Promise<void>;
+  clearCart: () => void; // Local clear on logout etc.
+}
+
+const CartContext = createContext<CartContextType | undefined>(undefined);
+
+export const CartProvider = ({ children }: { children: ReactNode }) => {
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const fetchCart = useCallback(async () => {
+    if (!isAuthenticated) {
+        setCart(null); // Clear cart if not authenticated
+        return;
+    }
+    setIsLoading(true);
+    try {
+      const fetchedCart = await apiClient.get<Cart>('/cart', { needsAuth: true });
+      setCart(fetchedCart);
+    } catch (error) {
+      console.error("Failed to fetch cart:", error);
+      // Handle error appropriately, maybe show a toast
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  // Fetch cart when authentication status changes (and is authenticated)
+  useEffect(() => {
+    if (!isAuthLoading && isAuthenticated) {
+      fetchCart();
+    } else if (!isAuthLoading && !isAuthenticated) {
+      setCart(null); // Clear cart on logout
+    }
+  }, [isAuthenticated, isAuthLoading, fetchCart]);
+
+
+  const updateLocalCart = (updatedCart: Cart) => {
+      setCart(updatedCart);
+  };
+
+  const addToCart = async (productId: string, quantity: number) => {
+      if (!isAuthenticated) throw new Error("Please log in to add items to cart.");
+      setIsLoading(true);
+      try {
+          const updatedCart = await apiClient.post<Cart>('/cart', { product_id: productId, quantity }, { needsAuth: true });
+          updateLocalCart(updatedCart);
+          // Optionally show success toast
+      } catch (error) {
+          console.error("Failed to add to cart:", error);
+          // Show error toast
+          throw error;
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  const updateCartItem = async (itemId: string, quantity: number) => {
+      if (!isAuthenticated) throw new Error("Authentication error.");
+      setIsLoading(true);
+      try {
+          const updatedCart = await apiClient.put<Cart>(`/cart/items/${itemId}`, { quantity }, { needsAuth: true });
+          updateLocalCart(updatedCart);
+      } catch (error) {
+          console.error("Failed to update cart item:", error);
+          throw error;
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  const removeFromCart = async (itemId: string) => {
+      if (!isAuthenticated) throw new Error("Authentication error.");
+      setIsLoading(true);
+      try {
+          const updatedCart = await apiClient.delete<Cart>(`/cart/items/${itemId}`, { needsAuth: true });
+          updateLocalCart(updatedCart);
+      } catch (error) {
+          console.error("Failed to remove cart item:", error);
+          throw error;
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  const clearCart = () => {
+      setCart(null); // Only clears local state, backend cart persists until order/logout?
+  }
+
+  // Derived state: Item count and Total price
+  const itemCount = cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const totalPrice = cart?.items.reduce((sum, item) => {
+        // Ensure price is treated as a number
+       const price = parseFloat(item.product.price) || 0;
+       return sum + (price * item.quantity);
+  }, 0) ?? 0;
+
+
+  return (
+    <CartContext.Provider value={{ cart, isLoading, fetchCart, addToCart, updateCartItem, removeFromCart, clearCart, itemCount, totalPrice }}>
+      {children}
+    </CartContext.Provider>
+  );
+};
+
+export const useCart = (): CartContextType => {
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
+};
+
+# === hooks/use-mobile.ts ===
+import * as React from "react"
+
+const MOBILE_BREAKPOINT = 768
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    }
+    mql.addEventListener("change", onChange)
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    return () => mql.removeEventListener("change", onChange)
+  }, [])
+
+  return !!isMobile
+}
+
+# === components/layout/Footer.tsx ===
+// src/components/layout/Footer.tsx
+import React from 'react';
+
+export function Footer() {
+  return (
+    <footer className="bg-muted text-muted-foreground border-t border-border mt-12 py-6">
+      <div className="container mx-auto px-4 text-center text-sm">
+        © {new Date().getFullYear()} Artistry Haven. All rights reserved.
+        {/* Add other footer links if needed */}
+      </div>
+    </footer>
+  );
+}
+
+# === components/layout/Navbar.tsx ===
+'use client'; // Needs to be a client component to use hooks later
+
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { ShoppingCart, User } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/contexts/CartContext';
+import { Badge } from '@/components/ui/badge';
+
+
+export function Navbar() {
+   const { isAuthenticated, isLoading, logout, user } = useAuth();
+   const { itemCount } = useCart();
+
+  return (
+    <nav className="bg-card border-b border-border sticky top-0 z-50">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+        {/* Logo/Brand Name */}
+        <Link href="/" className="text-xl font-bold font-serif text-primary">
+          Artistry Haven
+        </Link>
+
+        {/* Navigation Links */}
+        <div className="hidden md:flex items-center space-x-6">
+          <Link href="/products" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            Artwork
+          </Link>
+          {/* Add other links like About, Contact if needed */}
+        </div>
+
+        {/* Actions: Auth & Cart */}
+        <div className="flex items-center space-x-4">
+          <Link href="/cart" aria-label="View Cart">
+             <Button variant="ghost" size="icon" className="relative">
+                <ShoppingCart className="h-5 w-5" />
+                {isAuthenticated && itemCount > 0 && (
+                   <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
+                      {itemCount}
+                   </Badge>
+                )}
+             </Button>
+          </Link>
+
+          {isLoading ? (
+             <Button variant="ghost" size="sm" disabled>Loading...</Button>
+          ) : isAuthenticated ? (
+             <>
+              <Link href="/orders">
+                <Button variant="ghost" size="sm">My Orders</Button>
+              </Link>
+              <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
+              {/* Optional: Display user initial/name */}
+              {/* <span className="text-sm text-muted-foreground hidden lg:block">{user?.email}</span> */}
+             </>
+          ) : (
+             <>
+             <Link href="/login">
+                <Button variant="ghost" size="sm">Login</Button>
+             </Link>
+             <Link href="/signup">
+                <Button size="sm">Sign Up</Button>
+             </Link>
+             </>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+}
