@@ -1,20 +1,21 @@
 'use client';
 
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
-import { Cart, CartItem, Product } from '@/lib/types';
+import { Cart, CartItem, Artwork } from '@/lib/types';
 import { apiClient } from '@/lib/api';
-import { useAuth } from './AuthContext'; // Use auth context to know if user is logged in
+import { useAuth } from './AuthContext';
+import { toast } from 'sonner';
 
 interface CartContextType {
   cart: Cart | null;
   isLoading: boolean;
   itemCount: number;
-  totalPrice: number; // Calculate this
+  totalPrice: number;
   fetchCart: () => Promise<void>;
-  addToCart: (productId: string, quantity: number) => Promise<void>;
+  addToCart: (artworkId: string, quantity: number) => Promise<void>;
   updateCartItem: (itemId: string, quantity: number) => Promise<void>;
   removeFromCart: (itemId: string) => Promise<void>;
-  clearCart: () => void; // Local clear on logout etc.
+  clearCart: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -26,45 +27,52 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchCart = useCallback(async () => {
     if (!isAuthenticated) {
-        setCart(null); // Clear cart if not authenticated
+        setCart(null);
         return;
     }
+    if (isLoading) return;
     setIsLoading(true);
     try {
       const fetchedCart = await apiClient.get<Cart>('/cart', { needsAuth: true });
       setCart(fetchedCart);
     } catch (error) {
       console.error("Failed to fetch cart:", error);
-      // Handle error appropriately, maybe show a toast
+      toast.error("Could not load your cart.");
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isLoading]);
 
-  // Fetch cart when authentication status changes (and is authenticated)
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
       fetchCart();
     } else if (!isAuthLoading && !isAuthenticated) {
-      setCart(null); // Clear cart on logout
+      setCart(null);
     }
-  }, [isAuthenticated, isAuthLoading, fetchCart]);
+  }, [isAuthenticated, isAuthLoading]);
 
 
   const updateLocalCart = (updatedCart: Cart) => {
       setCart(updatedCart);
   };
 
-  const addToCart = async (productId: string, quantity: number) => {
-      if (!isAuthenticated) throw new Error("Please log in to add items to cart.");
+  const addToCart = async (artworkId: string, quantity: number) => {
+      if (!isAuthenticated) {
+          toast.error("Please log in to add items to cart.");
+          throw new Error("Please log in to add items to cart.");
+      }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.post<Cart>('/cart', { product_id: productId, quantity }, { needsAuth: true });
+          const updatedCart = await apiClient.post<Cart>(
+              '/cart',
+              { artwork_id: artworkId, quantity },
+              { needsAuth: true }
+          );
           updateLocalCart(updatedCart);
-          // Optionally show success toast
-      } catch (error) {
+          toast.success("Item added to cart!");
+      } catch (error: any) {
           console.error("Failed to add to cart:", error);
-          // Show error toast
+          toast.error(error.message || "Failed to add item to cart.");
           throw error;
       } finally {
           setIsLoading(false);
@@ -72,13 +80,18 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateCartItem = async (itemId: string, quantity: number) => {
-      if (!isAuthenticated) throw new Error("Authentication error.");
+      if (!isAuthenticated) {
+          toast.error("Authentication error.");
+          throw new Error("Authentication error.");
+      }
       setIsLoading(true);
       try {
           const updatedCart = await apiClient.put<Cart>(`/cart/items/${itemId}`, { quantity }, { needsAuth: true });
           updateLocalCart(updatedCart);
-      } catch (error) {
+          toast.success("Cart updated.");
+      } catch (error: any) {
           console.error("Failed to update cart item:", error);
+          toast.error(error.message || "Failed to update item quantity.");
           throw error;
       } finally {
           setIsLoading(false);
@@ -86,13 +99,18 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeFromCart = async (itemId: string) => {
-      if (!isAuthenticated) throw new Error("Authentication error.");
+      if (!isAuthenticated) {
+          toast.error("Authentication error.");
+          throw new Error("Authentication error.");
+      }
       setIsLoading(true);
       try {
           const updatedCart = await apiClient.delete<Cart>(`/cart/items/${itemId}`, { needsAuth: true });
           updateLocalCart(updatedCart);
-      } catch (error) {
+          toast.success("Item removed from cart.");
+      } catch (error: any) {
           console.error("Failed to remove cart item:", error);
+           toast.error(error.message || "Failed to remove item from cart.");
           throw error;
       } finally {
           setIsLoading(false);
@@ -100,14 +118,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const clearCart = () => {
-      setCart(null); // Only clears local state, backend cart persists until order/logout?
+      setCart(null);
   }
 
-  // Derived state: Item count and Total price
   const itemCount = cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
   const totalPrice = cart?.items.reduce((sum, item) => {
-        // Ensure price is treated as a number
-       const price = parseFloat(item.product.price) || 0;
+       const price = parseFloat(item.artwork.price) || 0;
        return sum + (price * item.quantity);
   }, 0) ?? 0;
 

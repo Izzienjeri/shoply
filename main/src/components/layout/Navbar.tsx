@@ -1,8 +1,9 @@
+// === components/layout/Navbar.tsx ===
 'use client'; // Needs to be a client component to use hooks later
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, User } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react'; // Removed User import as it wasn't used
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
@@ -22,10 +23,14 @@ export function Navbar() {
 
         {/* Navigation Links */}
         <div className="hidden md:flex items-center space-x-6">
-          <Link href="/products" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+          {/* UPDATED: Link to artworks page */}
+          <Link href="/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Artwork
           </Link>
-          {/* Add other links like About, Contact if needed */}
+          {/* Optional: Add link to Artists page */}
+          <Link href="/artists" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            Artists
+          </Link>
         </div>
 
         {/* Actions: Auth & Cart */}
@@ -35,7 +40,7 @@ export function Navbar() {
                 <ShoppingCart className="h-5 w-5" />
                 {isAuthenticated && itemCount > 0 && (
                    <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
-                      {itemCount}
+                      {itemCount > 9 ? '9+' : itemCount} {/* Handle counts > 9 */}
                    </Badge>
                 )}
              </Button>
@@ -49,8 +54,6 @@ export function Navbar() {
                 <Button variant="ghost" size="sm">My Orders</Button>
               </Link>
               <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
-              {/* Optional: Display user initial/name */}
-              {/* <span className="text-sm text-muted-foreground hidden lg:block">{user?.email}</span> */}
              </>
           ) : (
              <>

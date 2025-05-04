@@ -1,5 +1,5 @@
 # Extracted Python Code
-# Date and Time: 2025-05-04 05:28:39
+# Date and Time: 2025-05-04 05:48:33
 # Files Included: 17
 
 # === ./server/seed.py ===
@@ -7,8 +7,8 @@ import os
 import random
 from decimal import Decimal
 from faker import Faker
-from server.app import create_app, db
-from server.app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
+from app import create_app, db
+from app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
 
 NUM_ARTISTS = 10
 NUM_USERS = 5
@@ -145,8 +145,8 @@ def run_seed():
         print("-" * 20)
 
 # === ./server/run.py ===
-from server.app import create_app
-from server.seed import run_seed
+from app import create_app
+from seed import run_seed
 
 app = create_app()
 

@@ -2,8 +2,8 @@ import os
 import random
 from decimal import Decimal
 from faker import Faker
-from server.app import create_app, db
-from server.app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
+from app import create_app, db
+from app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
 
 NUM_ARTISTS = 10
 NUM_USERS = 5

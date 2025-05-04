@@ -1,5 +1,5 @@
-from server.app import create_app
-from server.seed import run_seed
+from app import create_app
+from seed import run_seed
 
 app = create_app()
 
