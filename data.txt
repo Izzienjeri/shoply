@@ -1,5 +1,5 @@
 # Extracted Python Code
-# Date and Time: 2025-05-04 06:42:51
+# Date and Time: 2025-05-04 06:58:01
 # Files Included: 17
 
 # === ./server/seed.py ===
@@ -115,8 +115,11 @@ def seed_users(num_users):
             name=user_name,
             address=user_address
         )
+
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
+        print(f"Created user: {user_email}")
+
 
     if users:
         db.session.add_all(users)
@@ -124,6 +127,7 @@ def seed_users(num_users):
         print(f"{len(users)} users seeded (default password: '{DEFAULT_PASSWORD}').")
     else:
         print("No new users were seeded.")
+        
     return users
 
 def run_seed():
@@ -614,10 +618,11 @@ class Cart(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = db.relationship('User', back_populates='cart')
-    items = db.relationship('CartItem', back_populates='cart', lazy='dynamic', cascade="all, delete-orphan")
+    items = db.relationship('CartItem', back_populates='cart', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Cart {self.id} for User {self.user_id}>"
+
 
 class CartItem(db.Model):
     __tablename__ = 'cart_items'
@@ -1004,7 +1009,7 @@ class CartItemResource(Resource):
             abort(500, message="An error occurred while removing the item from the cart.")
 
 
-cart_api.add_resource(CartResource, '/')
+cart_api.add_resource(CartResource, '/', '')
 cart_api.add_resource(CartItemResource, '/items/<string:item_id>')
 
 # === ./server/app/resources/artist.py ===

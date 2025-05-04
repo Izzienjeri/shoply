@@ -18,7 +18,7 @@ export default function ArtworksPage() {
       setError(null);
       try {
         const fetchedArtworks = await apiClient.get<Artwork[]>('/artworks/');
-        setArtworks(fetchedArtworks);
+        setArtworks(fetchedArtworks || []);
       } catch (err) {
         console.error("Failed to fetch artworks:", err);
         setError(err instanceof Error ? err.message : "An unknown error occurred");

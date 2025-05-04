@@ -52,7 +52,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   }, [isAuthenticated, isAuthLoading]);
 
 
-  const updateLocalCart = (updatedCart: Cart) => {
+  const updateLocalCart = (updatedCart: Cart | null) => {
       setCart(updatedCart);
   };
 
@@ -68,8 +68,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
               { artwork_id: artworkId, quantity },
               { needsAuth: true }
           );
-          updateLocalCart(updatedCart);
-          toast.success("Item added to cart!");
+          if (updatedCart) {
+              updateLocalCart(updatedCart);
+              toast.success("Item added to cart!");
+          } else {
+            await fetchCart();
+            toast.success("Item added to cart!");
+          }
       } catch (error: any) {
           console.error("Failed to add to cart:", error);
           toast.error(error.message || "Failed to add item to cart.");
@@ -87,8 +92,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       try {
           const updatedCart = await apiClient.put<Cart>(`/cart/items/${itemId}`, { quantity }, { needsAuth: true });
-          updateLocalCart(updatedCart);
-          toast.success("Cart updated.");
+          if (updatedCart) {
+              updateLocalCart(updatedCart);
+              toast.success("Cart updated.");
+          } else {
+            await fetchCart();
+            toast.success("Cart updated.");
+          }
       } catch (error: any) {
           console.error("Failed to update cart item:", error);
           toast.error(error.message || "Failed to update item quantity.");
@@ -105,9 +115,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.delete<Cart>(`/cart/items/${itemId}`, { needsAuth: true });
-          updateLocalCart(updatedCart);
-          toast.success("Item removed from cart.");
+          const updatedCart = await apiClient.delete<Cart | null>(`/cart/items/${itemId}`, { needsAuth: true });
+           if (updatedCart) {
+               updateLocalCart(updatedCart);
+               toast.success("Item removed from cart.");
+           } else {
+               await fetchCart();
+               toast.success("Item removed from cart.");
+           }
       } catch (error: any) {
           console.error("Failed to remove cart item:", error);
            toast.error(error.message || "Failed to remove item from cart.");
