@@ -110,8 +110,11 @@ def seed_users(num_users):
             name=user_name,
             address=user_address
         )
+
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
+        print(f"Created user: {user_email}")
+
 
     if users:
         db.session.add_all(users)
@@ -119,6 +122,7 @@ def seed_users(num_users):
         print(f"{len(users)} users seeded (default password: '{DEFAULT_PASSWORD}').")
     else:
         print("No new users were seeded.")
+        
     return users
 
 def run_seed():

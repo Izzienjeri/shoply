@@ -1,5 +1,5 @@
 # Extracted Python Code
-# Date and Time: 2025-05-04 06:25:44
+# Date and Time: 2025-05-04 06:42:51
 # Files Included: 17
 
 # === ./server/seed.py ===
@@ -383,12 +383,12 @@ def downgrade():
     # ### end Alembic commands ###
 
 # === ./server/app/schemas.py ===
-from marshmallow import fields, validate, post_dump
+from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions
 from flask import url_for, current_app
 
 from . import ma, db
 from .models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -432,13 +432,14 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
         relative_path = data.get('image_url')
         if relative_path:
             try:
-                absolute_url = url_for('serve_media', filename=relative_path, _external=True)
+                with current_app.app_context():
+                     absolute_url = url_for('serve_media', filename=relative_path, _external=True)
                 data['image_url'] = absolute_url
             except RuntimeError as e:
-                print(f"ERROR: Could not generate URL for '{relative_path}'. Is app context available? Error: {e}")
+                current_app.logger.error(f"Could not generate URL for '{relative_path}'. Is app context available? Error: {e}", exc_info=True)
                 data['image_url'] = None
             except Exception as e:
-                print(f"ERROR: Unexpected error generating URL for '{relative_path}': {e}")
+                current_app.logger.error(f"Unexpected error generating URL for '{relative_path}': {e}", exc_info=True)
                 data['image_url'] = None
         else:
             data['image_url'] = None
@@ -459,23 +460,31 @@ class CartItemSchema(ma.SQLAlchemyAutoSchema):
 
 class CartSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(CartItemSchema, many=True)
-    total_price = fields.Method("calculate_total", dump_only=True, as_string=True)
+    total_price = fields.Method("calculate_total", dump_only=True)
 
     def calculate_total(self, cart):
         """Calculates the total price of the cart items."""
         total = Decimal('0.00')
-        items_iterable = cart.items if hasattr(cart, 'items') else []
+        items_iterable = []
+        if hasattr(cart, 'items'):
+            try:
+                items_iterable = cart.items.all() if callable(getattr(cart.items, 'all', None)) else cart.items
+            except Exception as e:
+                 current_app.logger.warning(f"Could not iterate cart items for cart {cart.id}: {e}")
+                 items_iterable = []
 
         for item in items_iterable:
-             if hasattr(item, 'artwork') and item.artwork and hasattr(item.artwork, 'price'):
+             if (hasattr(item, 'artwork') and item.artwork and
+                 hasattr(item.artwork, 'price') and item.artwork.price is not None and
+                 hasattr(item, 'quantity')):
                  try:
                       item_price = Decimal(item.artwork.price)
-                      total += item_price * item.quantity
-                 except (TypeError, ValueError, InvalidOperation):
-                      print(f"Warning: Could not calculate price for item {item.id}, artwork {item.artwork.id}")
+                      total += item_price * Decimal(item.quantity)
+                 except (TypeError, ValueError, InvalidOperation) as e:
+                      current_app.logger.warning(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}")
                       continue
              else:
-                 print(f"Warning: Artwork data not fully loaded for cart item {item.id}. Cannot calculate total accurately.")
+                 current_app.logger.warning(f"Artwork data (price/quantity) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {cart.id}. Cannot calculate total accurately.")
 
         return str(total)
 

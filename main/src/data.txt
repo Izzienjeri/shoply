@@ -1,5 +1,5 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-04 06:28:59
+# Date and Time: 2025-05-04 06:42:48
 # Files Included: 16
 
 # === lib/utils.ts ===
@@ -179,6 +179,12 @@ export interface LoginResponse {
 export interface SignupResponse {
     message: string;
     user: User;
+}
+
+export interface StkPushInitiationResponse {
+  message: string;
+  CheckoutRequestID: string;
+  ResponseDescription: string;
 }
 
 # === app/globals.css ===
@@ -404,7 +410,7 @@ import { toast } from 'sonner';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/lib/utils';
-import { ApiErrorResponse, CartItem as CartItemType } from '@/lib/types';
+import { ApiErrorResponse, CartItem as CartItemType, StkPushInitiationResponse } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 
 import { Button } from "@/components/ui/button";
@@ -566,12 +572,27 @@ export default function CartPage() {
   const handleCheckout = async (data: CheckoutFormValues) => {
     setIsCheckoutLoading(true);
     try {
-      const response = await apiClient.post('/orders/', { phone_number: data.phoneNumber }, { needsAuth: true });
-      toast.success(response.message || "STK Push initiated. Check your phone to complete payment.");
+      const response = await apiClient.post<StkPushInitiationResponse>(
+          '/orders/',
+          { phone_number: data.phoneNumber },
+          { needsAuth: true }
+      );
+
+      if (response) {
+        toast.success(response.message || "STK Push initiated. Check your phone to complete payment.");
+      } else {
+        toast.success("Checkout process initiated (received null response).");
+      }
       checkoutForm.reset();
-    } catch (error: any) {
+
+    } catch (error: unknown) {
         console.error("Checkout initiation failed:", error);
-        const errorMessage = (error as ApiErrorResponse)?.message || "Failed to initiate checkout.";
+        let errorMessage = "Failed to initiate checkout.";
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        } else if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+             errorMessage = (error as ApiErrorResponse).message;
+        }
         toast.error(errorMessage);
     } finally {
       setIsCheckoutLoading(false);
@@ -683,7 +704,7 @@ export default function CartPage() {
                               </FormItem>
                             )}
                           />
-                         <Button type="submit" className="w-full" disabled={isCheckoutLoading || itemCount === 0}>
+                         <Button type="submit" className="w-full" disabled={isCheckoutLoading || itemCount === 0 || cartIsLoading}>
                             {isCheckoutLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
