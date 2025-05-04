@@ -1,4 +1,7 @@
-from marshmallow import fields, validate
+
+from marshmallow import fields, validate, post_dump
+from flask import url_for, current_app
+
 from . import ma, db
 from .models import User, Product, Cart, CartItem, Order, OrderItem
 
@@ -18,11 +21,30 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
 class ProductSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
     stock_quantity = fields.Int(validate=validate.Range(min=0))
+    image_url = fields.String(dump_only=True, required=False, allow_none=True)
 
     class Meta:
         model = Product
         load_instance = True
         sqla_session = db.session
+
+    @post_dump
+    def make_image_url_absolute(self, data, **kwargs):
+        """Converts the stored relative image path to an absolute URL after dumping."""
+        relative_path = data.get('image_url')
+        if relative_path:
+            try:
+                absolute_url = url_for('serve_media', filename=relative_path, _external=True)
+                data['image_url'] = absolute_url
+            except RuntimeError as e:
+                print(f"ERROR: Could not generate URL for '{relative_path}'. Is app context available? Error: {e}")
+                data['image_url'] = None
+            except Exception as e:
+                print(f"ERROR: Unexpected error generating URL for '{relative_path}': {e}")
+                data['image_url'] = None
+        else:
+            data['image_url'] = None
+        return data
 
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
     product = fields.Nested(ProductSchema, only=('id', 'name', 'price', 'image_url'))
@@ -57,6 +79,12 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(OrderItemSchema, many=True, dump_only=True)
     total_price = fields.Decimal(as_string=True, dump_only=True)
     status = fields.Str(dump_only=True)
+    user_id = fields.String(dump_only=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+    shipping_address = fields.Str(dump_only=True, allow_none=True)
+    payment_gateway_ref = fields.Str(dump_only=True, allow_none=True)
+
 
     class Meta:
         model = Order
@@ -72,3 +100,4 @@ order_schema = OrderSchema()
 users_schema = UserSchema(many=True)
 products_schema = ProductSchema(many=True)
 orders_schema = OrderSchema(many=True)
+
