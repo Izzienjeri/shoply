@@ -10,7 +10,7 @@ interface RequestOptions extends RequestInit {
 async function request<T>(
   endpoint: string,
   options: RequestOptions = {}
-): Promise<T> {
+): Promise<T | null> {
   const url = `${API_BASE_URL}${endpoint}`;
   const headers: HeadersInit = options.isFormData ? {} : { 'Content-Type': 'application/json' };
   let body = options.body;
@@ -18,9 +18,10 @@ async function request<T>(
   if (options.needsAuth) {
     const token = getAuthToken();
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     } else {
       console.warn('Auth token needed but not found for', endpoint);
+       throw new Error("Authentication required.");
     }
   }
 
@@ -43,14 +44,14 @@ async function request<T>(
       try {
          errorData = await response.json();
       } catch (parseError) {
-         errorData = { message: response.statusText };
+         errorData = { message: response.statusText || `Request failed with status ${response.status}` };
       }
       console.error(`API Error (${response.status}):`, errorData);
       throw new Error(errorData?.message || `Request failed with status ${response.status}`);
     }
 
     if (response.status === 204) {
-      return null as T;
+      return null;
     }
 
     return await response.json() as T;
@@ -74,6 +75,6 @@ export const apiClient = {
   patch: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(endpoint, { ...options, method: 'PATCH', body }),
 
-  delete: <T>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  delete: <T = void>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(endpoint, { ...options, method: 'DELETE' }),
 };

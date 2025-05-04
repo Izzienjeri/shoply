@@ -1,8 +1,10 @@
+
 from marshmallow import fields, validate, post_dump
 from flask import url_for, current_app
 
 from . import ma, db
 from .models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
+from decimal import Decimal
 
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -20,7 +22,6 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
     name = fields.Str(required=True)
     bio = fields.Str()
-    artworks = fields.Nested('ArtworkSchema', many=True, dump_only=True, exclude=('artist',))
 
     class Meta:
         model = Artist
@@ -60,7 +61,10 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
         return data
 
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
-    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'price', 'image_url', 'artist'))
+    artwork = fields.Nested(
+        ArtworkSchema,
+        only=('id', 'name', 'price', 'image_url', 'artist', 'stock_quantity')
+    )
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
 
     class Meta:
@@ -71,15 +75,31 @@ class CartItemSchema(ma.SQLAlchemyAutoSchema):
 
 class CartSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(CartItemSchema, many=True)
-    total_price = fields.Method("calculate_total", dump_only=True)
+    total_price = fields.Method("calculate_total", dump_only=True, as_string=True)
 
     def calculate_total(self, cart):
-       return sum(item.artwork.price * item.quantity for item in cart.items)
+        """Calculates the total price of the cart items."""
+        total = Decimal('0.00')
+        items_iterable = cart.items if hasattr(cart, 'items') else []
+
+        for item in items_iterable:
+             if hasattr(item, 'artwork') and item.artwork and hasattr(item.artwork, 'price'):
+                 try:
+                      item_price = Decimal(item.artwork.price)
+                      total += item_price * item.quantity
+                 except (TypeError, ValueError, InvalidOperation):
+                      print(f"Warning: Could not calculate price for item {item.id}, artwork {item.artwork.id}")
+                      continue
+             else:
+                 print(f"Warning: Artwork data not fully loaded for cart item {item.id}. Cannot calculate total accurately.")
+
+        return str(total)
 
     class Meta:
         model = Cart
         load_instance = True
         sqla_session = db.session
+
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
     artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'image_url', 'artist'))
@@ -121,3 +141,4 @@ users_schema = UserSchema(many=True)
 artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
+

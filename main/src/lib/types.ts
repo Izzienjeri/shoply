@@ -24,9 +24,8 @@ export interface CartItem {
   id: string;
   artwork_id: string;
   quantity: number;
-  artwork: Pick<Artwork, 'id' | 'name' | 'price' | 'image_url' | 'artist'>;
+  artwork: Pick<Artwork, 'id' | 'name' | 'price' | 'image_url' | 'artist' | 'stock_quantity'>;
 }
-
 export interface Cart {
   id: string;
   user_id: string;
@@ -79,4 +78,10 @@ export interface LoginResponse {
 export interface SignupResponse {
     message: string;
     user: User;
+}
+
+export interface StkPushInitiationResponse {
+  message: string;
+  CheckoutRequestID: string;
+  ResponseDescription: string;
 }
