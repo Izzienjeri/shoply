@@ -1,157 +1,250 @@
-# Mini E-Commerce Site Backend (Shoply - Day 2 Update)
 
-This repository contains the backend server code for a mini e-commerce application, built using Flask. We are building this step-by-step.
+#  Full Stack E-commerce Platform by izzie
 
-## Day 2 Update
+Welcome to Artistry Haven! This is a full-stack web application designed as an online marketplace for unique artwork. Users can browse artwork, learn about artists, manage a shopping cart, and complete purchases using M-Pesa STK Push integration.
 
-Today, we focused on bringing the core e-commerce functionality to life by implementing:
+This README provides instructions for setting up and running the project locally, aimed especially at beginners.
 
-1.  **Product API Endpoints:** Added full CRUD (Create, Read, Update, Delete) operations for products under `/api/products`. This allows listing all products, viewing details of a single product, adding new products (individually or in bulk), updating existing ones, and deleting them.
-2.  **Shopping Cart API Endpoints:** Implemented endpoints under `/api/cart` for users to manage their shopping carts. This includes viewing the cart, adding products, updating the quantity of items already in the cart, and removing items. These endpoints are protected and require user authentication (JWT).
-3.  **Database Schema Finalized (Initial):** The database migration (`1ae97819e612_done.py`) now reflects the complete initial schema including `users`, `products`, `carts`, `cart_items`, `orders`, and `order_items` tables with their relationships.
-4.  **Enhanced Schemas:** Updated Marshmallow schemas (`app/schemas.py`) to handle validation and serialization for Products and Cart Items, including nested display of product details within the cart.
-5.  **Refined Models:** Updated SQLAlchemy models (`app/models.py`) with relationships and helper methods (like password handling).
+**Note:** This project is under development. Some features might be incomplete or lack comprehensive testing and documentation.
 
----
+## Features
 
-## Current Features (As of Day 2 End)
+*   **User Authentication:** Secure user registration and login using JWT (JSON Web Tokens).
+*   **Artwork Browsing:** View a gallery of artworks with details, images, and pricing.
+*   **Artist Information:** View artist profiles and their associated artworks.
+*   **Shopping Cart:** Add/remove artworks, update quantities.
+*   **M-Pesa Checkout:** Initiate secure payments via Safaricom's M-Pesa STK Push.
+*   **Order Management:** (Basic) View past orders (after successful payment).
+*   **RESTful API:** Backend built with Flask, providing data to the frontend.
+*   **Modern Frontend:** Interactive user interface built with Next.js and Tailwind CSS.
 
-*   Basic Flask application structure.
-*   Database models for Users, Products, Carts, Orders, and their respective items using Flask-SQLAlchemy.
-*   Database migrations setup using Flask-Migrate and Alembic (Initial schema fully migrated).
-*   User Authentication API endpoints (signup, login, logout) using Flask-RESTful and Flask-JWT-Extended for token-based authentication.
-*   **Product Management API endpoints** (List, Create, View, Update, Delete).
-*   **Shopping Cart API endpoints** (View, Add Item, Update Item Quantity, Remove Item - requires authentication).
-*   Password hashing using Flask-Bcrypt.
-*   Data serialization and validation using Flask-Marshmallow.
-*   Configuration management using environment variables (`.env`).
-*   CORS configuration for allowing frontend interaction.
+## Tech Stack
 
-## Technologies Used
-
-*   **Framework:** Flask
-*   **Database ORM:** Flask-SQLAlchemy
-*   **Database Migrations:** Flask-Migrate, Alembic
-*   **Authentication:** Flask-JWT-Extended
-*   **Password Hashing:** Flask-Bcrypt
-*   **API Development:** Flask-RESTful
-*   **Serialization/Validation:** Flask-Marshmallow
-*   **Dependency Management:** Pipenv
-*   **Database:** MySQL (as indicated by `mysql+pymysql` dialect and schema types)
-*   **Environment Variables:** python-dotenv
-*   **CORS:** Flask-CORS
+*   **Backend:**
+    *   Python 3.x
+    *   Flask (Web Framework)
+    *   Flask-SQLAlchemy (ORM)
+    *   Flask-Migrate (Database Migrations)
+    *   Flask-RESTful (API Building)
+    *   Flask-JWT-Extended (Authentication)
+    *   Flask-Bcrypt (Password Hashing)
+    *   Flask-Marshmallow (Serialization/Validation)
+    *   Flask-CORS (Cross-Origin Resource Sharing)
+    *   `pipenv` (Dependency Management)
+    *   MySQL (Database)
+    *   Gunicorn (WSGI Server - for potential deployment)
+    *   Daraja API Client (for M-Pesa)
+*   **Frontend:**
+    *   Node.js / npm / yarn
+    *   Next.js (React Framework)
+    *   TypeScript
+    *   Tailwind CSS (Styling)
+    *   shadcn/ui (UI Components)
+    *   React Hook Form (Form Handling)
+    *   Zod (Schema Validation)
+    *   Axios/Fetch (API Client)
+    *   Context API (State Management - Auth, Cart)
+*   **Development Tools:**
+    *   `ngrok` (For exposing local server during development, specifically for Daraja callbacks)
+    *   Faker (For generating seed data)
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+Before you begin, ensure you have the following installed on your system:
 
-*   Python (3.8+ recommended)
-*   pip (Python package installer)
-*   Pipenv (`pip install pipenv`)
-*   Git
-*   MySQL Server (or a compatible alternative like MariaDB)
-
-## Getting Started
-
-Follow these steps to set up and run the project locally:
-
-1.  **Clone the Repository:**
+1.  **Python:** Version 3.8 or higher.
+2.  **`pipenv`:** Python dependency management tool. Install it via pip:
     ```bash
-    git clone https://github.com/Izzienjeri/shoply 
-    cd shoply
+    pip install pipenv
+    # or (if using user install)
+    python -m pip install --user pipenv
+    ```
+3.  **Node.js:** Version 18 or higher (includes npm). (You can use `nvm` to manage Node versions).
+4.  **MySQL Server:** A running MySQL database instance.
+5.  **`ngrok`:** A tool to expose local servers to the internet. Download from [ngrok.com](https://ngrok.com/). You'll need a free account.
+6.  **Daraja Developer Account:** Register at [Safaricom Developers Portal](https://developer.safaricom.co.ke/) to get API credentials (Consumer Key, Consumer Secret) for the Sandbox environment.
+
+## Setup Instructions
+
+Follow these steps to set up the project locally:
+
+### 1. Clone the Repository
+
+```bash
+git clone git@github.com:Izzienjeri/shoply.git
+cd shoply
+```
+
+### 2. Backend Setup (`server/` directory)
+
+Navigate to the backend directory:
+
+```bash
+cd server
+```
+
+#### a. Install Dependencies using `pipenv`
+
+`pipenv` manages dependencies and creates a virtual environment.
+
+```bash
+pipenv install --dev
+```
+*(This installs both regular and development dependencies specified in the `Pipfile`)*
+
+#### b. Activate the Virtual Environment
+
+To run backend commands, you need to be inside the virtual environment managed by `pipenv`.
+
+```bash
+pipenv shell
+```
+*(You should see your shell prompt change, indicating you're in the environment)*
+
+#### c. Configure Environment Variables (`.env` file)
+
+*   Create a `.env` file in the `server/` directory.
+*   Copy the contents from a template file if available (e.g., `.env.example`), or add the following variables, replacing the placeholder values:
+
+    ```ini
+    # Flask Configuration
+    SECRET_KEY='your_strong_random_secret_key' # Important for session security
+    JWT_SECRET_KEY='your_strong_random_jwt_secret_key' # Important for JWT security
+
+    # Database Configuration (Update with your MySQL details)
+    DATABASE_USER='your_mysql_username'
+    DATABASE_PASSWORD='your_mysql_password'
+    DATABASE_HOST='localhost' # Or your DB host IP/domain
+    DATABASE_PORT='3306' # Default MySQL port
+    DATABASE_NAME='shoply_db' # Choose a name for your database
+
+    # Daraja API Credentials (Get these from Safaricom Developer Portal)
+    DARAJA_ENVIRONMENT='sandbox' # Use 'sandbox' for testing, 'production' for live
+    DARAJA_CONSUMER_KEY='your_safaricom_consumer_key'
+    DARAJA_CONSUMER_SECRET='your_safaricom_consumer_secret'
+    DARAJA_SHORTCODE='your_business_shortcode' # e.g., 174379 for sandbox
+    DARAJA_PASSKEY='your_lipa_na_mpesa_online_passkey' # From the portal
+    DARAJA_TRANSACTION_TYPE='CustomerPayBillOnline' # Usually this for STK Push
+
+    # Daraja Callback URL (IMPORTANT - see Ngrok section below)
+    DARAJA_CALLBACK_URL_BASE='<your_ngrok_https_url>' # Example: https://abcdef123456.ngrok-free.app
     ```
 
-2.  **Install Dependencies using Pipenv:**
-    *(This step assumes a `Pipfile` exists in the repository root. If not, you'll need to create it by running `pipenv install flask flask-restful flask-sqlalchemy pymysql flask-jwt-extended python-dotenv flask-migrate flask-cors flask-bcrypt flask-marshmallow marshmallow-sqlalchemy cryptography` for all required packages first).*
+#### d. Set up `ngrok` for Daraja Callbacks
 
-    Navigate to the project's root directory (the one containing the `Pipfile` and the `server` folder) and run:
+The Daraja API needs a publicly accessible URL to send payment confirmation callbacks *to your local machine*. `ngrok` provides this.
+
+1.  **Start ngrok:** Open a *new separate terminal* (do not close your `pipenv shell` terminal) and run:
     ```bash
-    pipenv install --dev
+    ngrok http 5000
     ```
-    This command creates a virtual environment specific to this project (if it doesn't exist) and installs all dependencies listed in the `Pipfile` and `Pipfile.lock`.
+    *(This exposes your local port 5000, where the Flask app runs by default)*
+2.  **Copy the HTTPS URL:** `ngrok` will display forwarding URLs. Copy the `https://` URL (e.g., `https://random-string.ngrok-free.app`).
+3.  **Update `.env`:** Paste the copied `ngrok` HTTPS URL into the `DARAJA_CALLBACK_URL_BASE` variable in your `server/.env` file.
+4.  **Keep ngrok running:** Leave this `ngrok` terminal window open while you are developing and testing payments.
 
-3.  **Activate the Virtual Environment:**
-    To run commands within the project's specific environment, activate the pipenv shell:
+#### e. Database Setup
+
+1.  **Create the Database:** Manually create the database specified in your `.env` file (`DATABASE_NAME`) using a MySQL client (like MySQL Workbench, DBeaver, or the command line).
+    ```sql
+    -- Example SQL command:
+    CREATE DATABASE artistry_haven_db;
+    ```
+2.  **Apply Migrations:** Run the database migrations to create the tables. Make sure you are in the `pipenv shell` (`cd server` then `pipenv shell`).
     ```bash
-    pipenv shell
+    flask db upgrade
     ```
-    You should now see the virtual environment's name prefixing your command prompt (e.g., `(repository-directory-XXXX) $`). All subsequent commands in these instructions should be run *inside* this shell.
 
-4.  **Configure Environment Variables:**
-    *   Navigate to the `server` directory:
-        ```bash
-        cd server
-        ```
-    *   Create a `.env` file in the `server` directory. You can copy `.env.example` if one exists, or create it manually. Add your specific configuration values:
-        ```dotenv
-        # .env file content
-        SECRET_KEY='your_strong_flask_secret_key'
-        JWT_SECRET_KEY='your_strong_jwt_secret_key'
+#### f. Seed the Database (Optional but Recommended)
 
-        DATABASE_USER='your_mysql_username'
-        DATABASE_PASSWORD='your_mysql_password'
-        DATABASE_HOST='localhost' # or your db host
-        DATABASE_PORT='3306'      # or your db port
-        DATABASE_NAME='shoply_db' # choose a database name
-        ```
-    *   **Important:** Replace the placeholder values with your actual database credentials and secret keys.
-    *   Navigate back to the project's root directory:
-        ```bash
-        cd ..
-        ```
+Populate the database with initial sample data (artists, artworks, users). Ensure the image files mentioned in `seed.py` exist in the `server/media/artwork_images/` folder.
 
-5.  **Set Up the Database:**
-    *   Ensure your MySQL server is running.
-    *   Connect to your MySQL server and create the database specified in your `.env` file:
-        ```sql
-        CREATE DATABASE shoply_db; -- Or the name you chose in .env
-        ```
-    *   (Ensure you are still in the `pipenv shell` activated in Step 3, and you are in the project root directory).
-    *   Set the `FLASK_APP` environment variable so Flask knows where your application is:
-        *   macOS/Linux: `export FLASK_APP=server/run.py`
-        *   Windows CMD: `set FLASK_APP=server\run.py`
-        *   Windows PowerShell: `$env:FLASK_APP="server\run.py"`
-    *   Apply the database migrations:
-        ```bash
-        flask db upgrade
-        ```
-        This command uses the migration scripts (like `server/migrations/versions/1ae97819e612_done.py`) to create or update the necessary tables (`users`, `products`, `carts`, `orders`, etc.) in your database based on the models defined in `server/app/models.py`.
+```bash
+flask seed
+```
+*Note: The default password for seeded users is `pass123`.*
 
-6.  **Run the Application:**
-    *   (Ensure you are still in the `pipenv shell` and in the project root directory).
+### 3. Frontend Setup (`main/` directory)
+
+Navigate to the frontend directory in a *new terminal* (or exit the `pipenv shell` in the backend terminal first using `exit`):
+
+```bash
+cd ../main # Assuming you are in server/, otherwise navigate to the 'main' directory
+```
+
+#### a. Install Dependencies
+
+```bash
+npm install
+# OR if you prefer yarn
+# yarn install
+```
+
+#### b. Configure Environment Variables (`.env.local` file)
+
+*   Create a `.env.local` file in the `main/` directory.
+*   Add the following variable, pointing to your running backend API:
+
+    ```ini
+    NEXT_PUBLIC_API_URL=http://localhost:5000/api
+    ```
+    *(Ensure the port matches where your Flask backend is running)*
+
+## Running the Application
+
+You need to run both the backend and frontend servers simultaneously.
+
+1.  **Start the Backend Server:**
+    *   Open a terminal.
+    *   Navigate to the `server/` directory (`cd path/to/your/project/server`).
+    *   Activate the virtual environment: `pipenv shell`.
     *   Start the Flask development server:
         ```bash
-        python server/run.py
+        flask run
         ```
-    *   You should see output indicating the server is running, likely on `http://127.0.0.1:5000/`.
-    *   The message `Shoply Backend is running!` should be visible if you navigate to the root URL (`/`) in your browser or using `curl`.
+    *   The backend should now be running, typically at `http://localhost:5000`.
 
-7.  **Exiting the Environment:**
-    When you're done working, you can exit the pipenv shell:
-    ```bash
-    exit
-    ```
+2.  **Start the Frontend Server:**
+    *   Open a *separate* terminal.
+    *   Navigate to the `main/` directory (`cd path/to/your/project/main`).
+    *   Start the Next.js development server:
+        ```bash
+        npm run dev
+        # OR if using yarn
+        # yarn dev
+        ```
+    *   The frontend should now be running, typically at `http://localhost:3000`.
 
-## Available API Endpoints (As of Day 2)
+3.  **Access the Application:** Open your web browser and navigate to `http://localhost:3000`.
 
-All endpoints are prefixed with `/api`.
+4.  **Remember:** Keep the `ngrok` tunnel running in its terminal if you plan to test M-Pesa payments.
 
-*   **Authentication:** (`/api/auth`)
-    *   `POST /signup`: Register a new user. Requires `email` and `password` (min 8 chars) in the JSON body. Optional: `name`, `address`.
-    *   `POST /login`: Log in a user. Requires `email` and `password` in the JSON body. Returns an `access_token`.
-    *   `POST /logout`: Log out the current user. Requires a valid `Authorization: Bearer <token>` header. Invalidates the current token.
+## Key Concepts for Beginners
 
-*   **Products:** (`/api/products`) - *Currently Public*
-    *   `GET /`: List all products.
-    *   `POST /`: Create a new product (expects a single JSON product object) or multiple products (expects a JSON array of product objects). Requires `name`, `price`, `stock_quantity`. Optional: `description`, `image_url`.
-    *   `GET /<string:product_id>`: Get details of a specific product by its UUID.
-    *   `PATCH /<string:product_id>`: Partially update a specific product. Send only the fields to update in the JSON body.
-    *   `DELETE /<string:product_id>`: Delete a specific product.
+*   **`pipenv`:** This tool helps manage the specific Python libraries (dependencies) your backend needs. It creates an isolated environment (`virtualenv`) so project dependencies don't clash with other Python projects on your system.
+    *   `pipenv install`: Installs dependencies listed in the `Pipfile`.
+    *   `pipenv shell`: Activates the isolated environment for the project. You run `flask` commands inside this shell.
+    *   `Pipfile` & `Pipfile.lock`: Files that define and lock down your project's dependencies.
+*   **`.env` Files:** These files store configuration secrets (like API keys, database passwords) outside of your code. This is crucial for security – **never commit `.env` files to Git**.
+*   **`ngrok`:** When testing features like webhooks or callbacks (like the one from Daraja), the external service needs to send a message *back* to your local computer. Since your computer isn't usually directly accessible from the internet, `ngrok` creates a secure tunnel, giving you a temporary public URL that forwards traffic to your local development server.
+*   **Flask Migrations (`flask db upgrade`):** SQLAlchemy (the ORM) defines your database tables in Python code (models). Migrations are scripts (managed by Flask-Migrate/Alembic) that apply changes from your models to the actual database schema. `flask db upgrade` runs these scripts to keep your database structure in sync with your code.
+*   **Seeding (`flask seed`):** This process populates your database with initial dummy data, making it easier to test the application without manually creating users, products, etc.
 
-*   **Cart:** (`/api/cart`) - *Requires Authentication* (`Authorization: Bearer <token>` header)
-    *   `GET /`: Get the current user's cart contents.
-    *   `POST /`: Add a product to the cart or update quantity if it already exists. Requires `product_id` and `quantity` (positive integer) in the JSON body. Checks against product stock.
-    *   `PUT /items/<string:item_id>`: Update the quantity of a specific item *already in the cart*. Requires `quantity` (positive integer) in the JSON body. Checks against product stock. `item_id` refers to the `CartItem` UUID.
-    *   `DELETE /items/<string:item_id>`: Remove a specific item from the cart. `item_id` refers to the `CartItem` UUID.
+## API Endpoints Overview
 
-*(Note: Order-related API endpoints are defined by models and schemas but corresponding API resources `/api/orders` are planned for a future step.)*
+The backend provides the following main API endpoint groups under the `/api` prefix (e.g., `http://localhost:5000/api/...`):
+
+*   `/auth`: User registration (`signup`), login (`login`), logout (`logout`).
+*   `/artists`: List and get details for artists.
+*   `/artworks`: List, get details, create, update, delete artworks.
+*   `/cart`: Get cart contents, add items, update item quantity, remove items.
+*   `/orders`: List user's orders, initiate checkout (POST).
+*   `/payments`: Handles the Daraja callback (`/callback`).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues. (Add more specific contribution guidelines if desired).
+
+
+
+Good luck, and happy coding! Feel free to open an issue if you encounter problems during setup.

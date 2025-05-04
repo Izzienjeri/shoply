@@ -1,5 +1,5 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-04 06:58:53
+# Date and Time: 2025-05-04 07:09:57
 # Files Included: 16
 
 # === lib/utils.ts ===
@@ -1025,7 +1025,7 @@ export default function ArtworksPage() {
       setError(null);
       try {
         const fetchedArtworks = await apiClient.get<Artwork[]>('/artworks/');
-        setArtworks(fetchedArtworks);
+        setArtworks(fetchedArtworks || []);
       } catch (err) {
         console.error("Failed to fetch artworks:", err);
         setError(err instanceof Error ? err.message : "An unknown error occurred");
@@ -1283,7 +1283,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   }, [isAuthenticated, isAuthLoading]);
 
 
-  const updateLocalCart = (updatedCart: Cart) => {
+  const updateLocalCart = (updatedCart: Cart | null) => {
       setCart(updatedCart);
   };
 
@@ -1299,8 +1299,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
               { artwork_id: artworkId, quantity },
               { needsAuth: true }
           );
-          updateLocalCart(updatedCart);
-          toast.success("Item added to cart!");
+          if (updatedCart) {
+              updateLocalCart(updatedCart);
+              toast.success("Item added to cart!");
+          } else {
+            await fetchCart();
+            toast.success("Item added to cart!");
+          }
       } catch (error: any) {
           console.error("Failed to add to cart:", error);
           toast.error(error.message || "Failed to add item to cart.");
@@ -1318,8 +1323,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       try {
           const updatedCart = await apiClient.put<Cart>(`/cart/items/${itemId}`, { quantity }, { needsAuth: true });
-          updateLocalCart(updatedCart);
-          toast.success("Cart updated.");
+          if (updatedCart) {
+              updateLocalCart(updatedCart);
+              toast.success("Cart updated.");
+          } else {
+            await fetchCart();
+            toast.success("Cart updated.");
+          }
       } catch (error: any) {
           console.error("Failed to update cart item:", error);
           toast.error(error.message || "Failed to update item quantity.");
@@ -1336,9 +1346,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.delete<Cart>(`/cart/items/${itemId}`, { needsAuth: true });
-          updateLocalCart(updatedCart);
-          toast.success("Item removed from cart.");
+          const updatedCart = await apiClient.delete<Cart | null>(`/cart/items/${itemId}`, { needsAuth: true });
+           if (updatedCart) {
+               updateLocalCart(updatedCart);
+               toast.success("Item removed from cart.");
+           } else {
+               await fetchCart();
+               toast.success("Item removed from cart.");
+           }
       } catch (error: any) {
           console.error("Failed to remove cart item:", error);
            toast.error(error.message || "Failed to remove item from cart.");
@@ -1494,7 +1509,6 @@ export function ArtworkCardSkeleton() {
 }
 
 # === components/layout/Footer.tsx ===
-// src/components/layout/Footer.tsx
 import React from 'react';
 
 export function Footer() {
@@ -1502,7 +1516,6 @@ export function Footer() {
     <footer className="bg-muted text-muted-foreground border-t border-border mt-12 py-6">
       <div className="container mx-auto px-4 text-center text-sm">
         © {new Date().getFullYear()} Artistry Haven. All rights reserved.
-        {/* Add other footer links if needed */}
       </div>
     </footer>
   );
