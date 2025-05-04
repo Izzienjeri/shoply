@@ -76,10 +76,11 @@ class Cart(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = db.relationship('User', back_populates='cart')
-    items = db.relationship('CartItem', back_populates='cart', lazy='dynamic', cascade="all, delete-orphan")
+    items = db.relationship('CartItem', back_populates='cart', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Cart {self.id} for User {self.user_id}>"
+
 
 class CartItem(db.Model):
     __tablename__ = 'cart_items'

@@ -194,5 +194,5 @@ class CartItemResource(Resource):
             abort(500, message="An error occurred while removing the item from the cart.")
 
 
-cart_api.add_resource(CartResource, '/')
+cart_api.add_resource(CartResource, '/', '')
 cart_api.add_resource(CartItemResource, '/items/<string:item_id>')
