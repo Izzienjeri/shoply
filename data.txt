@@ -1,12 +1,159 @@
 # Extracted Python Code
-# Date and Time: 2025-05-04 00:46:29
-# Files Included: 14
+# Date and Time: 2025-05-04 05:28:39
+# Files Included: 17
+
+# === ./server/seed.py ===
+import os
+import random
+from decimal import Decimal
+from faker import Faker
+from server.app import create_app, db
+from server.app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
+
+NUM_ARTISTS = 10
+NUM_USERS = 5
+ARTWORK_IMAGE_FOLDER_RELATIVE = 'artwork_images'
+IMAGES_BASE_NAME = 'art'
+NUM_IMAGES = 48
+DEFAULT_PASSWORD = "pass123"
+
+try:
+    fake = Faker()
+except ImportError:
+    print("Faker not installed. Using basic placeholder data. (pip install Faker)")
+    fake = None
+
+def get_image_path(image_index):
+    """Constructs the relative path for the image URL field."""
+    return f"{ARTWORK_IMAGE_FOLDER_RELATIVE}/{IMAGES_BASE_NAME}{image_index}.jpg"
+
+def clear_data():
+    """Clears existing data from tables in reverse dependency order."""
+    print("Clearing existing data...")
+    db.session.query(OrderItem).delete()
+    db.session.query(CartItem).delete()
+    db.session.query(Order).delete()
+    db.session.query(Cart).delete()
+    db.session.query(Artwork).delete()
+    db.session.query(User).delete()
+    db.session.query(Artist).delete()
+    db.session.commit()
+    print("Data cleared.")
+
+def seed_artists(num_artists):
+    """Seeds the database with Artist data."""
+    print(f"Seeding {num_artists} artists...")
+    artists = []
+    for i in range(num_artists):
+        artist_name = fake.name() if fake else f"Artist {i+1}"
+        artist_bio = fake.paragraph(nb_sentences=3) if fake else f"This is the biography for {artist_name}."
+        artist = Artist(name=artist_name, bio=artist_bio)
+        artists.append(artist)
+    db.session.add_all(artists)
+    db.session.commit()
+    print("Artists seeded.")
+    return artists
+
+def seed_artworks(artists, num_images_available, media_folder_base):
+    """Seeds the database with Artwork data, linking to artists and images."""
+    if not artists:
+        print("No artists available to assign artworks to. Skipping artwork seeding.")
+        return
+
+    print(f"Seeding artworks (up to {num_images_available} based on image files)...")
+    artworks = []
+    image_folder_full_path = os.path.join(media_folder_base, ARTWORK_IMAGE_FOLDER_RELATIVE)
+    print(f"Checking for images in: {image_folder_full_path}")
+
+    for i in range(1, num_images_available + 1):
+        image_filename = f"{IMAGES_BASE_NAME}{i}.jpg"
+        image_full_path = os.path.join(image_folder_full_path, image_filename)
+        relative_image_url = get_image_path(i)
+
+        if not os.path.exists(image_full_path):
+            print(f"Warning: Image file not found: {image_full_path}. Skipping artwork {i}.")
+            continue
+
+        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}: {random.choice(['Sunrise', 'Portrait', 'Abstract', 'Landscape'])}"
+        description = fake.text(max_nb_chars=200) if fake else f"A beautiful piece numbered {i}."
+        price = Decimal(random.uniform(50.0, 1500.0)).quantize(Decimal("0.01"))
+        stock_quantity = random.randint(0, 10)
+        assigned_artist = random.choice(artists)
+
+        artwork = Artwork(
+            name=artwork_name,
+            description=description,
+            price=price,
+            stock_quantity=stock_quantity,
+            artist_id=assigned_artist.id,
+            image_url=relative_image_url
+        )
+        artworks.append(artwork)
+
+    if artworks:
+        db.session.add_all(artworks)
+        db.session.commit()
+        print(f"{len(artworks)} artworks seeded.")
+    else:
+        print("No artworks were seeded (possibly due to missing images or artists).")
+
+def seed_users(num_users):
+    """Seeds the database with User data."""
+    print(f"Seeding {num_users} users...")
+    users = []
+    for i in range(num_users):
+        user_email = fake.email() if fake else f"user{i+1}@example.com"
+        user_name = fake.name() if fake else f"Test User {i+1}"
+        user_address = fake.address() if fake else f"{i+1} Seed St, Testville"
+
+        if User.query.filter_by(email=user_email).first():
+            print(f"User with email {user_email} already exists, skipping.")
+            continue
+
+        user = User(
+            email=user_email,
+            name=user_name,
+            address=user_address
+        )
+        user.set_password(DEFAULT_PASSWORD)
+        users.append(user)
+
+    if users:
+        db.session.add_all(users)
+        db.session.commit()
+        print(f"{len(users)} users seeded (default password: '{DEFAULT_PASSWORD}').")
+    else:
+        print("No new users were seeded.")
+    return users
+
+def run_seed():
+    """Main function to run the seeding process."""
+    app = create_app()
+    with app.app_context():
+        media_folder = app.config.get('MEDIA_FOLDER')
+        if not media_folder or not os.path.isdir(media_folder):
+             print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
+             print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
+             return
+
+        clear_data()
+        created_artists = seed_artists(NUM_ARTISTS)
+        seed_artworks(created_artists, NUM_IMAGES, media_folder)
+        seed_users(NUM_USERS)
+        print("-" * 20)
+        print("Seeding process completed!")
+        print("-" * 20)
 
 # === ./server/run.py ===
-from app import create_app
+from server.app import create_app
+from server.seed import run_seed
 
-#creating flask app instance 
 app = create_app()
+
+@app.cli.command("seed")
+def seed_db():
+    """Populates the database with initial data."""
+    run_seed()
 
 if __name__ =='__main__':
     app.run(debug=True)
@@ -126,12 +273,12 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-# === ./server/migrations/versions/1ae97819e612_done.py ===
-"""done
+# === ./server/migrations/versions/7a98d245193e_add_artist_model_rename_product_to_.py ===
+"""Add Artist model, rename Product to Artwork, establish relationships
 
-Revision ID: 1ae97819e612
+Revision ID: 7a98d245193e
 Revises: 
-Create Date: 2025-04-29 15:08:25.493463
+Create Date: 2025-05-04 04:43:31.344868
 
 """
 from alembic import op
@@ -139,7 +286,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '1ae97819e612'
+revision = '7a98d245193e'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -147,15 +294,12 @@ depends_on = None
 
 def upgrade():
     # ### commands auto generated by Alembic - please adjust! ###
-    op.create_table('products',
+    op.create_table('artists',
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('name', sa.String(length=255), nullable=False),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('price', mysql.DECIMAL(precision=10, scale=2), nullable=False),
-    sa.Column('stock_quantity', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(length=150), nullable=False),
+    sa.Column('bio', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
-    sa.Column('image_url', sa.String(length=255), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('users',
@@ -167,6 +311,19 @@ def upgrade():
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('email')
+    )
+    op.create_table('artworks',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('name', sa.String(length=255), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('price', mysql.DECIMAL(precision=10, scale=2), nullable=False),
+    sa.Column('stock_quantity', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('image_url', sa.String(length=255), nullable=True),
+    sa.Column('artist_id', sa.String(length=36), nullable=False),
+    sa.ForeignKeyConstraint(['artist_id'], ['artists.id'], ),
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('carts',
     sa.Column('id', sa.String(length=36), nullable=False),
@@ -194,21 +351,21 @@ def upgrade():
     op.create_table('cart_items',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('cart_id', sa.String(length=36), nullable=False),
-    sa.Column('product_id', sa.String(length=36), nullable=False),
+    sa.Column('artwork_id', sa.String(length=36), nullable=False),
     sa.Column('quantity', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['artwork_id'], ['artworks.id'], ),
     sa.ForeignKeyConstraint(['cart_id'], ['carts.id'], ),
-    sa.ForeignKeyConstraint(['product_id'], ['products.id'], ),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('cart_id', 'product_id', name='_cart_product_uc')
+    sa.UniqueConstraint('cart_id', 'artwork_id', name='_cart_artwork_uc')
     )
     op.create_table('order_items',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('order_id', sa.String(length=36), nullable=False),
-    sa.Column('product_id', sa.String(length=36), nullable=False),
+    sa.Column('artwork_id', sa.String(length=36), nullable=False),
     sa.Column('quantity', sa.Integer(), nullable=False),
     sa.Column('price_at_purchase', mysql.DECIMAL(precision=10, scale=2), nullable=False),
+    sa.ForeignKeyConstraint(['artwork_id'], ['artworks.id'], ),
     sa.ForeignKeyConstraint(['order_id'], ['orders.id'], ),
-    sa.ForeignKeyConstraint(['product_id'], ['products.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###
@@ -220,14 +377,17 @@ def downgrade():
     op.drop_table('cart_items')
     op.drop_table('orders')
     op.drop_table('carts')
+    op.drop_table('artworks')
     op.drop_table('users')
-    op.drop_table('products')
+    op.drop_table('artists')
     # ### end Alembic commands ###
 
 # === ./server/app/schemas.py ===
-from marshmallow import fields, validate
+from marshmallow import fields, validate, post_dump
+from flask import url_for, current_app
+
 from . import ma, db
-from .models import User, Product, Cart, CartItem, Order, OrderItem
+from .models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
 
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -242,17 +402,50 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('password_hash',)
         sqla_session = db.session
 
-class ProductSchema(ma.SQLAlchemyAutoSchema):
-    price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
-    stock_quantity = fields.Int(validate=validate.Range(min=0))
+class ArtistSchema(ma.SQLAlchemyAutoSchema):
+    name = fields.Str(required=True)
+    bio = fields.Str()
+    artworks = fields.Nested('ArtworkSchema', many=True, dump_only=True, exclude=('artist',))
 
     class Meta:
-        model = Product
+        model = Artist
         load_instance = True
         sqla_session = db.session
 
+
+class ArtworkSchema(ma.SQLAlchemyAutoSchema):
+    price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
+    stock_quantity = fields.Int(validate=validate.Range(min=0))
+    image_url = fields.String(dump_only=True, required=False, allow_none=True)
+
+    artist = fields.Nested(ArtistSchema, only=('id', 'name'), dump_only=True)
+    artist_id = fields.Str(required=True, load_only=True)
+
+    class Meta:
+        model = Artwork
+        load_instance = True
+        sqla_session = db.session
+
+    @post_dump
+    def make_image_url_absolute(self, data, **kwargs):
+        """Converts the stored relative image path to an absolute URL after dumping."""
+        relative_path = data.get('image_url')
+        if relative_path:
+            try:
+                absolute_url = url_for('serve_media', filename=relative_path, _external=True)
+                data['image_url'] = absolute_url
+            except RuntimeError as e:
+                print(f"ERROR: Could not generate URL for '{relative_path}'. Is app context available? Error: {e}")
+                data['image_url'] = None
+            except Exception as e:
+                print(f"ERROR: Unexpected error generating URL for '{relative_path}': {e}")
+                data['image_url'] = None
+        else:
+            data['image_url'] = None
+        return data
+
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
-    product = fields.Nested(ProductSchema, only=('id', 'name', 'price', 'image_url'))
+    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'price', 'image_url', 'artist'))
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
 
     class Meta:
@@ -263,6 +456,10 @@ class CartItemSchema(ma.SQLAlchemyAutoSchema):
 
 class CartSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(CartItemSchema, many=True)
+    total_price = fields.Method("calculate_total", dump_only=True)
+
+    def calculate_total(self, cart):
+       return sum(item.artwork.price * item.quantity for item in cart.items)
 
     class Meta:
         model = Cart
@@ -270,7 +467,7 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         sqla_session = db.session
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
-    product = fields.Nested(ProductSchema, only=('id', 'name', 'image_url'))
+    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'image_url', 'artist'))
     price_at_purchase = fields.Decimal(as_string=True, dump_only=True)
     quantity = fields.Int(dump_only=True)
 
@@ -284,6 +481,14 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(OrderItemSchema, many=True, dump_only=True)
     total_price = fields.Decimal(as_string=True, dump_only=True)
     status = fields.Str(dump_only=True)
+    user_id = fields.String(dump_only=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+    shipped_at = fields.DateTime(dump_only=True, allow_none=True)
+    shipping_address = fields.Str(dump_only=True, allow_none=True)
+    billing_address = fields.Str(dump_only=True, allow_none=True)
+    payment_gateway_ref = fields.Str(dump_only=True, allow_none=True)
+
 
     class Meta:
         model = Order
@@ -292,12 +497,14 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
 
 
 user_schema = UserSchema()
-product_schema = ProductSchema()
+artist_schema = ArtistSchema()
+artwork_schema = ArtworkSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
 
 users_schema = UserSchema(many=True)
-products_schema = ProductSchema(many=True)
+artists_schema = ArtistSchema(many=True)
+artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
 
 # === ./server/app/models.py ===
@@ -309,6 +516,21 @@ from . import db, bcrypt
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+class Artist(db.Model):
+    __tablename__ = 'artists'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    name = db.Column(db.String(150), nullable=False)
+    bio = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    artworks = db.relationship('Artwork', back_populates='artist', lazy='dynamic', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Artist {self.name}>"
+
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -334,22 +556,26 @@ class User(db.Model):
     def __repr__(self):
         return f"<User {self.email}>"
 
-class Product(db.Model):
-    __tablename__ = 'products'
+class Artwork(db.Model):
+    __tablename__ = 'artworks'
 
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
-    stock_quantity = db.Column(db.Integer, nullable=False, default=0)
+    stock_quantity = db.Column(db.Integer, nullable=False, default=1)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     image_url = db.Column(db.String(255), nullable=True)
-    cart_items = db.relationship('CartItem', back_populates='product', lazy=True)
-    order_items = db.relationship('OrderItem', back_populates='product', lazy=True)
+
+    artist_id = db.Column(db.String(36), db.ForeignKey('artists.id'), nullable=False)
+
+    artist = db.relationship('Artist', back_populates='artworks')
+    cart_items = db.relationship('CartItem', back_populates='artwork', lazy=True)
+    order_items = db.relationship('OrderItem', back_populates='artwork', lazy=True)
 
     def __repr__(self):
-        return f"<Product {self.name}>"
+        return f"<Artwork {self.name} by Artist {self.artist_id}>"
 
 class Cart(db.Model):
     __tablename__ = 'carts'
@@ -370,16 +596,16 @@ class CartItem(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     cart_id = db.Column(db.String(36), db.ForeignKey('carts.id'), nullable=False)
-    product_id = db.Column(db.String(36), db.ForeignKey('products.id'), nullable=False)
+    artwork_id = db.Column(db.String(36), db.ForeignKey('artworks.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=1)
 
-    __table_args__ = (db.UniqueConstraint('cart_id', 'product_id', name='_cart_product_uc'),)
+    __table_args__ = (db.UniqueConstraint('cart_id', 'artwork_id', name='_cart_artwork_uc'),)
 
     cart = db.relationship('Cart', back_populates='items')
-    product = db.relationship('Product', back_populates='cart_items')
+    artwork = db.relationship('Artwork', back_populates='cart_items')
 
     def __repr__(self):
-        return f"<CartItem Product {self.product_id} Qty {self.quantity} in Cart {self.cart_id}>"
+        return f"<CartItem Artwork {self.artwork_id} Qty {self.quantity} in Cart {self.cart_id}>"
 
 
 class Order(db.Model):
@@ -401,21 +627,21 @@ class Order(db.Model):
 
     def __repr__(self):
         return f"<Order {self.id} Status {self.status} by User {self.user_id}>"
-    
+
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
 
     id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     order_id = db.Column(db.String(36), db.ForeignKey('orders.id'), nullable=False)
-    product_id = db.Column(db.String(36), db.ForeignKey('products.id'), nullable=False)
+    artwork_id = db.Column(db.String(36), db.ForeignKey('artworks.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     price_at_purchase = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
 
     order = db.relationship('Order', back_populates='items')
-    product = db.relationship('Product', back_populates='order_items')
+    artwork = db.relationship('Artwork', back_populates='order_items')
 
     def __repr__(self):
-        return f"<OrderItem Product {self.product_id} Qty {self.quantity} Price {self.price_at_purchase} in Order {self.order_id}>"
+        return f"<OrderItem Artwork {self.artwork_id} Qty {self.quantity} Price {self.price_at_purchase} in Order {self.order_id}>"
 
 # === ./server/app/config.py ===
 import os
@@ -463,7 +689,7 @@ class Config:
 
 # === ./server/app/__init__.py ===
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory, abort, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
@@ -497,23 +723,51 @@ def create_app(config_class=Config):
 
     print(f"DEBUG: Connecting to DB: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
+    MEDIA_FOLDER = os.path.join(app.root_path, '..', 'media')
+    app.config['MEDIA_FOLDER'] = MEDIA_FOLDER
+    print(f"DEBUG: Media folder (base) set to: {app.config['MEDIA_FOLDER']}")
+
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     bcrypt.init_app(app)
     ma.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
+    cors.init_app(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
 
     from . import models
 
+    @app.route('/media/<path:filename>')
+    def serve_media(filename):
+        """
+        Serves files from the MEDIA_FOLDER.
+        Example: /media/artwork_images/art1.jpg will serve file from ./server/media/artwork_images/art1.jpg
+        """
+        print(f"Attempting to serve media file: {filename}")
+        media_folder = current_app.config.get('MEDIA_FOLDER')
+        if not media_folder:
+             print("ERROR: MEDIA_FOLDER not configured in Flask app.")
+             abort(500)
+        try:
+            return send_from_directory(media_folder, filename)
+        except FileNotFoundError:
+            full_path = os.path.join(media_folder, filename)
+            print(f"ERROR: File not found: {full_path}")
+            abort(404)
+        except Exception as e:
+             print(f"ERROR: Unexpected error serving file {filename}: {e}")
+             abort(500)
+
+
     from .resources.auth import auth_bp
-    from .resources.product import product_bp
+    from .resources.artwork import artwork_bp
+    from .resources.artist import artist_bp
     from .resources.cart import cart_bp
     from .resources.order import order_bp
     from .resources.payment import payment_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(product_bp, url_prefix='/api/products')
+    app.register_blueprint(artwork_bp, url_prefix='/api/artworks')
+    app.register_blueprint(artist_bp, url_prefix='/api/artists')
     app.register_blueprint(cart_bp, url_prefix='/api/cart')
     app.register_blueprint(order_bp, url_prefix='/api/orders')
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
@@ -521,7 +775,7 @@ def create_app(config_class=Config):
 
     @app.route('/')
     def index():
-        return "Shoply Backend is running!"
+        return "Shoply Artwork Backend is running!"
 
     return app
 
@@ -532,7 +786,7 @@ from marshmallow import ValidationError, fields
 from sqlalchemy.orm import joinedload
 
 from .. import db, ma
-from ..models import Cart, CartItem, Product, User
+from ..models import Cart, CartItem, Artwork, User
 from ..schemas import cart_schema
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -546,14 +800,31 @@ def get_or_create_cart(user_id):
     if not user:
         abort(404, message="User not found.")
 
-    cart = Cart.query.filter_by(user_id=user_id).first()
+    cart = Cart.query.options(
+        joinedload(Cart.items).options(
+            joinedload(CartItem.artwork).joinedload(Artwork.artist)
+        )
+    ).filter_by(user_id=user_id).first()
+
     if not cart:
         cart = Cart(user_id=user_id)
         db.session.add(cart)
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error creating new cart: {e}")
+            abort(500, message="Could not create cart.")
+        cart = Cart.query.options(
+            joinedload(Cart.items).options(
+                joinedload(CartItem.artwork).joinedload(Artwork.artist)
+            )
+        ).filter_by(user_id=user_id).first()
+
     return cart
 
 class AddToCartSchema(ma.Schema):
-    product_id = fields.Str(required=True)
+    artwork_id = fields.Str(required=True)
     quantity = fields.Int(required=True, validate=lambda q: q > 0)
 
 add_to_cart_schema = AddToCartSchema()
@@ -563,26 +834,17 @@ class CartResource(Resource):
     @jwt_required()
     def get(self):
         """
-        Fetches the current user's cart contents.
+        Fetches the current user's cart contents, including artwork and artist details.
         """
         user_id = get_jwt_identity()
         cart = get_or_create_cart(user_id)
-
-
-        if cart.id is None:
-             try:
-                 db.session.commit()
-             except Exception as e:
-                 db.session.rollback()
-                 print(f"Error committing new cart: {e}")
-                 abort(500, message="Could not retrieve or create cart.")
 
         return cart_schema.dump(cart), 200
 
     @jwt_required()
     def post(self):
         """
-        Adds a product to the current user's cart or updates its quantity.
+        Adds an artwork to the current user's cart or updates its quantity.
         """
         user_id = get_jwt_identity()
         json_data = request.get_json()
@@ -594,48 +856,47 @@ class CartResource(Resource):
         except ValidationError as err:
             abort(400, message=err.messages)
 
-        product_id = data['product_id']
+        artwork_id = data['artwork_id']
         quantity_to_add = data['quantity']
 
         cart = get_or_create_cart(user_id)
-        product = Product.query.get(product_id)
+        if cart.id is None:
+            abort(500, message="Failed to retrieve or initialize cart.")
 
-        if not product:
-            abort(404, message=f"Product with ID {product_id} not found.")
+        artwork = Artwork.query.get(artwork_id)
 
-        if product.stock_quantity < quantity_to_add:
-             abort(400, message=f"Insufficient stock for Product ID {product_id}. Available: {product.stock_quantity}")
+        if not artwork:
+            abort(404, message=f"Artwork with ID {artwork_id} not found.")
 
-        cart_item = cart.items.filter_by(product_id=product_id).first()
+        if artwork.stock_quantity < quantity_to_add:
+             abort(400, message=f"Insufficient stock for Artwork ID {artwork_id}. Available: {artwork.stock_quantity}")
+
+        cart_item = next((item for item in cart.items if item.artwork_id == artwork_id), None)
+        if cart_item is None:
+             cart_item = CartItem.query.filter_by(cart_id=cart.id, artwork_id=artwork_id).first()
+
 
         if cart_item:
             new_quantity = cart_item.quantity + quantity_to_add
-            if product.stock_quantity < new_quantity:
-                 abort(400, message=f"Insufficient stock to increase quantity for Product ID {product_id}. Available: {product.stock_quantity}, In Cart: {cart_item.quantity}")
+            if artwork.stock_quantity < new_quantity:
+                 abort(400, message=f"Insufficient stock to increase quantity for Artwork ID {artwork_id}. Available: {artwork.stock_quantity}, In Cart: {cart_item.quantity}")
             cart_item.quantity = new_quantity
         else:
-            cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity_to_add)
+            cart_item = CartItem(cart_id=cart.id, artwork_id=artwork_id, quantity=quantity_to_add)
             db.session.add(cart_item)
-            if cart.id is None:
-                try:
-                    db.session.flush()
-                    cart_item.cart_id = cart.id
-                except Exception as e:
-                     db.session.rollback()
-                     print(f"Error flushing cart for item add: {e}")
-                     abort(500, message="Error adding item to cart.")
-
 
         try:
             db.session.commit()
             cart_updated = Cart.query.options(
-                joinedload(Cart.items).joinedload(CartItem.product)
+                 joinedload(Cart.items).options(
+                     joinedload(CartItem.artwork).joinedload(Artwork.artist)
+                 )
             ).get(cart.id)
             return cart_schema.dump(cart_updated), 200
         except Exception as e:
             db.session.rollback()
             print(f"Error committing cart changes: {e}")
-            if "UniqueViolation" in str(e) or "_cart_product_uc" in str(e):
+            if "UniqueViolation" in str(e) or "_cart_artwork_uc" in str(e):
                  abort(409, message="Item already exists in cart or concurrent modification error.")
             abort(500, message="An error occurred while updating the cart.")
 
@@ -657,7 +918,7 @@ class CartItemResource(Resource):
         try:
             new_quantity = int(json_data['quantity'])
             if new_quantity <= 0:
-                abort(400, message="Quantity must be positive.")
+                abort(400, message="Quantity must be positive. Use DELETE to remove item.")
         except ValueError:
             abort(400, message="Quantity must be an integer.")
 
@@ -665,19 +926,21 @@ class CartItemResource(Resource):
         if not cart_item:
             abort(404, message=f"Cart item with ID {item_id} not found in your cart.")
 
-        product = Product.query.get(cart_item.product_id)
-        if not product:
-             abort(404, message=f"Product associated with cart item not found.")
+        artwork = Artwork.query.get(cart_item.artwork_id)
+        if not artwork:
+             abort(404, message=f"Artwork associated with cart item not found.")
 
-        if product.stock_quantity < new_quantity:
-            abort(400, message=f"Insufficient stock for Product ID {product.id}. Available: {product.stock_quantity}")
+        if artwork.stock_quantity < new_quantity:
+            abort(400, message=f"Insufficient stock for Artwork ID {artwork.id}. Available: {artwork.stock_quantity}")
 
         cart_item.quantity = new_quantity
 
         try:
             db.session.commit()
             cart_updated = Cart.query.options(
-                joinedload(Cart.items).joinedload(CartItem.product)
+                 joinedload(Cart.items).options(
+                     joinedload(CartItem.artwork).joinedload(Artwork.artist)
+                 )
             ).get(cart.id)
             return cart_schema.dump(cart_updated), 200
         except Exception as e:
@@ -702,7 +965,9 @@ class CartItemResource(Resource):
             db.session.delete(cart_item)
             db.session.commit()
             cart_updated = Cart.query.options(
-                joinedload(Cart.items).joinedload(CartItem.product)
+                 joinedload(Cart.items).options(
+                     joinedload(CartItem.artwork).joinedload(Artwork.artist)
+                 )
             ).get(cart.id)
             return cart_schema.dump(cart_updated), 200
         except Exception as e:
@@ -714,6 +979,118 @@ class CartItemResource(Resource):
 cart_api.add_resource(CartResource, '/')
 cart_api.add_resource(CartItemResource, '/items/<string:item_id>')
 
+# === ./server/app/resources/artist.py ===
+from flask import request, Blueprint, jsonify
+from flask_restful import Resource, Api, abort
+from marshmallow import ValidationError
+from sqlalchemy.orm import joinedload
+
+from .. import db
+from ..models import Artist, Artwork
+from ..schemas import artist_schema, artists_schema
+
+
+artist_bp = Blueprint('artists', __name__)
+artist_api = Api(artist_bp)
+
+class ArtistList(Resource):
+    def get(self):
+        """
+        Fetches all artists.
+        """
+        artists = Artist.query.order_by(Artist.name).all()
+        return artists_schema.dump(artists), 200
+
+    def post(self):
+        """
+        Creates a new artist.
+        """
+
+        json_data = request.get_json()
+        if not json_data:
+            return {"message": "No input data provided"}, 400
+
+        try:
+            new_artist = artist_schema.load(json_data, session=db.session)
+        except ValidationError as err:
+            return {"message": "Validation errors", "errors": err.messages}, 400
+        except Exception as e:
+            print(f"Unexpected error during artist schema load: {e}")
+            abort(500, message="An internal error occurred during data processing.")
+
+
+        try:
+            db.session.add(new_artist)
+            db.session.commit()
+            return artist_schema.dump(new_artist), 201
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error creating artist in DB: {e}")
+            abort(500, message="An error occurred while saving the artist.")
+
+class ArtistDetail(Resource):
+    def get(self, artist_id):
+        """
+        Fetches a single artist by UUID, including their artworks.
+        """
+        artist = Artist.query.options(
+            joinedload(Artist.artworks)
+        ).get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
+
+        return artist_schema.dump(artist), 200
+
+    def patch(self, artist_id):
+        """
+        Updates an existing artist partially.
+        """
+
+        artist = Artist.query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
+
+        json_data = request.get_json()
+        if not json_data:
+            return {"message": "No input data provided"}, 400
+
+        try:
+            updated_artist = artist_schema.load(
+                json_data,
+                instance=artist,
+                partial=True,
+                session=db.session
+            )
+        except ValidationError as err:
+            return {"message": "Validation errors", "errors": err.messages}, 400
+
+        try:
+            db.session.commit()
+            return artist_schema.dump(updated_artist), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error updating artist {artist_id}: {e}")
+            abort(500, message="An error occurred while updating the artist.")
+
+    def delete(self, artist_id):
+        """
+        Deletes an artist by UUID.
+        Note: This will likely cascade delete associated artworks due to relationship setting.
+        Consider consequences before enabling direct artist deletion.
+        """
+
+        artist = Artist.query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
+
+
+        try:
+            db.session.delete(artist)
+            db.session.commit()
+            return '', 204
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting artist {artist_id}: {e}")
+            abort(500, message="An error occurred while deleting the artist.")
+
+
+artist_api.add_resource(ArtistList, '/')
+artist_api.add_resource(ArtistDetail, '/<string:artist_id>')
+
 # === ./server/app/resources/order.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
@@ -722,8 +1099,8 @@ from sqlalchemy.orm import joinedload
 from decimal import Decimal
 
 from .. import db, ma
-from ..models import Order, OrderItem, User, Cart, Product, CartItem
-from ..schemas import order_schema, orders_schema
+from ..models import Order, OrderItem, User, Cart, Artwork, CartItem, Artist
+from ..schemas import order_schema, orders_schema, artwork_schema
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..utils.daraja_client import initiate_stk_push
@@ -741,10 +1118,12 @@ checkout_input_schema = CheckoutInputSchema()
 class OrderList(Resource):
     @jwt_required()
     def get(self):
-        """Fetches the current user's past orders."""
+        """Fetches the current user's past orders, including artwork details."""
         user_id = get_jwt_identity()
         user_orders = Order.query.options(
-            joinedload(Order.items).joinedload(OrderItem.product)
+            joinedload(Order.items).options(
+                joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+            )
         ).filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
         return orders_schema.dump(user_orders), 200
 
@@ -752,6 +1131,7 @@ class OrderList(Resource):
     def post(self):
         """
         Initiates the checkout process (triggers STK Push).
+        Validates cart items (artwork stock) before proceeding.
         Does NOT create the order directly. This happens in the callback.
         """
         user_id = get_jwt_identity()
@@ -768,27 +1148,34 @@ class OrderList(Resource):
 
         cart = Cart.query.filter_by(user_id=user_id).first()
 
-        if not cart:
-             abort(400, message="Your cart is empty.")
+        if cart:
+            cart_items_with_artworks = CartItem.query.options(
+                joinedload(CartItem.artwork)
+            ).filter_by(cart_id=cart.id).all()
+        else:
+             cart_items_with_artworks = []
 
-        cart_items_with_products = cart.items.options(
-            joinedload(CartItem.product)
-        ).all()
 
-        if not cart_items_with_products:
+        if not cart or not cart_items_with_artworks:
             abort(400, message="Your cart is empty.")
 
         total_price = Decimal('0.0')
+        item_details_for_pending = []
 
-        for item in cart_items_with_products:
-            if not item.product:
-                 abort(500, message=f"Product data missing for cart item {item.id}.")
+        for item in cart_items_with_artworks:
+            if not item.artwork:
+                 print(f"ERROR: Artwork data missing for cart item {item.id}. Cart ID: {cart.id}")
+                 abort(500, message=f"Artwork data missing for an item in your cart.")
 
-            if item.product.stock_quantity < item.quantity:
-                abort(400, message=f"Insufficient stock for '{item.product.name}'. Available: {item.product.stock_quantity}")
+            if item.artwork.stock_quantity < item.quantity:
+                abort(400, message=f"Insufficient stock for '{item.artwork.name}'. Available: {item.artwork.stock_quantity}")
 
-            total_price += Decimal(item.product.price) * Decimal(item.quantity)
-
+            total_price += Decimal(item.artwork.price) * Decimal(item.quantity)
+            item_details_for_pending.append({
+                'artwork_id': item.artwork_id,
+                'quantity': item.quantity,
+                'price_at_purchase': float(item.artwork.price)
+            })
 
         if total_price <= 0:
             abort(400, message="Cart total must be positive.")
@@ -806,18 +1193,22 @@ class OrderList(Resource):
         if status_code >= 400 or stk_response.get("ResponseCode", "1") != "0":
             error_msg = stk_response.get("errorMessage", "Failed to initiate STK push.")
             error_msg = stk_response.get("ResponseDescription", error_msg)
+            print(f"STK Push Initiation Failed: Code {stk_response.get('ResponseCode', 'N/A')}, Desc: {error_msg}")
             abort(status_code if status_code >= 400 else 500, message=error_msg)
 
         checkout_request_id = stk_response.get('CheckoutRequestID')
         if not checkout_request_id:
+             print("ERROR: STK Push initiated but CheckoutRequestID was missing in Daraja response.")
              abort(500, message="STK Push initiated but CheckoutRequestID was missing in response.")
 
         pending_checkouts[checkout_request_id] = {
             'user_id': user_id,
             'cart_id': cart.id,
             'total_price': float(total_price),
+            'items': item_details_for_pending,
+            'phone_number': phone_number
         }
-        print(f"DEBUG: Stored pending checkout: {checkout_request_id} -> {pending_checkouts[checkout_request_id]}")
+        print(f"DEBUG: Stored pending checkout: {checkout_request_id} -> User {user_id}, Cart {cart.id}")
 
         return {
             "message": "STK Push initiated successfully. Please check your phone to authorize payment.",
@@ -829,10 +1220,12 @@ class OrderList(Resource):
 class OrderDetail(Resource):
     @jwt_required()
     def get(self, order_id):
-        """Fetches details of a specific order belonging to the user."""
+        """Fetches details of a specific order belonging to the user, including artwork details."""
         user_id = get_jwt_identity()
         order = Order.query.options(
-            joinedload(Order.items).joinedload(OrderItem.product)
+            joinedload(Order.items).options(
+                joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+            )
         ).filter_by(id=order_id, user_id=user_id).first_or_404(
             description=f"Order with ID {order_id} not found or does not belong to user."
         )
@@ -841,133 +1234,15 @@ class OrderDetail(Resource):
 order_api.add_resource(OrderList, '/')
 order_api.add_resource(OrderDetail, '/<string:order_id>')
 
-# === ./server/app/resources/product.py ===
-from flask import request, Blueprint, jsonify
-from flask_restful import Resource, Api, abort
-from marshmallow import ValidationError
-
-from .. import db
-from ..models import Product
-from ..schemas import product_schema, products_schema
-
-product_bp = Blueprint('products', __name__)
-product_api = Api(product_bp)
-
-
-class ProductList(Resource):
-    def get(self):
-        """
-        Fetches all products.
-        """
-        products = Product.query.all()
-        return products_schema.dump(products), 200
-
-    def post(self):
-        """
-        Creates one OR multiple new products.
-        Accepts either a single JSON object representing one product,
-        or a JSON array containing multiple product objects.
-        (Currently public, add admin check later if needed)
-        """
-        json_data = request.get_json()
-        if not json_data:
-            return {"message": "No input data provided"}, 400
-
-        is_many = isinstance(json_data, list)
-
-        try:
-            if is_many:
-                new_products = products_schema.load(json_data, session=db.session)
-            else:
-                new_products = [product_schema.load(json_data, session=db.session)]
-        except ValidationError as err:
-            return {"message": "Validation errors", "errors": err.messages}, 400
-        except Exception as e:
-             print(f"Unexpected error during schema load: {e}")
-             abort(500, message="An internal error occurred during data processing.")
-
-
-        if not new_products:
-             return {"message": "No valid product data found after validation."}, 400
-
-        try:
-            db.session.add_all(new_products)
-            db.session.commit()
-
-            if is_many:
-                return products_schema.dump(new_products), 201
-            else:
-                return product_schema.dump(new_products[0]), 201
-        except Exception as e:
-            db.session.rollback()
-            print(f"Error creating product(s) in DB: {e}")
-            abort(500, message="An error occurred while saving the product(s) to the database.")
-
-
-class ProductDetail(Resource):
-    def get(self, product_id):
-        """
-        Fetches a single product by its UUID.
-        """
-        product = Product.query.get_or_404(product_id, description=f"Product with ID {product_id} not found.")
-        return product_schema.dump(product), 200
-
-    def patch(self, product_id):
-        """
-        Updates an existing product partially.
-        (Currently public, add admin check later if needed)
-        """
-        product = Product.query.get_or_404(product_id, description=f"Product with ID {product_id} not found.")
-
-        json_data = request.get_json()
-        if not json_data:
-            return {"message": "No input data provided"}, 400
-
-        try:
-            updated_product = product_schema.load(
-                json_data,
-                instance=product,
-                partial=True,
-                session=db.session
-            )
-        except ValidationError as err:
-            return {"message": "Validation errors", "errors": err.messages}, 400
-
-        try:
-            db.session.commit()
-            return product_schema.dump(updated_product), 200
-        except Exception as e:
-            db.session.rollback()
-            print(f"Error updating product {product_id}: {e}")
-            abort(500, message="An error occurred while updating the product.")
-
-    def delete(self, product_id):
-        """
-        Deletes a product by its UUID.
-        (Currently public, add admin check later if needed)
-        """
-        product = Product.query.get_or_404(product_id, description=f"Product with ID {product_id} not found.")
-        try:
-            db.session.delete(product)
-            db.session.commit()
-            return '', 204
-        except Exception as e:
-            db.session.rollback()
-            print(f"Error deleting product {product_id}: {e}")
-            abort(500, message="An error occurred while deleting the product.")
-
-
-product_api.add_resource(ProductList, '/')
-product_api.add_resource(ProductDetail, '/<string:product_id>')
-
 # === ./server/app/resources/payment.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from decimal import Decimal
-from sqlalchemy.orm import joinedload 
+from sqlalchemy.orm import joinedload
+from sqlalchemy import select, update, delete
 
 from .. import db
-from ..models import Order, OrderItem, Product, Cart, CartItem
+from ..models import Order, OrderItem, Artwork, Cart, CartItem, User
 
 from .order import pending_checkouts
 
@@ -979,126 +1254,122 @@ class DarajaCallback(Resource):
     def post(self):
         """
         Handles the callback from Daraja after STK Push completion.
-        This endpoint MUST be publicly accessible (use ngrok for dev).
+        Creates the Order, OrderItems, updates Artwork stock, and clears CartItems
+        if the payment was successful and checkout data is found.
         """
         print("--- Daraja Callback Received ---")
         callback_data = request.get_json()
-        print(f"Callback Data: {callback_data}")
+        print(f"Raw Callback Data: {callback_data}")
 
         if not callback_data or 'Body' not in callback_data or 'stkCallback' not in callback_data['Body']:
-             print("ERROR: Invalid callback format")
+             print("ERROR: Invalid callback format received.")
              return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
 
         stk_callback = callback_data['Body']['stkCallback']
         result_code = stk_callback.get('ResultCode')
         checkout_request_id = stk_callback.get('CheckoutRequestID')
-        result_desc = stk_callback.get('ResultDesc', 'No description')
+        result_desc = stk_callback.get('ResultDesc', 'No description provided')
+        merchant_request_id = stk_callback.get('MerchantRequestID')
 
         if not checkout_request_id:
-            print("ERROR: CheckoutRequestID missing in callback.")
+            print("ERROR: CheckoutRequestID missing in stkCallback.")
             return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
 
-        print(f"DEBUG: Looking for CheckoutRequestID: {checkout_request_id} in pending_checkouts")
+        print(f"Processing callback for CheckoutRequestID: {checkout_request_id}, ResultCode: {result_code}, MerchantRequestID: {merchant_request_id}")
+
+        print(f"DEBUG: Current pending_checkouts keys: {list(pending_checkouts.keys())}")
         checkout_info = pending_checkouts.pop(checkout_request_id, None)
 
         if not checkout_info:
-            print(f"ERROR: CheckoutRequestID {checkout_request_id} not found in pending checkouts or already processed.")
+            print(f"WARNING: CheckoutRequestID {checkout_request_id} not found in pending checkouts or already processed.")
             return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
 
         user_id = checkout_info['user_id']
-        cart_id = checkout_info['cart_id']
+        cart_id_to_clear = checkout_info['cart_id']
         expected_total = Decimal(str(checkout_info['total_price']))
+        items_to_order = checkout_info['items']
 
-        print(f"DEBUG: Found checkout info for User {user_id}, Cart {cart_id}")
+        print(f"DEBUG: Found pending checkout info for User {user_id}, Cart {cart_id_to_clear}, Expected Total: {expected_total}")
 
         if result_code == 0:
-            print(f"SUCCESS: Payment successful for {checkout_request_id}. ResultDesc: {result_desc}")
+            print(f"SUCCESS: Payment reported successful for {checkout_request_id}. ResultDesc: {result_desc}")
 
             amount_paid = Decimal('0.00')
             mpesa_receipt = None
             phone_number_paid = None
-            transaction_date = None
+            transaction_date_str = None
+
             if 'CallbackMetadata' in stk_callback and 'Item' in stk_callback['CallbackMetadata']:
-                metadata = stk_callback['CallbackMetadata']['Item']
-                for item in metadata:
-                    if item.get('Name') == 'Amount':
-                        amount_paid = Decimal(str(item.get('Value', 0)))
-                    elif item.get('Name') == 'MpesaReceiptNumber':
-                        mpesa_receipt = item.get('Value')
-                    elif item.get('Name') == 'PhoneNumber':
-                        phone_number_paid = item.get('Value')
-                    elif item.get('Name') == 'TransactionDate':
-                        transaction_date = item.get('Value')
+                metadata = {item['Name']: item.get('Value') for item in stk_callback['CallbackMetadata']['Item']}
+                amount_paid = Decimal(str(metadata.get('Amount', 0)))
+                mpesa_receipt = metadata.get('MpesaReceiptNumber')
+                phone_number_paid = metadata.get('PhoneNumber')
+                transaction_date_str = metadata.get('TransactionDate')
 
-            print(f"DEBUG: Amount Paid: {amount_paid}, Expected: {expected_total}, Receipt: {mpesa_receipt}")
+            print(f"DEBUG: Amount Paid: {amount_paid}, Expected: {expected_total}, Receipt: {mpesa_receipt}, Phone: {phone_number_paid}, Date: {transaction_date_str}")
 
+            if amount_paid < expected_total:
+                 print(f"WARNING: Amount paid ({amount_paid}) is less than expected total ({expected_total}) for {checkout_request_id}. Order may not be created or marked as partially paid.")
 
             try:
                 with db.session.begin_nested():
-                    cart_items = CartItem.query.filter_by(cart_id=cart_id).options(
-                        joinedload(CartItem.product)
-                    ).all()
+                    artworks_to_update_stock = {}
+                    for item_data in items_to_order:
+                        artwork_id = item_data['artwork_id']
+                        quantity_ordered = item_data['quantity']
 
-                    if not cart_items:
-                         print(f"ERROR: No items found for Cart {cart_id} during callback processing.")
-                         raise ValueError("Cart items missing during order creation.")
+                        artwork = db.session.query(Artwork).filter_by(id=artwork_id).with_for_update().first()
 
+                        if not artwork:
+                            raise ValueError(f"Artwork ID {artwork_id} not found during final order creation.")
+                        if artwork.stock_quantity < quantity_ordered:
+                            raise ValueError(f"Insufficient stock for Artwork '{artwork.name}' (ID: {artwork_id}) during final order creation. Available: {artwork.stock_quantity}, Ordered: {quantity_ordered}")
 
-                    current_total_price = Decimal('0.00')
-                    products_to_update = []
-                    order_items_to_create = []
-
-                    for item in cart_items:
-                        if not item.product:
-                             raise ValueError(f"Product data missing for cart item {item.id} during order creation.")
-                        if item.product.stock_quantity < item.quantity:
-                             raise ValueError(f"Insufficient stock for '{item.product.name}' during final order creation.")
-
-                        current_total_price += item.product.price * item.quantity
-                        products_to_update.append({'product': item.product, 'quantity': item.quantity})
-                        order_items_to_create.append({
-                             'product_id': item.product_id,
-                             'quantity': item.quantity,
-                             'price_at_purchase': item.product.price
-                        })
-
-
+                        artworks_to_update_stock[artwork_id] = quantity_ordered
 
                     new_order = Order(
                         user_id=user_id,
-                        total_price=current_total_price,
+                        total_price=expected_total,
                         status='paid',
-                        payment_gateway_ref=mpesa_receipt
+                        payment_gateway_ref=mpesa_receipt,
                     )
                     db.session.add(new_order)
                     db.session.flush()
 
-                    for item_data in order_items_to_create:
+                    for item_data in items_to_order:
                          order_item = OrderItem(
                              order_id=new_order.id,
-                             product_id=item_data['product_id'],
+                             artwork_id=item_data['artwork_id'],
                              quantity=item_data['quantity'],
-                             price_at_purchase=item_data['price_at_purchase']
+                             price_at_purchase=Decimal(str(item_data['price_at_purchase']))
                          )
                          db.session.add(order_item)
 
-                    for prod_data in products_to_update:
-                         prod_data['product'].stock_quantity -= prod_data['quantity']
+                    for artwork_id, quantity_to_decrement in artworks_to_update_stock.items():
+                         db.session.query(Artwork).filter_by(id=artwork_id).update({
+                             'stock_quantity': Artwork.stock_quantity - quantity_to_decrement
+                         })
+                         print(f"DEBUG: Decremented stock for Artwork {artwork_id} by {quantity_to_decrement}")
 
-                    CartItem.query.filter_by(cart_id=cart_id).delete()
+
+                    deleted_count = db.session.query(CartItem).filter_by(cart_id=cart_id_to_clear).delete()
+                    print(f"DEBUG: Deleted {deleted_count} items from Cart {cart_id_to_clear}")
+
 
                 db.session.commit()
-                print(f"SUCCESS: Order {new_order.id} created successfully for User {user_id}.")
+                print(f"SUCCESS: Order {new_order.id} created, stock updated, cart {cart_id_to_clear} cleared for User {user_id}.")
 
             except ValueError as ve:
                  db.session.rollback()
-                 print(f"ERROR: Stock validation failed during final order creation for Cart {cart_id}. Reason: {ve}")
+                 print(f"ERROR: Validation failed during final order creation for User {user_id}, Cart {cart_id_to_clear}. Reason: {ve}")
             except Exception as e:
                  db.session.rollback()
-                 print(f"ERROR: Failed to create order or update stock for Cart {cart_id} / User {user_id}. Error: {e}")
+                 print(f"ERROR: Failed to commit order transaction for User {user_id}, Cart {cart_id_to_clear}. Error: {e}")
+
 
         else:
-            print(f"FAILURE: Payment failed for {checkout_request_id}. ResultCode: {result_code}, ResultDesc: {result_desc}")
+            print(f"FAILURE: Payment failed or cancelled for {checkout_request_id}. ResultCode: {result_code}, ResultDesc: {result_desc}")
+
 
         return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
 
@@ -1194,6 +1465,153 @@ class UserLogout(Resource):
 auth_api.add_resource(UserRegistration, '/signup')
 auth_api.add_resource(UserLogin, '/login')
 auth_api.add_resource(UserLogout, '/logout')
+
+# === ./server/app/resources/artwork.py ===
+from flask import request, Blueprint, jsonify
+from flask_restful import Resource, Api, abort
+from marshmallow import ValidationError
+from sqlalchemy.orm import joinedload
+
+from .. import db
+from ..models import Artwork, Artist
+from ..schemas import artwork_schema, artworks_schema
+
+artwork_bp = Blueprint('artworks', __name__)
+artwork_api = Api(artwork_bp)
+
+
+class ArtworkList(Resource):
+    def get(self):
+        """
+        Fetches all artworks, including basic artist info.
+        """
+        artworks = Artwork.query.options(joinedload(Artwork.artist)).all()
+        return artworks_schema.dump(artworks), 200
+
+    def post(self):
+        """
+        Creates one OR multiple new artworks.
+        Requires 'artist_id' in the input data for each artwork.
+        Accepts either a single JSON object or a JSON array.
+        """
+
+        json_data = request.get_json()
+        if not json_data:
+            return {"message": "No input data provided"}, 400
+
+        is_many = isinstance(json_data, list)
+
+        try:
+            if is_many:
+                for item_data in json_data:
+                    artist_id = item_data.get('artist_id')
+                    if not artist_id or not Artist.query.get(artist_id):
+                        abort(400, message=f"Invalid or missing artist_id: {artist_id}")
+                new_artworks = artworks_schema.load(json_data, session=db.session)
+            else:
+                artist_id = json_data.get('artist_id')
+                if not artist_id or not Artist.query.get(artist_id):
+                    abort(400, message=f"Invalid or missing artist_id: {artist_id}")
+                new_artworks = [artwork_schema.load(json_data, session=db.session)]
+        except ValidationError as err:
+            if 'artist_id' in err.messages:
+                 return {"message": "Validation errors", "errors": err.messages}, 400
+            return {"message": "Validation errors", "errors": err.messages}, 400
+        except Exception as e:
+             print(f"Unexpected error during schema load: {e}")
+             abort(500, message="An internal error occurred during data processing.")
+
+
+        if not new_artworks:
+             return {"message": "No valid artwork data found after validation."}, 400
+
+        try:
+            db.session.add_all(new_artworks)
+            db.session.commit()
+
+            result = artworks_schema.dump(new_artworks) if is_many else artwork_schema.dump(new_artworks[0])
+            return result, 201
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error creating artwork(s) in DB: {e}")
+            if 'foreign key constraint fails' in str(e).lower() and 'artist_id' in str(e).lower():
+                 abort(400, message="Invalid artist_id provided.")
+            abort(500, message="An error occurred while saving the artwork(s) to the database.")
+
+
+class ArtworkDetail(Resource):
+    def get(self, artwork_id):
+        """
+        Fetches a single artwork by its UUID, including artist info.
+        """
+        artwork = Artwork.query.options(joinedload(Artwork.artist)).get_or_404(
+            artwork_id, description=f"Artwork with ID {artwork_id} not found."
+        )
+        return artwork_schema.dump(artwork), 200
+
+    def patch(self, artwork_id):
+        """
+        Updates an existing artwork partially.
+        'artist_id' can be updated if provided.
+        """
+
+        artwork = Artwork.query.get_or_404(
+            artwork_id, description=f"Artwork with ID {artwork_id} not found."
+        )
+
+        json_data = request.get_json()
+        if not json_data:
+            return {"message": "No input data provided"}, 400
+
+        if 'artist_id' in json_data:
+             artist_id = json_data.get('artist_id')
+             if not artist_id or not Artist.query.get(artist_id):
+                 abort(400, message=f"Invalid artist_id provided for update: {artist_id}")
+
+
+        try:
+            updated_artwork = artwork_schema.load(
+                json_data,
+                instance=artwork,
+                partial=True,
+                session=db.session
+            )
+        except ValidationError as err:
+             if 'artist_id' in err.messages:
+                 return {"message": "Validation errors", "errors": err.messages}, 400
+             return {"message": "Validation errors", "errors": err.messages}, 400
+
+        try:
+            db.session.commit()
+            refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(artwork.id)
+            return artwork_schema.dump(refreshed_artwork), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error updating artwork {artwork_id}: {e}")
+            if 'foreign key constraint fails' in str(e).lower() and 'artist_id' in str(e).lower():
+                 abort(400, message="Invalid artist_id provided for update.")
+            abort(500, message="An error occurred while updating the artwork.")
+
+    def delete(self, artwork_id):
+        """
+        Deletes an artwork by its UUID.
+        """
+
+        artwork = Artwork.query.get_or_404(
+             artwork_id, description=f"Artwork with ID {artwork_id} not found."
+        )
+        try:
+            db.session.delete(artwork)
+            db.session.commit()
+            return '', 204
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting artwork {artwork_id}: {e}")
+            abort(500, message="An error occurred while deleting the artwork.")
+
+
+artwork_api.add_resource(ArtworkList, '/')
+artwork_api.add_resource(ArtworkDetail, '/<string:artwork_id>')
 
 # === ./server/app/utils/daraja_client.py ===
 import base64
@@ -1313,6 +1731,30 @@ def initiate_stk_push(phone_number, amount, order_id, description="Shoply Purcha
     except Exception as e:
         print(f"ERROR: Unexpected error during STK Push: {e}")
         return {"error": "An unexpected error occurred during payment initiation."}, 500
+
+# === ./server/media/artwork_images/rename.py ===
+import os
+
+def get_available_filename(base_name, extension):
+    """Find the next available filename like art1.jpg, art2.jpg, etc."""
+    counter = 1
+    while True:
+        new_name = f"{base_name}{counter}.{extension}"
+        if not os.path.exists(new_name):
+            return new_name
+        counter += 1
+
+def rename_images():
+    images = [f for f in os.listdir('.') if f.lower().endswith('.jpg')]
+    images.sort()
+
+    for filename in images:
+        new_name = get_available_filename("art", "jpg")
+        os.rename(filename, new_name)
+        print(f"Renamed '{filename}' to '{new_name}'")
+
+if __name__ == "__main__":
+    rename_images()
 
 # === ./main/node_modules/flatted/python/flatted.py ===
 # ISC License

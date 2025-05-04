@@ -1,9 +1,8 @@
-
 from marshmallow import fields, validate, post_dump
 from flask import url_for, current_app
 
 from . import ma, db
-from .models import User, Product, Cart, CartItem, Order, OrderItem
+from .models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem
 
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -18,13 +17,27 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('password_hash',)
         sqla_session = db.session
 
-class ProductSchema(ma.SQLAlchemyAutoSchema):
+class ArtistSchema(ma.SQLAlchemyAutoSchema):
+    name = fields.Str(required=True)
+    bio = fields.Str()
+    artworks = fields.Nested('ArtworkSchema', many=True, dump_only=True, exclude=('artist',))
+
+    class Meta:
+        model = Artist
+        load_instance = True
+        sqla_session = db.session
+
+
+class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
     stock_quantity = fields.Int(validate=validate.Range(min=0))
     image_url = fields.String(dump_only=True, required=False, allow_none=True)
 
+    artist = fields.Nested(ArtistSchema, only=('id', 'name'), dump_only=True)
+    artist_id = fields.Str(required=True, load_only=True)
+
     class Meta:
-        model = Product
+        model = Artwork
         load_instance = True
         sqla_session = db.session
 
@@ -47,7 +60,7 @@ class ProductSchema(ma.SQLAlchemyAutoSchema):
         return data
 
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
-    product = fields.Nested(ProductSchema, only=('id', 'name', 'price', 'image_url'))
+    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'price', 'image_url', 'artist'))
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
 
     class Meta:
@@ -58,6 +71,10 @@ class CartItemSchema(ma.SQLAlchemyAutoSchema):
 
 class CartSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(CartItemSchema, many=True)
+    total_price = fields.Method("calculate_total", dump_only=True)
+
+    def calculate_total(self, cart):
+       return sum(item.artwork.price * item.quantity for item in cart.items)
 
     class Meta:
         model = Cart
@@ -65,7 +82,7 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         sqla_session = db.session
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
-    product = fields.Nested(ProductSchema, only=('id', 'name', 'image_url'))
+    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'image_url', 'artist'))
     price_at_purchase = fields.Decimal(as_string=True, dump_only=True)
     quantity = fields.Int(dump_only=True)
 
@@ -82,7 +99,9 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
     user_id = fields.String(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
+    shipped_at = fields.DateTime(dump_only=True, allow_none=True)
     shipping_address = fields.Str(dump_only=True, allow_none=True)
+    billing_address = fields.Str(dump_only=True, allow_none=True)
     payment_gateway_ref = fields.Str(dump_only=True, allow_none=True)
 
 
@@ -93,11 +112,12 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
 
 
 user_schema = UserSchema()
-product_schema = ProductSchema()
+artist_schema = ArtistSchema()
+artwork_schema = ArtworkSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
 
 users_schema = UserSchema(many=True)
-products_schema = ProductSchema(many=True)
+artists_schema = ArtistSchema(many=True)
+artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
-

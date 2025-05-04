@@ -1,7 +1,12 @@
-from app import create_app
+from server.app import create_app
+from server.seed import run_seed
 
-#creating flask app instance 
 app = create_app()
+
+@app.cli.command("seed")
+def seed_db():
+    """Populates the database with initial data."""
+    run_seed()
 
 if __name__ =='__main__':
     app.run(debug=True)

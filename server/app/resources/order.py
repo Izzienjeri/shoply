@@ -1,4 +1,3 @@
-
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from marshmallow import fields, Schema, ValidationError
@@ -6,8 +5,8 @@ from sqlalchemy.orm import joinedload
 from decimal import Decimal
 
 from .. import db, ma
-from ..models import Order, OrderItem, User, Cart, Product, CartItem
-from ..schemas import order_schema, orders_schema
+from ..models import Order, OrderItem, User, Cart, Artwork, CartItem, Artist
+from ..schemas import order_schema, orders_schema, artwork_schema
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..utils.daraja_client import initiate_stk_push
@@ -25,10 +24,12 @@ checkout_input_schema = CheckoutInputSchema()
 class OrderList(Resource):
     @jwt_required()
     def get(self):
-        """Fetches the current user's past orders."""
+        """Fetches the current user's past orders, including artwork details."""
         user_id = get_jwt_identity()
         user_orders = Order.query.options(
-            joinedload(Order.items).joinedload(OrderItem.product)
+            joinedload(Order.items).options(
+                joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+            )
         ).filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
         return orders_schema.dump(user_orders), 200
 
@@ -36,6 +37,7 @@ class OrderList(Resource):
     def post(self):
         """
         Initiates the checkout process (triggers STK Push).
+        Validates cart items (artwork stock) before proceeding.
         Does NOT create the order directly. This happens in the callback.
         """
         user_id = get_jwt_identity()
@@ -52,27 +54,34 @@ class OrderList(Resource):
 
         cart = Cart.query.filter_by(user_id=user_id).first()
 
-        if not cart:
-             abort(400, message="Your cart is empty.")
+        if cart:
+            cart_items_with_artworks = CartItem.query.options(
+                joinedload(CartItem.artwork)
+            ).filter_by(cart_id=cart.id).all()
+        else:
+             cart_items_with_artworks = []
 
-        cart_items_with_products = cart.items.options(
-            joinedload(CartItem.product)
-        ).all()
 
-        if not cart_items_with_products:
+        if not cart or not cart_items_with_artworks:
             abort(400, message="Your cart is empty.")
 
         total_price = Decimal('0.0')
+        item_details_for_pending = []
 
-        for item in cart_items_with_products:
-            if not item.product:
-                 abort(500, message=f"Product data missing for cart item {item.id}.")
+        for item in cart_items_with_artworks:
+            if not item.artwork:
+                 print(f"ERROR: Artwork data missing for cart item {item.id}. Cart ID: {cart.id}")
+                 abort(500, message=f"Artwork data missing for an item in your cart.")
 
-            if item.product.stock_quantity < item.quantity:
-                abort(400, message=f"Insufficient stock for '{item.product.name}'. Available: {item.product.stock_quantity}")
+            if item.artwork.stock_quantity < item.quantity:
+                abort(400, message=f"Insufficient stock for '{item.artwork.name}'. Available: {item.artwork.stock_quantity}")
 
-            total_price += Decimal(item.product.price) * Decimal(item.quantity)
-
+            total_price += Decimal(item.artwork.price) * Decimal(item.quantity)
+            item_details_for_pending.append({
+                'artwork_id': item.artwork_id,
+                'quantity': item.quantity,
+                'price_at_purchase': float(item.artwork.price)
+            })
 
         if total_price <= 0:
             abort(400, message="Cart total must be positive.")
@@ -90,18 +99,22 @@ class OrderList(Resource):
         if status_code >= 400 or stk_response.get("ResponseCode", "1") != "0":
             error_msg = stk_response.get("errorMessage", "Failed to initiate STK push.")
             error_msg = stk_response.get("ResponseDescription", error_msg)
+            print(f"STK Push Initiation Failed: Code {stk_response.get('ResponseCode', 'N/A')}, Desc: {error_msg}")
             abort(status_code if status_code >= 400 else 500, message=error_msg)
 
         checkout_request_id = stk_response.get('CheckoutRequestID')
         if not checkout_request_id:
+             print("ERROR: STK Push initiated but CheckoutRequestID was missing in Daraja response.")
              abort(500, message="STK Push initiated but CheckoutRequestID was missing in response.")
 
         pending_checkouts[checkout_request_id] = {
             'user_id': user_id,
             'cart_id': cart.id,
             'total_price': float(total_price),
+            'items': item_details_for_pending,
+            'phone_number': phone_number
         }
-        print(f"DEBUG: Stored pending checkout: {checkout_request_id} -> {pending_checkouts[checkout_request_id]}")
+        print(f"DEBUG: Stored pending checkout: {checkout_request_id} -> User {user_id}, Cart {cart.id}")
 
         return {
             "message": "STK Push initiated successfully. Please check your phone to authorize payment.",
@@ -113,10 +126,12 @@ class OrderList(Resource):
 class OrderDetail(Resource):
     @jwt_required()
     def get(self, order_id):
-        """Fetches details of a specific order belonging to the user."""
+        """Fetches details of a specific order belonging to the user, including artwork details."""
         user_id = get_jwt_identity()
         order = Order.query.options(
-            joinedload(Order.items).joinedload(OrderItem.product)
+            joinedload(Order.items).options(
+                joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+            )
         ).filter_by(id=order_id, user_id=user_id).first_or_404(
             description=f"Order with ID {order_id} not found or does not belong to user."
         )

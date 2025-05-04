@@ -1,4 +1,3 @@
-# === ./server/app/__init__.py ===
 import os
 from flask import Flask, jsonify, send_from_directory, abort, current_app
 from flask_sqlalchemy import SQLAlchemy
@@ -34,52 +33,51 @@ def create_app(config_class=Config):
 
     print(f"DEBUG: Connecting to DB: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
-    # Define the media folder path relative to the app's root path
-    # app.root_path is typically ./server/app, so '../media' goes up one level
-    # and then into 'media', resulting in ./server/media
     MEDIA_FOLDER = os.path.join(app.root_path, '..', 'media')
     app.config['MEDIA_FOLDER'] = MEDIA_FOLDER
-    print(f"DEBUG: Media folder set to: {app.config['MEDIA_FOLDER']}") # Add this debug print
+    print(f"DEBUG: Media folder (base) set to: {app.config['MEDIA_FOLDER']}")
 
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     bcrypt.init_app(app)
     ma.init_app(app)
-    # Allow requests to /media/ path as well
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}}) # Updated CORS
+    cors.init_app(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
 
     from . import models
 
-    # --- Add Media Serving Route ---
     @app.route('/media/<path:filename>')
     def serve_media(filename):
-        """Serves files from the MEDIA_FOLDER."""
-        print(f"Attempting to serve media file: {filename}") # Debug print
+        """
+        Serves files from the MEDIA_FOLDER.
+        Example: /media/artwork_images/art1.jpg will serve file from ./server/media/artwork_images/art1.jpg
+        """
+        print(f"Attempting to serve media file: {filename}")
         media_folder = current_app.config.get('MEDIA_FOLDER')
         if not media_folder:
              print("ERROR: MEDIA_FOLDER not configured in Flask app.")
-             abort(500) # Internal Server Error if config is missing
+             abort(500)
         try:
-            # send_from_directory is safer as it prevents accessing files outside the specified directory
             return send_from_directory(media_folder, filename)
         except FileNotFoundError:
-            print(f"ERROR: File not found: {os.path.join(media_folder, filename)}") # Debug print
+            full_path = os.path.join(media_folder, filename)
+            print(f"ERROR: File not found: {full_path}")
             abort(404)
         except Exception as e:
-             print(f"ERROR: Unexpected error serving file {filename}: {e}") # Catch other potential errors
+             print(f"ERROR: Unexpected error serving file {filename}: {e}")
              abort(500)
-    # --- End Media Serving Route ---
 
 
     from .resources.auth import auth_bp
-    from .resources.product import product_bp
+    from .resources.artwork import artwork_bp
+    from .resources.artist import artist_bp
     from .resources.cart import cart_bp
     from .resources.order import order_bp
     from .resources.payment import payment_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(product_bp, url_prefix='/api/products')
+    app.register_blueprint(artwork_bp, url_prefix='/api/artworks')
+    app.register_blueprint(artist_bp, url_prefix='/api/artists')
     app.register_blueprint(cart_bp, url_prefix='/api/cart')
     app.register_blueprint(order_bp, url_prefix='/api/orders')
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
@@ -87,6 +85,6 @@ def create_app(config_class=Config):
 
     @app.route('/')
     def index():
-        return "Shoply Backend is running!"
+        return "Shoply Artwork Backend is running!"
 
     return app
