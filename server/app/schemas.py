@@ -21,12 +21,12 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
     name = fields.Str(required=True)
     bio = fields.Str()
+    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True) # <-- Add this line
 
     class Meta:
         model = Artist
         load_instance = True
         sqla_session = db.session
-
 
 class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))

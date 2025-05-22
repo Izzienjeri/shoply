@@ -1,8 +1,8 @@
 # Extracted Python Code
-# Date and Time: 2025-05-04 07:10:00
-# Files Included: 17
+# Date and Time: 2025-05-23 02:02:52
+# Files Included: 16
 
-# === ./server/seed.py ===
+# === ./seed.py ===
 import os
 import random
 from decimal import Decimal
@@ -148,7 +148,7 @@ def run_seed():
         print("Seeding process completed!")
         print("-" * 20)
 
-# === ./server/run.py ===
+# === ./run.py ===
 from app import create_app
 from seed import run_seed
 
@@ -162,7 +162,7 @@ def seed_db():
 if __name__ =='__main__':
     app.run(debug=True)
 
-# === ./server/migrations/env.py ===
+# === ./migrations/env.py ===
 import logging
 from logging.config import fileConfig
 
@@ -277,7 +277,7 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-# === ./server/migrations/versions/7a98d245193e_add_artist_model_rename_product_to_.py ===
+# === ./migrations/versions/7a98d245193e_add_artist_model_rename_product_to_.py ===
 """Add Artist model, rename Product to Artwork, establish relationships
 
 Revision ID: 7a98d245193e
@@ -386,7 +386,7 @@ def downgrade():
     op.drop_table('artists')
     # ### end Alembic commands ###
 
-# === ./server/app/schemas.py ===
+# === ./app/schemas.py ===
 from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions
 from flask import url_for, current_app
 
@@ -539,7 +539,7 @@ artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
 
-# === ./server/app/models.py ===
+# === ./app/models.py ===
 import uuid
 from datetime import datetime
 from sqlalchemy.dialects.mysql import DECIMAL
@@ -676,7 +676,7 @@ class OrderItem(db.Model):
     def __repr__(self):
         return f"<OrderItem Artwork {self.artwork_id} Qty {self.quantity} Price {self.price_at_purchase} in Order {self.order_id}>"
 
-# === ./server/app/config.py ===
+# === ./app/config.py ===
 import os
 from dotenv import load_dotenv
 
@@ -720,7 +720,7 @@ class Config:
     if not all([DARAJA_CONSUMER_KEY, DARAJA_CONSUMER_SECRET, DARAJA_SHORTCODE, DARAJA_PASSKEY, DARAJA_CALLBACK_URL_BASE]):
         print("WARNING: Essential Daraja configuration missing in environment variables!")
 
-# === ./server/app/__init__.py ===
+# === ./app/__init__.py ===
 import os
 from flask import Flask, jsonify, send_from_directory, abort, current_app
 from flask_sqlalchemy import SQLAlchemy
@@ -812,7 +812,7 @@ def create_app(config_class=Config):
 
     return app
 
-# === ./server/app/resources/cart.py ===
+# === ./app/resources/cart.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError, fields
@@ -1012,7 +1012,7 @@ class CartItemResource(Resource):
 cart_api.add_resource(CartResource, '/', '')
 cart_api.add_resource(CartItemResource, '/items/<string:item_id>')
 
-# === ./server/app/resources/artist.py ===
+# === ./app/resources/artist.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
@@ -1124,7 +1124,7 @@ class ArtistDetail(Resource):
 artist_api.add_resource(ArtistList, '/')
 artist_api.add_resource(ArtistDetail, '/<string:artist_id>')
 
-# === ./server/app/resources/order.py ===
+# === ./app/resources/order.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from marshmallow import fields, Schema, ValidationError
@@ -1267,7 +1267,7 @@ class OrderDetail(Resource):
 order_api.add_resource(OrderList, '/')
 order_api.add_resource(OrderDetail, '/<string:order_id>')
 
-# === ./server/app/resources/payment.py ===
+# === ./app/resources/payment.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from decimal import Decimal
@@ -1408,7 +1408,7 @@ class DarajaCallback(Resource):
 
 payment_api.add_resource(DarajaCallback, '/callback')
 
-# === ./server/app/resources/auth.py ===
+# === ./app/resources/auth.py ===
 from flask import request, jsonify, Blueprint
 from flask_restful import Resource, Api
 from marshmallow import ValidationError
@@ -1499,7 +1499,7 @@ auth_api.add_resource(UserRegistration, '/signup')
 auth_api.add_resource(UserLogin, '/login')
 auth_api.add_resource(UserLogout, '/logout')
 
-# === ./server/app/resources/artwork.py ===
+# === ./app/resources/artwork.py ===
 from flask import request, Blueprint, jsonify
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
@@ -1646,7 +1646,7 @@ class ArtworkDetail(Resource):
 artwork_api.add_resource(ArtworkList, '/')
 artwork_api.add_resource(ArtworkDetail, '/<string:artwork_id>')
 
-# === ./server/app/utils/daraja_client.py ===
+# === ./app/utils/daraja_client.py ===
 import base64
 import requests
 from datetime import datetime
@@ -1765,7 +1765,7 @@ def initiate_stk_push(phone_number, amount, order_id, description="Shoply Purcha
         print(f"ERROR: Unexpected error during STK Push: {e}")
         return {"error": "An unexpected error occurred during payment initiation."}, 500
 
-# === ./server/media/artwork_images/rename.py ===
+# === ./media/artwork_images/rename.py ===
 import os
 
 def get_available_filename(base_name, extension):
@@ -1788,154 +1788,3 @@ def rename_images():
 
 if __name__ == "__main__":
     rename_images()
-
-# === ./main/node_modules/flatted/python/flatted.py ===
-# ISC License
-#
-# Copyright (c) 2018-2025, Andrea Giammarchi, @WebReflection
-#
-# Permission to use, copy, modify, and/or distribute this software for any
-# purpose with or without fee is hereby granted, provided that the above
-# copyright notice and this permission notice appear in all copies.
-#
-# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
-# OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-# PERFORMANCE OF THIS SOFTWARE.
-
-import json as _json
-
-class _Known:
-    def __init__(self):
-        self.key = []
-        self.value = []
-
-class _String:
-    def __init__(self, value):
-        self.value = value
-
-
-def _array_keys(value):
-    keys = []
-    i = 0
-    for _ in value:
-        keys.append(i)
-        i += 1
-    return keys
-
-def _object_keys(value):
-    keys = []
-    for key in value:
-        keys.append(key)
-    return keys
-
-def _is_array(value):
-    return isinstance(value, (list, tuple))
-
-def _is_object(value):
-    return isinstance(value, dict)
-
-def _is_string(value):
-    return isinstance(value, str)
-
-def _index(known, input, value):
-    input.append(value)
-    index = str(len(input) - 1)
-    known.key.append(value)
-    known.value.append(index)
-    return index
-
-def _loop(keys, input, known, output):
-    for key in keys:
-        value = output[key]
-        if isinstance(value, _String):
-            _ref(key, input[int(value.value)], input, known, output)
-
-    return output
-
-def _ref(key, value, input, known, output):
-    if _is_array(value) and value not in known:
-        known.append(value)
-        value = _loop(_array_keys(value), input, known, value)
-    elif _is_object(value) and value not in known:
-        known.append(value)
-        value = _loop(_object_keys(value), input, known, value)
-
-    output[key] = value
-
-def _relate(known, input, value):
-    if _is_string(value) or _is_array(value) or _is_object(value):
-        try:
-            return known.value[known.key.index(value)]
-        except:
-            return _index(known, input, value)
-
-    return value
-
-def _transform(known, input, value):
-    if _is_array(value):
-        output = []
-        for val in value:
-            output.append(_relate(known, input, val))
-        return output
-
-    if _is_object(value):
-        obj = {}
-        for key in value:
-            obj[key] = _relate(known, input, value[key])
-        return obj
-
-    return value
-
-def _wrap(value):
-    if _is_string(value):
-        return _String(value)
-
-    if _is_array(value):
-        i = 0
-        for val in value:
-            value[i] = _wrap(val)
-            i += 1
-
-    elif _is_object(value):
-        for key in value:
-            value[key] = _wrap(value[key])
-
-    return value
-
-def parse(value, *args, **kwargs):
-    json = _json.loads(value, *args, **kwargs)
-    wrapped = []
-    for value in json:
-        wrapped.append(_wrap(value))
-
-    input = []
-    for value in wrapped:
-        if isinstance(value, _String):
-            input.append(value.value)
-        else:
-            input.append(value)
-
-    value = input[0]
-
-    if _is_array(value):
-        return _loop(_array_keys(value), input, [value], value)
-
-    if _is_object(value):
-        return _loop(_object_keys(value), input, [value], value)
-
-    return value
-
-
-def stringify(value, *args, **kwargs):
-    known = _Known()
-    input = []
-    output = []
-    i = int(_index(known, input, value))
-    while i < len(input):
-        output.append(_transform(known, input, input[i]))
-        i += 1
-    return _json.dumps(output, *args, **kwargs)
