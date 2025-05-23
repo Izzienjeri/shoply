@@ -1,6 +1,9 @@
+# === ./app/models.py ===
 import uuid
 from datetime import datetime
 from sqlalchemy.dialects.mysql import DECIMAL
+import json # Ensure this is imported
+from flask import current_app 
 
 from . import db, bcrypt
 
@@ -29,18 +32,18 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     name = db.Column(db.String(100), nullable=True)
-    address = db.Column(db.Text, nullable=True)
+    address = db.Column(db.Text, nullable=True) # Used for default shipping
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     cart = db.relationship('Cart', back_populates='user', uselist=False, cascade="all, delete-orphan")
-    orders = db.relationship('Order', back_populates='user', lazy=True, cascade="all, delete-orphan")
+    orders = db.relationship('Order', back_populates='user', lazy='dynamic', cascade="all, delete-orphan") # Keep lazy dynamic for orders list if paginated later
+    payment_transactions = db.relationship('PaymentTransaction', back_populates='user', lazy='dynamic')
+
 
     def set_password(self, password):
-        """Hashes the password and stores it."""
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
     def check_password(self, password):
-        """Checks if the provided password matches the stored hash."""
         return bcrypt.check_password_hash(self.password_hash, password)
 
     def __repr__(self):
@@ -61,8 +64,8 @@ class Artwork(db.Model):
     artist_id = db.Column(db.String(36), db.ForeignKey('artists.id'), nullable=False)
 
     artist = db.relationship('Artist', back_populates='artworks')
-    cart_items = db.relationship('CartItem', back_populates='artwork', lazy=True)
-    order_items = db.relationship('OrderItem', back_populates='artwork', lazy=True)
+    cart_items = db.relationship('CartItem', back_populates='artwork', lazy='dynamic')
+    order_items = db.relationship('OrderItem', back_populates='artwork', lazy='dynamic')
 
     def __repr__(self):
         return f"<Artwork {self.name} by Artist {self.artist_id}>"
@@ -76,7 +79,7 @@ class Cart(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = db.relationship('User', back_populates='cart')
-    items = db.relationship('CartItem', back_populates='cart', cascade="all, delete-orphan")
+    items = db.relationship('CartItem', back_populates='cart', cascade="all, delete-orphan", lazy='joined') # Eager load items with cart
 
     def __repr__(self):
         return f"<Cart {self.id} for User {self.user_id}>"
@@ -93,7 +96,7 @@ class CartItem(db.Model):
     __table_args__ = (db.UniqueConstraint('cart_id', 'artwork_id', name='_cart_artwork_uc'),)
 
     cart = db.relationship('Cart', back_populates='items')
-    artwork = db.relationship('Artwork', back_populates='cart_items')
+    artwork = db.relationship('Artwork', back_populates='cart_items', lazy='joined') # Eager load artwork with cart item
 
     def __repr__(self):
         return f"<CartItem Artwork {self.artwork_id} Qty {self.quantity} in Cart {self.cart_id}>"
@@ -111,10 +114,14 @@ class Order(db.Model):
     shipped_at = db.Column(db.DateTime, nullable=True)
     shipping_address = db.Column(db.Text, nullable=True)
     billing_address = db.Column(db.Text, nullable=True)
-    payment_gateway_ref = db.Column(db.String(255), nullable=True)
+    payment_gateway_ref = db.Column(db.String(255), nullable=True) # M-Pesa Receipt
 
     user = db.relationship('User', back_populates='orders')
-    items = db.relationship('OrderItem', back_populates='order', cascade="all, delete-orphan")
+    items = db.relationship('OrderItem', back_populates='order', cascade="all, delete-orphan", lazy='joined') # Eager load items with order
+
+    payment_transaction_id = db.Column(db.String(36), db.ForeignKey('payment_transactions.id'), nullable=True, index=True)
+    payment_transaction = db.relationship('PaymentTransaction', backref=db.backref('order_record', uselist=False))
+
 
     def __repr__(self):
         return f"<Order {self.id} Status {self.status} by User {self.user_id}>"
@@ -129,7 +136,47 @@ class OrderItem(db.Model):
     price_at_purchase = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
 
     order = db.relationship('Order', back_populates='items')
-    artwork = db.relationship('Artwork', back_populates='order_items')
+    artwork = db.relationship('Artwork', back_populates='order_items', lazy='joined') # Eager load artwork with order item
 
     def __repr__(self):
         return f"<OrderItem Artwork {self.artwork_id} Qty {self.quantity} Price {self.price_at_purchase} in Order {self.order_id}>"
+
+class PaymentTransaction(db.Model):
+    __tablename__ = 'payment_transactions'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid) # Internal ID
+    checkout_request_id = db.Column(db.String(100), unique=True, nullable=True, index=True) # From Daraja, can be null initially
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    cart_id = db.Column(db.String(36), db.ForeignKey('carts.id'), nullable=True) 
+    # order_id is now set via backref from Order model (payment_transaction_id)
+    amount = db.Column(DECIMAL(precision=10, scale=2), nullable=False)
+    phone_number = db.Column(db.String(15), nullable=True)
+    status = db.Column(db.String(50), nullable=False, default='initiated') # e.g., initiated, pending_stk_initiation, pending_confirmation, successful, failed_...
+    daraja_response_description = db.Column(db.Text, nullable=True) # Store initial ResponseDescription or final ResultDesc
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    _cart_items_snapshot = db.Column(db.Text, nullable=True) # Store as JSON string
+
+    user = db.relationship('User', back_populates='payment_transactions')
+    # cart = db.relationship('Cart') # If direct link to cart needed
+
+    @property
+    def cart_items_snapshot(self):
+        if self._cart_items_snapshot:
+            try:
+                return json.loads(self._cart_items_snapshot)
+            except json.JSONDecodeError:
+                current_app.logger.error(f"Failed to decode cart_items_snapshot for PaymentTransaction {self.id}")
+                return None
+        return None
+
+    @cart_items_snapshot.setter
+    def cart_items_snapshot(self, value):
+        if value:
+            self._cart_items_snapshot = json.dumps(value)
+        else:
+            self._cart_items_snapshot = None
+            
+    def __repr__(self):
+        return f"<PaymentTransaction {self.id} CRID: {self.checkout_request_id} Status: {self.status}>"

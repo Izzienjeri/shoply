@@ -1,177 +1,205 @@
-# === ./app/resources/payment.py ===
-from flask import request, Blueprint, jsonify, current_app # Added current_app
+
+from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from decimal import Decimal
-from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy import select, update, delete # Ensure all are used or remove unused
+from sqlalchemy.orm import joinedload
+import json
 
 from .. import db
-from ..models import Order, OrderItem, Artwork, Cart, CartItem, User
-
-# Import the shared pending_checkouts dictionary
-from .order import pending_checkouts
-
+from ..models import Order, OrderItem, Artwork, Cart, CartItem, User, PaymentTransaction
 
 payment_bp = Blueprint('payments', __name__)
 payment_api = Api(payment_bp)
 
 class DarajaCallback(Resource):
     def post(self):
-        """
-        Handles the callback from Daraja after STK Push completion.
-        Creates the Order, OrderItems, updates Artwork stock, and clears CartItems
-        if the payment was successful and checkout data is found.
-        """
         current_app.logger.info("--- Daraja Callback Received ---")
         try:
             callback_data = request.get_json()
-            if not callback_data: # Handle empty body
+            if not callback_data:
                 current_app.logger.error("Daraja Callback: Received empty JSON body.")
-                return {"ResultCode": 1, "ResultDesc": "Failed: Empty callback data"}, 200 # Acknowledge receipt but indicate issue
+                return {"ResultCode": 0, "ResultDesc": "Accepted empty body"}, 200
         except Exception as e:
             current_app.logger.error(f"Daraja Callback: Failed to parse JSON body: {e}. Raw data: {request.data}")
-            return {"ResultCode": 1, "ResultDesc": "Failed: Invalid JSON format"}, 200
+            return {"ResultCode": 0, "ResultDesc": "Accepted invalid JSON"}, 200
 
-
-        current_app.logger.info(f"Raw Callback Data: {callback_data}")
+        current_app.logger.info(f"Daraja Callback - Raw Data: {json.dumps(callback_data)}")
 
         if 'Body' not in callback_data or 'stkCallback' not in callback_data['Body']:
-             current_app.logger.error("ERROR: Invalid callback format received. Missing 'Body' or 'stkCallback'.")
-             return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200 # Safaricom expects 0 for ack
+            current_app.logger.error("Daraja Callback ERROR: Invalid format. Missing 'Body' or 'stkCallback'.")
+            return {"ResultCode": 0, "ResultDesc": "Accepted format error"}, 200
 
         stk_callback = callback_data['Body']['stkCallback']
-        result_code = stk_callback.get('ResultCode')
+        result_code_from_daraja = str(stk_callback.get('ResultCode', '-1'))
         checkout_request_id = stk_callback.get('CheckoutRequestID')
-        # merchant_request_id = stk_callback.get('MerchantRequestID') # Use if needed for reconciliation
+        daraja_result_desc = stk_callback.get('ResultDesc', 'No ResultDesc from Daraja.')
+        
+        daraja_merchant_request_id = stk_callback.get('MerchantRequestID')
+
+        current_app.logger.info(f"Daraja Callback - Processing: CRID: {checkout_request_id}, Daraja_MRID: {daraja_merchant_request_id}, ResultCode: {result_code_from_daraja}, ResultDesc: {daraja_result_desc}")
 
         if not checkout_request_id:
-            current_app.logger.error("ERROR: CheckoutRequestID missing in stkCallback.")
-            return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
+            current_app.logger.error("Daraja Callback ERROR: CheckoutRequestID missing from Daraja. Cannot process.")
+            return {"ResultCode": 0, "ResultDesc": "Accepted missing CheckoutRequestID"}, 200
+        
+        transaction = PaymentTransaction.query.filter_by(checkout_request_id=checkout_request_id).first()
 
-        current_app.logger.info(f"Processing callback for CheckoutRequestID: {checkout_request_id}, ResultCode: {result_code}")
+        if not transaction:
+            current_app.logger.warning(f"Daraja Callback WARNING: PaymentTransaction for CRID {checkout_request_id} not found in DB. This might be a stray callback from Daraja (e.g., sandbox test for a different transaction) or an issue matching IDs. Original Daraja MerchantRequestID was {daraja_merchant_request_id}.")
+            return {"ResultCode": 0, "ResultDesc": "Accepted, transaction not found by CRID"}, 200
 
-        # current_app.logger.debug(f"DEBUG: Current pending_checkouts keys: {list(pending_checkouts.keys())}")
-        checkout_info = pending_checkouts.pop(checkout_request_id, None)
+        current_app.logger.info(f"Daraja Callback: Found internal PaymentTransaction {transaction.id} with status {transaction.status} for CRID {checkout_request_id}.")
 
-        if not checkout_info:
-            current_app.logger.warning(f"WARNING: CheckoutRequestID {checkout_request_id} not found in pending checkouts or already processed.")
-            # Even if not found, Safaricom expects a success response to this callback.
-            return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
+        final_states = ['successful', 'failed_daraja', 'cancelled_by_user', 'failed_processing_error', 'failed_underpaid', 'failed_missing_receipt', 'failed_timeout']
+        if transaction.status in final_states:
+            current_app.logger.info(f"Daraja Callback INFO: Transaction {transaction.id} (CRID: {checkout_request_id}) already in a final state: {transaction.status}. Ignoring callback.")
+            return {"ResultCode": 0, "ResultDesc": "Accepted, already processed"}, 200
 
-        user_id = checkout_info['user_id']
-        cart_id_to_clear = checkout_info['cart_id']
-        expected_total_str = str(checkout_info['total_price']) # Ensure it's a string for Decimal
-        expected_total = Decimal(expected_total_str)
-        items_to_order = checkout_info['items']
-        shipping_address_from_pending = checkout_info.get('shipping_address', "Pickup at Dynamic Mall, Shop M90, CBD")
+        transaction.daraja_response_description = daraja_result_desc
 
+        if result_code_from_daraja == "0":
+            current_app.logger.info(f"Daraja Callback SUCCESS: Payment successful for Transaction {transaction.id} (CRID: {checkout_request_id}).")
 
-        current_app.logger.info(f"Found pending checkout info for User {user_id}, Cart {cart_id_to_clear}, Expected Total: {expected_total}")
-
-        if result_code == 0: # Payment successful
-            current_app.logger.info(f"SUCCESS: Payment reported successful for {checkout_request_id}. ResultDesc: {stk_callback.get('ResultDesc', 'N/A')}")
-
-            amount_paid_str = "0.00"
-            mpesa_receipt = None
-            # phone_number_paid = None # If needed
-            # transaction_date_str = None # If needed
-
-            if 'CallbackMetadata' in stk_callback and 'Item' in stk_callback['CallbackMetadata']:
-                metadata = {item['Name']: item.get('Value') for item in stk_callback['CallbackMetadata']['Item'] if 'Name' in item} # Ensure 'Name' exists
-                
-                if 'Amount' in metadata:
-                    amount_paid_str = str(metadata.get('Amount', "0.00"))
-                mpesa_receipt = metadata.get('MpesaReceiptNumber')
-                # phone_number_paid = metadata.get('PhoneNumber')
-                # transaction_date_str = metadata.get('TransactionDate')
+            metadata_items = stk_callback.get('CallbackMetadata', {}).get('Item', [])
+            metadata = {item['Name']: item.get('Value') for item in metadata_items if 'Name' in item and 'Value' in item}
             
-            amount_paid = Decimal(amount_paid_str)
+            amount_paid_str = str(metadata.get('Amount', "0.00"))
+            mpesa_receipt = metadata.get('MpesaReceiptNumber')
+            
+            current_app.logger.info(f"Transaction {transaction.id}: Amount Paid (Daraja): {amount_paid_str}, Expected: {transaction.amount}, M-Pesa Receipt: {mpesa_receipt}")
 
-            current_app.logger.info(f"Details from callback: Amount Paid: {amount_paid}, Expected: {expected_total}, Receipt: {mpesa_receipt}")
-
-            # Validate amount paid against expected total more strictly if needed
-            if amount_paid < expected_total:
-                 current_app.logger.warning(f"Amount paid ({amount_paid}) is less than expected ({expected_total}) for {checkout_request_id}. Order will be created but flagged.")
-                 # Decide if you want to proceed or mark order as 'underpaid' or similar
-
-            # --- Database Transaction ---
+            if not mpesa_receipt:
+                current_app.logger.error(f"Transaction {transaction.id}: MpesaReceiptNumber is MISSING from Daraja callback despite success code 0. Marking as processing error.")
+                transaction.status = 'failed_missing_receipt'
+                transaction.daraja_response_description = "MpesaReceiptNumber missing from successful Daraja callback."
+                try:
+                    db.session.commit()
+                except Exception as e_commit:
+                    db.session.rollback()
+                    current_app.logger.error(f"Transaction {transaction.id}: DB Error committing 'failed_missing_receipt' status: {e_commit}")
+                return {"ResultCode": 0, "ResultDesc": "Accepted, MpesaReceiptNumber missing"}, 200
+            
             try:
-                # Fetch user to get their current address if not fully reliant on pending_checkout's address
-                # user = User.query.get(user_id)
-                # final_shipping_address = shipping_address_from_pending
-                # if user and user.address: # Prioritize current user address if desired
-                #     final_shipping_address = user.address
-                
-                final_shipping_address = shipping_address_from_pending # Using address stored at time of checkout
+                amount_paid_decimal = Decimal(amount_paid_str)
+            except Exception as e_decimal:
+                current_app.logger.error(f"Transaction {transaction.id}: Could not convert Daraja Amount '{amount_paid_str}' to Decimal: {e_decimal}. Marking as processing error.")
+                transaction.status = 'failed_processing_error'
+                transaction.daraja_response_description = f"Invalid amount format from Daraja: {amount_paid_str}"
+                try:
+                    db.session.commit()
+                except Exception as e_commit:
+                    db.session.rollback()
+                    current_app.logger.error(f"Transaction {transaction.id}: DB Error committing status for invalid amount: {e_commit}")
+                return {"ResultCode": 0, "ResultDesc": "Accepted, invalid amount format"}, 200
 
-                new_order = Order(
-                    user_id=user_id,
-                    total_price=expected_total, # Use the total price calculated at checkout
-                    status='paid', # Or 'processing'
-                    payment_gateway_ref=mpesa_receipt,
-                    shipping_address=final_shipping_address,
-                    billing_address=final_shipping_address # Assuming same for simplicity
-                )
-                db.session.add(new_order)
-                db.session.flush() # Important to get new_order.id for OrderItems
 
-                artworks_to_update_stock_ids = {} # To hold artwork_id: quantity_ordered
-
-                for item_data in items_to_order:
-                    artwork_id = item_data['artwork_id']
-                    quantity_ordered = item_data['quantity']
-                    price_at_purchase_str = str(item_data['price_at_purchase'])
-                    
-                    # Lock artwork row for update to prevent race conditions on stock
-                    artwork = db.session.query(Artwork).filter_by(id=artwork_id).with_for_update().first()
-
-                    if not artwork:
-                        # This should ideally not happen if cart items are validated
-                        current_app.logger.error(f"Critical Error: Artwork ID {artwork_id} not found during final order creation for user {user_id}.")
-                        raise ValueError(f"Artwork ID {artwork_id} not found.") 
-                    
-                    if artwork.stock_quantity < quantity_ordered:
-                        current_app.logger.error(f"Critical Error: Insufficient stock for Artwork '{artwork.name}' (ID: {artwork_id}) during final order creation. User {user_id}.")
-                        raise ValueError(f"Insufficient stock for Artwork '{artwork.name}'.")
-
-                    artworks_to_update_stock_ids[artwork_id] = artworks_to_update_stock_ids.get(artwork_id, 0) + quantity_ordered
-                    
-                    order_item = OrderItem(
-                        order_id=new_order.id,
-                        artwork_id=artwork_id,
-                        quantity=quantity_ordered,
-                        price_at_purchase=Decimal(price_at_purchase_str)
-                    )
-                    db.session.add(order_item)
-
-                # Update stock quantities
-                for art_id, qty_ordered in artworks_to_update_stock_ids.items():
-                    # The row is already locked by with_for_update() earlier if processing one item at a time
-                    # If processing multiple items from same artwork, ensure logic is correct
-                    db.session.query(Artwork).filter_by(id=art_id).update(
-                        {'stock_quantity': Artwork.stock_quantity - qty_ordered},
-                        synchronize_session=False # Important when using expressions
-                    )
-                    current_app.logger.info(f"Decremented stock for Artwork {art_id} by {qty_ordered} for order {new_order.id}")
-
-                # Clear cart items for the processed cart
-                deleted_count = db.session.query(CartItem).filter_by(cart_id=cart_id_to_clear).delete(synchronize_session=False)
-                current_app.logger.info(f"Deleted {deleted_count} items from Cart {cart_id_to_clear} for User {user_id}, Order {new_order.id}")
-
+            if amount_paid_decimal < transaction.amount:
+                current_app.logger.warning(f"Transaction {transaction.id}: Amount paid ({amount_paid_decimal}) is less than expected ({transaction.amount}). Marking as underpaid.")
+                transaction.status = 'failed_underpaid'
                 db.session.commit()
-                current_app.logger.info(f"SUCCESS: Order {new_order.id} created, stock updated, cart {cart_id_to_clear} cleared for User {user_id}.")
+            else:
+                try:
+                    user = User.query.get(transaction.user_id)
+                    shipping_addr = user.address if user and user.address else "Pickup at Dynamic Mall, Shop M90, CBD, Nairobi"
+                    
+                    items_to_order_snapshot = transaction.cart_items_snapshot
+                    if not items_to_order_snapshot:
+                        current_app.logger.error(f"Transaction {transaction.id}: Cart items snapshot missing. Cannot create order.")
+                        raise ValueError("Cart items snapshot missing for order creation.")
 
-            except ValueError as ve:
-                 db.session.rollback()
-                 current_app.logger.error(f"ERROR (ValueError): Order creation failed for User {user_id}, Cart {cart_id_to_clear}. Reason: {ve}")
-            except Exception as e:
-                 db.session.rollback()
-                 current_app.logger.error(f"ERROR (Exception): Order creation failed for User {user_id}, Cart {cart_id_to_clear}. Error: {e}", exc_info=True)
-                 # Potentially re-raise or handle so Safaricom might retry if appropriate,
-                 # but usually, for DB errors, you accept and log.
-        else: # Payment failed or cancelled by user
-            current_app.logger.warning(f"Payment failed or cancelled for {checkout_request_id}. ResultCode: {result_code}, ResultDesc: {stk_callback.get('ResultDesc', 'N/A')}")
-            # No order created, cart remains as is. No stock updated.
+                    new_order = Order(
+                        user_id=transaction.user_id,
+                        total_price=transaction.amount, 
+                        status='paid', 
+                        payment_gateway_ref=mpesa_receipt,
+                        shipping_address=shipping_addr,
+                        billing_address=shipping_addr,
+                        payment_transaction_id=transaction.id
+                    )
+                    db.session.add(new_order)
+                    db.session.flush()
+
+                    current_app.logger.info(f"Transaction {transaction.id}: Order {new_order.id} flushed. Populating items.")
+
+                    for item_data in items_to_order_snapshot:
+                        artwork = db.session.query(Artwork).filter_by(id=item_data['artwork_id']).with_for_update().first()
+                        if not artwork:
+                            current_app.logger.error(f"Transaction {transaction.id}, Order {new_order.id}: Artwork ID {item_data['artwork_id']} not found during order creation.")
+                            raise ValueError(f"Artwork ID {item_data['artwork_id']} not found.")
+                        
+                        item_quantity = int(item_data['quantity'])
+                        if artwork.stock_quantity < item_quantity:
+                            current_app.logger.error(f"Transaction {transaction.id}, Order {new_order.id}: Insufficient stock for {artwork.name} (ID: {artwork.id}). Available: {artwork.stock_quantity}, Requested: {item_quantity}.")
+                            raise ValueError(f"Insufficient stock for {artwork.name} (ID: {artwork.id}). Available: {artwork.stock_quantity}, Requested: {item_quantity}.")
+                        
+                        artwork.stock_quantity -= item_quantity
+                        current_app.logger.info(f"Transaction {transaction.id}, Order {new_order.id}: Artwork {artwork.id} stock updated to {artwork.stock_quantity}.")
+                        
+                        order_item = OrderItem(
+                            order_id=new_order.id,
+                            artwork_id=item_data['artwork_id'],
+                            quantity=item_quantity,
+                            price_at_purchase=Decimal(str(item_data['price_at_purchase']))
+                        )
+                        db.session.add(order_item)
+                    
+                    current_app.logger.info(f"Transaction {transaction.id}, Order {new_order.id}: All order items added to session.")
+
+                    if transaction.cart_id:
+                        deleted_count = CartItem.query.filter_by(cart_id=transaction.cart_id).delete(synchronize_session='fetch')
+                        current_app.logger.info(f"Transaction {transaction.id}: Deleted {deleted_count} items from Cart {transaction.cart_id} for Order {new_order.id}")
+                    
+                    transaction.status = 'successful'
+                    
+                    db.session.commit()
+                    current_app.logger.info(f"Order {new_order.id} created successfully and committed for Transaction {transaction.id} (CRID: {checkout_request_id}).")
+
+                except ValueError as ve:
+                    db.session.rollback()
+                    current_app.logger.error(f"Transaction {transaction.id}: ValueError during order creation: {ve}")
+                    try:
+                        txn_to_update = db.session.merge(transaction) if transaction in db.session.dirty else PaymentTransaction.query.get(transaction.id)
+                        if txn_to_update:
+                           txn_to_update.status = 'failed_processing_error' 
+                           txn_to_update.daraja_response_description = f"Order Creation Error: {str(ve)}"
+                           db.session.commit()
+                        else:
+                           current_app.logger.error(f"Transaction {transaction.id}: Could not find transaction to mark as failed_processing_error after ValueError.")
+                    except Exception as inner_e:
+                        db.session.rollback()
+                        current_app.logger.error(f"Transaction {transaction.id}: FAILED to update status to 'failed_processing_error' after ValueError. DB Error: {inner_e}")
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.error(f"Transaction {transaction.id}: Unexpected Exception during order creation: {e}", exc_info=True)
+                    try:
+                        txn_to_update = db.session.merge(transaction) if transaction in db.session.dirty else PaymentTransaction.query.get(transaction.id)
+                        if txn_to_update:
+                            txn_to_update.status = 'failed_processing_error'
+                            txn_to_update.daraja_response_description = f"Unexpected Order Creation Error: {str(e)}"
+                            db.session.commit()
+                        else:
+                           current_app.logger.error(f"Transaction {transaction.id}: Could not find transaction to mark as failed_processing_error after unexpected Exception.")
+                    except Exception as update_err:
+                        db.session.rollback()
+                        current_app.logger.error(f"Transaction {transaction.id}: Further error when trying to mark as 'failed_processing_error' after unexpected Exception: {update_err}", exc_info=True)
+        else:
+            current_app.logger.warning(f"Transaction {transaction.id} (CRID: {checkout_request_id}): Payment reported as FAILED/CANCELLED by Daraja. ResultCode: {result_code_from_daraja}, Desc: {daraja_result_desc}")
+            if result_code_from_daraja == "1":
+                transaction.status = 'cancelled_by_user'
+            elif result_code_from_daraja == "1032":
+                transaction.status = 'cancelled_by_user'
+            elif result_code_from_daraja == "1037":
+                transaction.status = 'failed_timeout'
+            else:
+                transaction.status = 'failed_daraja'
+            
+            try:
+                db.session.commit()
+                current_app.logger.info(f"Transaction {transaction.id}: Status updated to {transaction.status} and committed.")
+            except Exception as e_commit:
+                db.session.rollback()
+                current_app.logger.error(f"Transaction {transaction.id}: DB Error committing failure status '{transaction.status}': {e_commit}")
+
 
         return {"ResultCode": 0, "ResultDesc": "Accepted"}, 200
 

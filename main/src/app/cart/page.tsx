@@ -1,7 +1,7 @@
-// === app/cart/page.tsx ===
+// === main/src/app/cart/page.tsx ===
 'use client';
 
-import React, { useState, useEffect } from 'react'; // Added useEffect
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, cn } from '@/lib/utils';
 import { ApiErrorResponse, CartItem as CartItemType, StkPushInitiationResponse } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 
@@ -29,13 +29,22 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info } from 'lucide-react'; // Added Info
+
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle } from 'lucide-react';
+
+interface PaymentTransactionStatusResponse {
+    status: 'initiated' | 'pending_stk_initiation' | 'pending_confirmation' | 'successful' | 'failed_stk_initiation' | 'failed_stk_missing_id' | 'failed_underpaid' | 'failed_processing_error' | 'cancelled_by_user' | 'failed_daraja' | 'failed_timeout' | 'failed_missing_receipt' | 'not_found';
+    checkout_request_id: string | null;
+    message: string;
+    order_id?: string;
+}
 
 const checkoutSchema = z.object({
   phoneNumber: z.string()
     .min(1, "Phone number is required")
-    .length(12, "Phone number must be 12 digits")
+    .length(12, "Phone number must be 12 digits (e.g. 2547XXXXXXXX)")
     .startsWith("254", "Phone number must start with 254")
     .regex(/^[0-9]+$/, "Phone number must contain only digits"),
 });
@@ -45,7 +54,7 @@ interface CartItemProps {
   item: CartItemType;
   onUpdateQuantity: (itemId: string, newQuantity: number) => Promise<void>;
   onRemoveItem: (itemId: string) => Promise<void>;
-  isUpdating: boolean; // Global cart loading state
+  isUpdating: boolean;
 }
 
 function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItemProps) {
@@ -96,7 +105,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
       </div>
 
       <div className="flex-1 space-y-1 min-w-0">
-        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-base sm:text-lg line-clamp-2">
+        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2">
           {item.artwork.name}
         </Link>
         <p className="text-xs sm:text-sm text-muted-foreground">By: {item.artwork.artist.name}</p>
@@ -163,81 +172,191 @@ export default function CartPage() {
     totalPrice,
     updateCartItem,
     removeFromCart,
-    fetchCart, // Add fetchCart to dependencies if needed for refresh
+    fetchCart,
   } = useCart();
   const { isAuthenticated, isLoading: authIsLoading, user } = useAuth();
   const router = useRouter();
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
-  const [isAwaitingPaymentConfirmation, setIsAwaitingPaymentConfirmation] = useState(false);
-  const [lastCheckoutId, setLastCheckoutId] = useState<string | null>(null);
+
+  const [isStkFlowActive, setIsStkFlowActive] = useState(false);
+  const [stkCheckoutId, setStkCheckoutId] = useState<string | null>(null);
+  const [pollingMessage, setPollingMessage] = useState<string>("Please complete the M-Pesa payment on your phone.");
+  const [paymentStatus, setPaymentStatus] = useState<PaymentTransactionStatusResponse['status'] | null>(null);
+
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingAttemptsRef = useRef<number>(0);
+
+  const MAX_POLLING_ATTEMPTS = 24; 
+  const POLLING_INTERVAL_MS = 5000;
+
 
   const checkoutForm = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
-      phoneNumber: user?.address?.startsWith('254') ? user.address : "", // Pre-fill if user has Kenyan phone in address (example)
+      phoneNumber: "",
     },
   });
 
-   // Effect to pre-fill phone number from user profile if available
    useEffect(() => {
-    if (user?.address) { // Or a dedicated phone field on user model
-        // Basic check, adapt if user.address isn't the phone number
+    if (user?.address && !isStkFlowActive) { 
         const potentialPhone = user.address.replace(/\D/g, '');
         if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
              checkoutForm.setValue("phoneNumber", potentialPhone);
         }
     }
-   }, [user, checkoutForm]);
+   }, [user, checkoutForm, isStkFlowActive]);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    pollingAttemptsRef.current = 0;
+  }, []);
+
+  const handlePaymentSuccess = useCallback((orderId?: string) => {
+    stopPolling();
+    setPaymentStatus('successful');
+    setPollingMessage("Payment successful! Your order has been placed.");
+    toast.success("Order Placed Successfully!", {
+        description: "You can pick up your order at Dynamic Mall, Shop M90, CBD, Nairobi.",
+        duration: 15000,
+        action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } : 
+                         { label: "My Orders", onClick: () => router.push(`/orders`) },
+    });
+    fetchCart(); 
+  }, [stopPolling, router, fetchCart]);
+
+  const handlePaymentFailure = useCallback((message: string, finalStatus?: PaymentTransactionStatusResponse['status']) => {
+    stopPolling();
+    setPaymentStatus(finalStatus || 'failed_daraja');
+    const displayMessage = message || "Payment failed or was cancelled. Please try again.";
+    setPollingMessage(displayMessage);
+    toast.error(displayMessage, { duration: 10000 });
+  }, [stopPolling]);
 
 
-  const handleCheckout = async (data: CheckoutFormValues) => {
-    setIsCheckoutLoading(true);
-    setIsAwaitingPaymentConfirmation(false);
-    setLastCheckoutId(null);
+  const pollPaymentStatus = useCallback(async (checkoutIdToPoll: string) => {
+    if (!checkoutIdToPoll) { 
+        console.warn("pollPaymentStatus called without checkoutIdToPoll");
+        handlePaymentFailure("Cannot check payment status: Missing transaction ID.", "failed_processing_error");
+        return;
+    }
+    if (pollingAttemptsRef.current >= MAX_POLLING_ATTEMPTS) {
+      handlePaymentFailure("Payment confirmation timed out. If you paid, please check 'My Orders' or contact support.", 'failed_timeout');
+      return;
+    }
+
+    pollingAttemptsRef.current += 1;
+    setPollingMessage(`Checking payment status (attempt ${pollingAttemptsRef.current} of ${MAX_POLLING_ATTEMPTS})...`);
 
     try {
-      const response = await apiClient.post<StkPushInitiationResponse>(
-          '/orders/',
+      const statusResponse = await apiClient.get<PaymentTransactionStatusResponse>(`/orders/status/${checkoutIdToPoll}`, { needsAuth: true });
+      if (statusResponse) {
+        setPaymentStatus(statusResponse.status); 
+        
+        if (statusResponse.status === 'successful') {
+          handlePaymentSuccess(statusResponse.order_id);
+        } else if (['failed_stk_initiation', 'failed_stk_missing_id', 'failed_underpaid', 'failed_processing_error', 'cancelled_by_user', 'failed_daraja', 'failed_timeout', 'failed_missing_receipt'].includes(statusResponse.status)) {
+          handlePaymentFailure(statusResponse.message || "Payment process encountered an issue.", statusResponse.status);
+        } else if (statusResponse.status === 'not_found') {
+           handlePaymentFailure("Transaction details not found. This could be a delay or an issue. Please contact support if payment was made.", 'not_found');
+        } else { // Pending states
+           setPollingMessage(statusResponse.message || "Awaiting M-Pesa confirmation...");
+        }
+      } else { // Should ideally not happen if apiClient throws on non-OK
+        setPollingMessage("Could not retrieve payment status. Still trying...");
+      }
+    } catch (error: any) {
+      console.error("Polling error:", error);
+      if (error.message?.includes('404') || error.message?.toLowerCase().includes('not found')) {
+        handlePaymentFailure("Could not find this transaction to check its status. If you paid, contact support.", 'not_found');
+      } else {
+        setPollingMessage("Error checking status. Retrying...");
+      }
+    }
+  }, [handlePaymentSuccess, handlePaymentFailure]); // Dependencies for useCallback
+
+
+  useEffect(() => {
+    const isFinalSuccessState = paymentStatus === 'successful';
+    const isFinalNonSuccessState = 
+        paymentStatus === 'failed_stk_initiation' ||
+        paymentStatus === 'failed_stk_missing_id' ||
+        paymentStatus === 'failed_underpaid' ||
+        paymentStatus === 'failed_processing_error' ||
+        paymentStatus === 'cancelled_by_user' ||
+        paymentStatus === 'failed_daraja' ||
+        paymentStatus === 'failed_timeout' ||
+        paymentStatus === 'failed_missing_receipt' ||
+        paymentStatus === 'not_found';
+
+    if (stkCheckoutId && isStkFlowActive && 
+        !isFinalSuccessState && 
+        !isFinalNonSuccessState &&
+        !pollingIntervalRef.current) { 
+          
+      pollingAttemptsRef.current = 0;
+      if (paymentStatus === null || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') {
+         setPollingMessage("Waiting for M-Pesa confirmation..."); 
+      }
+      
+      pollPaymentStatus(stkCheckoutId);
+      
+      // After initial poll, re-check conditions to set interval
+      // This logic needs to be careful not to miss the state update from the first pollPaymentStatus call
+      // It's safer to let the interval start and let pollPaymentStatus handle stopping via final states.
+      if (!pollingIntervalRef.current) { // Check again ensures it wasn't stopped by the first poll
+        pollingIntervalRef.current = setInterval(() => {
+            if (stkCheckoutId) { 
+                 pollPaymentStatus(stkCheckoutId);
+            } else {
+                stopPolling(); 
+            }
+        }, POLLING_INTERVAL_MS);
+      }
+    } else if (isFinalSuccessState || isFinalNonSuccessState) {
+        // If a final state is reached (possibly by an update outside this effect's direct initiation)
+        stopPolling();
+    }
+    
+    return () => {
+      stopPolling();
+    };
+  }, [stkCheckoutId, isStkFlowActive, paymentStatus, pollPaymentStatus, stopPolling]);
+
+
+  const handleInitiateCheckout = async (data: CheckoutFormValues) => {
+    setIsStkFlowActive(true); 
+    setStkCheckoutId(null);   
+    setPaymentStatus('initiated'); 
+    setPollingMessage("Initiating M-Pesa payment...");
+
+    try {
+      const response = await apiClient.post<StkPushInitiationResponse & { transaction_id?: string }>(
+          '/orders/', 
           { phone_number: data.phoneNumber },
           { needsAuth: true }
       );
 
       if (response && response.CheckoutRequestID) {
-        toast.info("STK Push sent! Please check your phone to authorize M-Pesa payment.", { duration: 10000 });
-        setIsAwaitingPaymentConfirmation(true);
-        setLastCheckoutId(response.CheckoutRequestID); // Store for potential future status check
-        // Do NOT reset checkoutForm here, user might need to retry with same number
-        // Cart will be cleared by backend callback if successful
+        toast.info("STK Push sent! Please authorize payment on your phone.", { duration: 10000 });
+        setStkCheckoutId(response.CheckoutRequestID); 
       } else {
-        toast.error(response?.message || "Failed to initiate payment. No Checkout ID received. Please try again.");
+        const message = response?.message || response?.ResponseDescription || "Failed to initiate payment. No Checkout ID received.";
+        handlePaymentFailure(message, 'failed_stk_initiation');
       }
-
-    } catch (error: unknown) {
+    } catch (error: any) {
         console.error("Checkout initiation failed:", error);
-        let errorMessage = "Failed to initiate M-Pesa payment.";
-        if (error instanceof Error) {
-            errorMessage = error.message;
-        }
-        toast.error(errorMessage);
-    } finally {
-      setIsCheckoutLoading(false);
+        handlePaymentFailure(error.message || "Failed to initiate M-Pesa payment.", 'failed_stk_initiation');
     }
   };
 
-  // This is a simple way to refresh data when user comes back to this page after "paying"
-  useEffect(() => {
-    if (isAwaitingPaymentConfirmation) {
-        // Optional: Add a timer to automatically navigate or refresh orders after some time
-        // For now, user navigates manually.
-    }
-  }, [isAwaitingPaymentConfirmation]);
+  // --- Render logic ---
 
-
-  if (authIsLoading) {
+  if (authIsLoading) { 
     return <div className="flex justify-center items-center p-10 min-h-[300px]"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
   }
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated) { 
     return (
       <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -250,45 +369,92 @@ export default function CartPage() {
     );
   }
 
-  if (isAwaitingPaymentConfirmation) {
+  if (isStkFlowActive) {
+    let statusIcon = <Loader2 className="h-12 w-12 animate-spin text-primary" />;
+    let statusTitle = "Processing Payment...";
+    let alertVariantForComponent: "default" | "destructive" = "default"; 
+    let successAlertClasses = ""; 
+
+    if (paymentStatus === 'successful') {
+        statusIcon = <CheckCircle className="h-12 w-12 text-green-600" />;
+        statusTitle = "Payment Successful!";
+        alertVariantForComponent = "default"; 
+        successAlertClasses = "bg-green-50 border-green-500 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400";
+    } else if (paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found')) {
+        statusIcon = <XCircle className="h-12 w-12 text-red-600" />;
+        statusTitle = "Payment Issue";
+        alertVariantForComponent = "destructive"; 
+    } else if (stkCheckoutId || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation' || paymentStatus === 'pending_confirmation') { 
+        statusTitle = "Waiting for M-Pesa Confirmation...";
+        alertVariantForComponent = "default";
+    }
+
+
     return (
-        <div className="text-center py-10 flex flex-col items-center space-y-4 min-h-[calc(100vh-200px)] justify-center">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <h2 className="text-2xl font-semibold">Waiting for M-Pesa Confirmation...</h2>
-            <p className="text-muted-foreground max-w-lg">
-                Please complete the payment on your phone ({checkoutForm.getValues("phoneNumber")}).
-                Once confirmed, your order will be processed.
-            </p>
-            <Card className="mt-4 p-4 bg-blue-50 border-blue-200 text-blue-700 max-w-lg">
-                <div className="flex items-start space-x-3">
-                    <Info className="h-5 w-5 flex-shrink-0 mt-0.5"/>
-                    <div>
-                        <p className="font-semibold">Pickup Information:</p>
-                        <p className="text-sm">
-                            You can pick up your order at: <br />
-                            <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
-                        </p>
+        <div className="text-center py-10 flex flex-col items-center space-y-6 min-h-[calc(100vh-200px)] justify-center">
+            {statusIcon}
+            <h2 className="text-2xl font-semibold">
+                {statusTitle}
+            </h2>
+            
+            <Alert 
+                variant={alertVariantForComponent} 
+                className={cn("max-w-md text-left", successAlertClasses)}
+            >
+                {/* Conditionally render leading icon within Alert based on its structure */}
+                {/* For shadcn, Alert > svg + AlertTitle + AlertDescription */}
+                {paymentStatus === 'successful' && <CheckCircle className="h-4 w-4" />}
+                {paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') && <XCircle className="h-4 w-4" />}
+                {/* Show loader if stkCheckoutId is present AND status is one of the loading states */}
+                {stkCheckoutId && (paymentStatus === null || paymentStatus === 'pending_confirmation' || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') && <Loader2 className="h-4 w-4 animate-spin" />}
+                
+                <AlertTitle className="capitalize">
+                    {paymentStatus ? paymentStatus.replace(/_/g, ' ') : "Status"}
+                 </AlertTitle>
+                <AlertDescription>
+                    {pollingMessage || "Please wait while we confirm your payment."}
+                </AlertDescription>
+            </Alert>
+
+            {(paymentStatus === 'successful') && (
+                <Card className={cn("mt-4 p-4 max-w-lg", successAlertClasses)}> 
+                    <div className="flex items-start space-x-3">
+                        <Info className={cn("h-5 w-5 flex-shrink-0 mt-0.5", paymentStatus === 'successful' ? "text-green-700 dark:text-green-400" : "")}/>
+                        <div>
+                            <p className="font-semibold">Order Confirmed! Pickup Information:</p>
+                            <p className="text-sm">
+                                You can pick up your order at: <br />
+                                <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
+                            </p>
+                        </div>
                     </div>
-                </div>
-            </Card>
-            <p className="text-sm text-muted-foreground pt-2">
-                You can check your <Link href="/orders" className="underline text-primary hover:text-primary/80">orders page</Link> for updates.
-                The cart will update automatically once the order is confirmed.
-            </p>
+                </Card>
+            )}
+            
             <div className="flex space-x-4 pt-4">
-              <Button onClick={() => { setIsAwaitingPaymentConfirmation(false); /* fetchCart(); */ }} variant="outline">
-                  Cancel & Back to Cart
-              </Button>
+              {paymentStatus !== 'successful' && (
+                  <Button 
+                    onClick={() => { 
+                        stopPolling(); 
+                        setIsStkFlowActive(false); 
+                        setPaymentStatus(null); 
+                        setStkCheckoutId(null);
+                        checkoutForm.reset(); 
+                    }} 
+                    variant="outline"
+                  >
+                      { paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') ? "Try Again / Back to Cart" : "Cancel & Back to Cart"}
+                  </Button>
+              )}
               <Button onClick={() => router.push('/orders')}>
-                  Go to My Orders
+                  {paymentStatus === 'successful' ? 'View My Orders' : 'Check My Orders'}
               </Button>
             </div>
         </div>
     );
   }
 
-
-  if (cartIsLoading && !cart) { // Initial load of cart
+  if (cartIsLoading && !cart && !isStkFlowActive) { 
     return (
         <div>
              <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart</h1>
@@ -303,9 +469,8 @@ export default function CartPage() {
         </div>
     );
   }
-
-  if (!cart || itemCount === 0) {
-    return (
+  if ((!cart || itemCount === 0) && !isStkFlowActive) { 
+     return (
       <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
         <h2 className="mt-4 text-xl font-semibold">Your Cart is Empty</h2>
@@ -328,13 +493,13 @@ export default function CartPage() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y">
-                 {cart.items.map((item) => (
+                 {cart?.items.map((item) => ( 
                    <div key={item.id} className="px-4 sm:px-6">
                        <CartItem
                          item={item}
                          onUpdateQuantity={updateCartItem}
                          onRemoveItem={removeFromCart}
-                         isUpdating={cartIsLoading} // Pass global cart loading state
+                         isUpdating={cartIsLoading} 
                        />
                    </div>
                  ))}
@@ -353,7 +518,6 @@ export default function CartPage() {
                 <span>Subtotal</span>
                 <span>{formatPrice(totalPrice)}</span>
               </div>
-              {/* Add other costs like shipping if applicable */}
               <Separator />
               <div className="flex justify-between font-semibold text-lg">
                 <span>Total</span>
@@ -363,11 +527,11 @@ export default function CartPage() {
             <CardFooter className="flex-col items-stretch space-y-4">
                 <h3 className="text-lg font-semibold">Checkout with M-Pesa</h3>
                  <Form {...checkoutForm}>
-                    <form onSubmit={checkoutForm.handleSubmit(handleCheckout)} className="space-y-4">
+                    <form onSubmit={checkoutForm.handleSubmit(handleInitiateCheckout)} className="space-y-4">
                          <FormField
                             control={checkoutForm.control}
                             name="phoneNumber"
-                            render={({ field }) => (
+                            render={({ field }) => ( 
                               <FormItem>
                                 <FormLabel>M-Pesa Phone Number</FormLabel>
                                 <FormControl>
@@ -377,11 +541,12 @@ export default function CartPage() {
                               </FormItem>
                             )}
                           />
-                         <Button type="submit" className="w-full" disabled={isCheckoutLoading || itemCount === 0 || cartIsLoading}>
-                            {isCheckoutLoading ? (
+                         <Button type="submit" className="w-full" 
+                                 disabled={isStkFlowActive || itemCount === 0 || cartIsLoading || authIsLoading}> 
+                            {isStkFlowActive ? ( 
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Initiating Payment...
+                                    Processing... 
                                 </>
                             ) : (
                                 "Place Order & Pay with M-Pesa"
@@ -390,7 +555,6 @@ export default function CartPage() {
                     </form>
                  </Form>
                  <p className="text-xs text-muted-foreground text-center">
-                    Upon successful M-Pesa payment, your order will be confirmed. <br/>
                     Pickup at: <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
                  </p>
             </CardFooter>
