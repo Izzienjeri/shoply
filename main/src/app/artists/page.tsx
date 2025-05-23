@@ -9,7 +9,7 @@ import { apiClient } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, UserIcon } from "lucide-react"; // UserIcon for artist placeholder
+import { Terminal, UserIcon } from "lucide-react";
 
 interface ArtistCardProps {
   artist: Artist;
@@ -17,22 +17,20 @@ interface ArtistCardProps {
 
 function ArtistCard({ artist }: ArtistCardProps) {
   return (
-    <Link href={`/artists/${artist.id}`} legacyBehavior>
-      <a className="block group">
-        <Card className="h-full hover:shadow-lg transition-shadow duration-200">
-          <CardHeader className="flex flex-row items-center space-x-4 pb-2">
-            <div className="p-3 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
-                <UserIcon className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-            </div>
-            <CardTitle className="text-xl group-hover:text-primary transition-colors">{artist.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground line-clamp-3">
-              {artist.bio || "No biography available."}
-            </p>
-          </CardContent>
-        </Card>
-      </a>
+    <Link href={`/artists/${artist.id}`} className="block group"> {/* Removed legacyBehavior */}
+      <Card className="h-full hover:shadow-lg transition-shadow duration-200">
+        <CardHeader className="flex flex-row items-center space-x-4 pb-2">
+          <div className="p-3 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
+              <UserIcon className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+          </div>
+          <CardTitle className="text-xl group-hover:text-primary transition-colors">{artist.name}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground line-clamp-3">
+            {artist.bio || "No biography available."}
+          </p>
+        </CardContent>
+      </Card>
     </Link>
   );
 }

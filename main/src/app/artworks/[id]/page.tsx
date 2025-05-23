@@ -15,8 +15,7 @@ import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle, Terminal } from 'lucide-react'; // Added Terminal
 
 function ArtworkDetailSkeleton() {
   return (
@@ -25,16 +24,16 @@ function ArtworkDetailSkeleton() {
         <AspectRatio ratio={1 / 1} className="bg-muted" />
       </Skeleton>
       <div className="space-y-6">
-        <Skeleton className="h-10 w-3/4" /> {/* Name */}
-        <Skeleton className="h-6 w-1/2" /> {/* Artist */}
-        <Skeleton className="h-8 w-1/3" /> {/* Price */}
+        <Skeleton className="h-10 w-3/4" />
+        <Skeleton className="h-6 w-1/2" />
+        <Skeleton className="h-8 w-1/3" />
         <div className="space-y-2">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
         </div>
-        <Skeleton className="h-12 w-40" /> {/* Add to Cart Button */}
-        <Skeleton className="h-5 w-1/4" /> {/* Stock info */}
+        <Skeleton className="h-12 w-40" />
+        <Skeleton className="h-5 w-1/4" />
       </div>
     </div>
   );
@@ -77,9 +76,7 @@ export default function ArtworkDetailPage() {
     setIsAddingToCart(true);
     try {
       await addToCart(artwork.id, 1);
-      // Toast is handled in CartContext
     } catch (err) {
-      // Error already handled and toasted by CartContext
       console.error("Add to cart failed from ArtworkDetail page (already handled in context):", err);
     } finally {
       setIsAddingToCart(false);
@@ -96,6 +93,7 @@ export default function ArtworkDetailPage() {
     return (
       <div className="text-center py-10">
         <Alert variant="destructive" className="max-w-lg mx-auto">
+          <Terminal className="h-4 w-4" /> {/* Added Terminal icon */}
           <AlertTitle>Error Fetching Artwork</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -131,7 +129,7 @@ export default function ArtworkDetailPage() {
               fill
               className="object-cover"
               sizes="(max-width: 768px) 100vw, 50vw"
-              priority
+              priority // Added priority for LCP
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.srcset = placeholderImage;
@@ -151,7 +149,7 @@ export default function ArtworkDetailPage() {
             <h1 className="text-3xl lg:text-4xl font-bold font-serif text-primary tracking-tight">
               {artwork.name}
             </h1>
-            <Link href={`/artists/${artwork.artist.id}`} className="text-lg text-muted-foreground hover:text-primary transition-colors">
+            <Link href={`/artists/${artwork.artist.id}`} className="text-lg text-muted-foreground hover:text-primary transition-colors"> {/* Removed legacyBehavior */}
               By {artwork.artist.name}
             </Link>
           </div>

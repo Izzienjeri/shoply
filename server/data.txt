@@ -1,5 +1,5 @@
 # Extracted Python Code
-# Date and Time: 2025-05-23 02:02:52
+# Date and Time: 2025-05-23 02:58:36
 # Files Included: 16
 
 # === ./seed.py ===
@@ -408,14 +408,12 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         sqla_session = db.session
 
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
-    name = fields.Str(required=True)
-    bio = fields.Str()
-
-    class Meta:
-        model = Artist
-        load_instance = True
-        sqla_session = db.session
-
+     name = fields.Str(required=True)
+     bio = fields.Str()
+     artworks = fields.Nested("ArtworkSchema", many=True, dump_only=True) # <-- Add this line
+ 
+class Meta:
+         model = Artist
 
 class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
@@ -1408,6 +1406,7 @@ class DarajaCallback(Resource):
 
 payment_api.add_resource(DarajaCallback, '/callback')
 
+# === ./app/resources/auth.py ===
 # === ./app/resources/auth.py ===
 from flask import request, jsonify, Blueprint
 from flask_restful import Resource, Api

@@ -16,7 +16,7 @@ class Artist(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    artworks = db.relationship('Artwork', back_populates='artist', lazy='dynamic', cascade="all, delete-orphan")
+    artworks = db.relationship('Artwork', back_populates='artist', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Artist {self.name}>"

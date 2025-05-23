@@ -5,7 +5,7 @@ import { Artwork } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { ArtworkCard, ArtworkCardSkeleton } from '@/components/artwork/ArtworkCard';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal } from "lucide-react";
+import { Palette, Terminal } from "lucide-react";
 
 export default function ArtworksPage() {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
@@ -19,9 +19,9 @@ export default function ArtworksPage() {
       try {
         const fetchedArtworks = await apiClient.get<Artwork[]>('/artworks/');
         setArtworks(fetchedArtworks || []);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch artworks:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
+        setError(err.message || "An unknown error occurred");
       } finally {
         setIsLoading(false);
       }
@@ -50,13 +50,15 @@ export default function ArtworksPage() {
             <ArtworkCardSkeleton key={index} />
           ))
         ) : artworks.length > 0 ? (
-          artworks.map((artwork) => (
-            <ArtworkCard key={artwork.id} artwork={artwork} />
+          artworks.map((artwork, index) => (
+            <ArtworkCard key={artwork.id} artwork={artwork} isPriority={index < 4} />
           ))
         ) : (
           !error && (
-            <div className="col-span-full text-center text-muted-foreground">
-              No artwork found.
+            <div className="col-span-full text-center py-10 text-muted-foreground">
+                <Palette className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                <p className="text-xl">No artwork found.</p>
+                <p>Our gallery is currently empty. Please check back soon!</p>
             </div>
           )
         )}

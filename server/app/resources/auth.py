@@ -6,7 +6,7 @@ from .. import db, bcrypt
 from ..models import User
 from ..schemas import user_schema
 
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt, get_jwt_identity
 from .. import BLOCKLIST
 
 auth_bp = Blueprint('auth', __name__)
@@ -84,6 +84,20 @@ class UserLogout(Resource):
         BLOCKLIST.add(jti)
         return {"message": "Successfully logged out"}, 200
 
+class UserProfile(Resource):
+    @jwt_required()
+    def get(self):
+        """
+        Gets the current logged-in user's profile.
+        """
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        if not user:
+            return {"message": "User not found"}, 404
+        return user_schema.dump(user), 200
+
+
 auth_api.add_resource(UserRegistration, '/signup')
 auth_api.add_resource(UserLogin, '/login')
 auth_api.add_resource(UserLogout, '/logout')
+auth_api.add_resource(UserProfile, '/me')
