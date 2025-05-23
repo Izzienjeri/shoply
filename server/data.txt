@@ -1,5 +1,5 @@
 # Extracted Python Code
-# Date and Time: 2025-05-23 02:58:36
+# Date and Time: 2025-05-23 03:47:10
 # Files Included: 16
 
 # === ./seed.py ===
@@ -23,12 +23,20 @@ except ImportError:
     print("Faker not installed. Using basic placeholder data. (pip install Faker)")
     fake = None
 
+KENYAN_NAMES = [
+    "Wanjiku", "Omondi", "Achieng", "Kamau", "Otieno", "Njeri", "Mwangi", "Kiplagat", "Cherono", "Nyambura"
+]
+
+KENYAN_LOCATIONS = [
+    "Westlands, Nairobi", "Kisumu CBD", "Mombasa Island", "Eldoret Town", "Thika Road, Nairobi",
+    "Nyali, Mombasa", "Kasarani, Nairobi", "Lang'ata, Nairobi", "Kakamega", "Machakos Town",
+    "Kikuyu, Kiambu", "Ngong Road, Nairobi", "Rongai", "Meru Town", "Kitale"
+]
+
 def get_image_path(image_index):
-    """Constructs the relative path for the image URL field."""
     return f"{ARTWORK_IMAGE_FOLDER_RELATIVE}/{IMAGES_BASE_NAME}{image_index}.jpg"
 
 def clear_data():
-    """Clears existing data from tables in reverse dependency order."""
     print("Clearing existing data...")
     db.session.query(OrderItem).delete()
     db.session.query(CartItem).delete()
@@ -41,11 +49,12 @@ def clear_data():
     print("Data cleared.")
 
 def seed_artists(num_artists):
-    """Seeds the database with Artist data."""
     print(f"Seeding {num_artists} artists...")
     artists = []
     for i in range(num_artists):
-        artist_name = fake.name() if fake else f"Artist {i+1}"
+        first_name = fake.first_name() if fake else f"John"
+        kenyan_last_name = random.choice(KENYAN_NAMES)
+        artist_name = f"{first_name} {kenyan_last_name}"
         artist_bio = fake.paragraph(nb_sentences=3) if fake else f"This is the biography for {artist_name}."
         artist = Artist(name=artist_name, bio=artist_bio)
         artists.append(artist)
@@ -55,7 +64,6 @@ def seed_artists(num_artists):
     return artists
 
 def seed_artworks(artists, num_images_available, media_folder_base):
-    """Seeds the database with Artwork data, linking to artists and images."""
     if not artists:
         print("No artists available to assign artworks to. Skipping artwork seeding.")
         return
@@ -64,6 +72,8 @@ def seed_artworks(artists, num_images_available, media_folder_base):
     artworks = []
     image_folder_full_path = os.path.join(media_folder_base, ARTWORK_IMAGE_FOLDER_RELATIVE)
     print(f"Checking for images in: {image_folder_full_path}")
+
+    one_shilling_added = False
 
     for i in range(1, num_images_available + 1):
         image_filename = f"{IMAGES_BASE_NAME}{i}.jpg"
@@ -74,9 +84,15 @@ def seed_artworks(artists, num_images_available, media_folder_base):
             print(f"Warning: Image file not found: {image_full_path}. Skipping artwork {i}.")
             continue
 
-        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}: {random.choice(['Sunrise', 'Portrait', 'Abstract', 'Landscape'])}"
+        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}"
         description = fake.text(max_nb_chars=200) if fake else f"A beautiful piece numbered {i}."
-        price = Decimal(random.uniform(50.0, 1500.0)).quantize(Decimal("0.01"))
+
+        if not one_shilling_added:
+            price = Decimal(1)
+            one_shilling_added = True
+        else:
+            price = Decimal(random.randint(500, 15000))  # Prices between KSh 500 and 15,000
+
         stock_quantity = random.randint(0, 10)
         assigned_artist = random.choice(artists)
 
@@ -95,16 +111,15 @@ def seed_artworks(artists, num_images_available, media_folder_base):
         db.session.commit()
         print(f"{len(artworks)} artworks seeded.")
     else:
-        print("No artworks were seeded (possibly due to missing images or artists).")
+        print("No artworks were seeded.")
 
 def seed_users(num_users):
-    """Seeds the database with User data."""
     print(f"Seeding {num_users} users...")
     users = []
     for i in range(num_users):
         user_email = fake.email() if fake else f"user{i+1}@example.com"
         user_name = fake.name() if fake else f"Test User {i+1}"
-        user_address = fake.address() if fake else f"{i+1} Seed St, Testville"
+        user_address = random.choice(KENYAN_LOCATIONS)
 
         if User.query.filter_by(email=user_email).first():
             print(f"User with email {user_email} already exists, skipping.")
@@ -118,8 +133,7 @@ def seed_users(num_users):
 
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
-        print(f"Created user: {user_email}")
-
+        print(f"Created user: {user_email}, Address: {user_address}")
 
     if users:
         db.session.add_all(users)
@@ -131,14 +145,13 @@ def seed_users(num_users):
     return users
 
 def run_seed():
-    """Main function to run the seeding process."""
     app = create_app()
     with app.app_context():
         media_folder = app.config.get('MEDIA_FOLDER')
         if not media_folder or not os.path.isdir(media_folder):
-             print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
-             print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
-             return
+            print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
+            print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
+            return
 
         clear_data()
         created_artists = seed_artists(NUM_ARTISTS)
@@ -277,12 +290,12 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-# === ./migrations/versions/7a98d245193e_add_artist_model_rename_product_to_.py ===
-"""Add Artist model, rename Product to Artwork, establish relationships
+# === ./migrations/versions/4bb9150fb57f_done.py ===
+"""done
 
-Revision ID: 7a98d245193e
+Revision ID: 4bb9150fb57f
 Revises: 
-Create Date: 2025-05-04 04:43:31.344868
+Create Date: 2025-05-23 03:37:35.703861
 
 """
 from alembic import op
@@ -290,7 +303,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '7a98d245193e'
+revision = '4bb9150fb57f'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -387,6 +400,7 @@ def downgrade():
     # ### end Alembic commands ###
 
 # === ./app/schemas.py ===
+# === ./app/schemas.py ===
 from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions
 from flask import url_for, current_app
 
@@ -408,19 +422,21 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         sqla_session = db.session
 
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
-     name = fields.Str(required=True)
-     bio = fields.Str()
-     artworks = fields.Nested("ArtworkSchema", many=True, dump_only=True) # <-- Add this line
- 
-class Meta:
-         model = Artist
+    name = fields.Str(required=True)
+    bio = fields.Str()
+    artworks = fields.Nested("ArtworkSchema", many=True, dump_only=True) # Already using string ref, good
+
+    class Meta:
+        model = Artist
+        load_instance = True
+        sqla_session = db.session
 
 class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
     stock_quantity = fields.Int(validate=validate.Range(min=0))
     image_url = fields.String(dump_only=True, required=False, allow_none=True)
 
-    artist = fields.Nested(ArtistSchema, only=('id', 'name'), dump_only=True)
+    artist = fields.Nested("ArtistSchema", only=('id', 'name'), dump_only=True) # CHANGED: Used string reference "ArtistSchema"
     artist_id = fields.Str(required=True, load_only=True)
 
     class Meta:
@@ -434,22 +450,28 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
         relative_path = data.get('image_url')
         if relative_path:
             try:
-                with current_app.app_context():
+                # Ensure app context is available. This check might be redundant if always called within one.
+                if current_app:
                      absolute_url = url_for('serve_media', filename=relative_path, _external=True)
-                data['image_url'] = absolute_url
-            except RuntimeError as e:
-                current_app.logger.error(f"Could not generate URL for '{relative_path}'. Is app context available? Error: {e}", exc_info=True)
-                data['image_url'] = None
+                     data['image_url'] = absolute_url
+                else: # Should not happen in normal request cycle
+                    current_app.logger.error(f"No Flask app context available for generating URL for '{relative_path}'.")
+                    data['image_url'] = None # Or keep relative_path, or a placeholder
+            except RuntimeError as e: # Catch if url_for is called outside app/request context
+                # Log the error, but avoid crashing. 'current_app' might not be available here either.
+                # Consider using a generic logger if current_app is the issue.
+                print(f"Could not generate URL for '{relative_path}'. Is app context available? Error: {e}")
+                data['image_url'] = None # Or some fallback
             except Exception as e:
-                current_app.logger.error(f"Unexpected error generating URL for '{relative_path}': {e}", exc_info=True)
-                data['image_url'] = None
+                print(f"Unexpected error generating URL for '{relative_path}': {e}")
+                data['image_url'] = None # Or some fallback
         else:
             data['image_url'] = None
         return data
 
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
     artwork = fields.Nested(
-        ArtworkSchema,
+        "ArtworkSchema", # Using string reference for consistency
         only=('id', 'name', 'price', 'image_url', 'artist', 'stock_quantity')
     )
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
@@ -461,7 +483,7 @@ class CartItemSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('cart_id',)
 
 class CartSchema(ma.SQLAlchemyAutoSchema):
-    items = fields.Nested(CartItemSchema, many=True)
+    items = fields.Nested(CartItemSchema, many=True) # CartItemSchema is defined above, direct ref is fine
     total_price = fields.Method("calculate_total", dump_only=True)
 
     def calculate_total(self, cart):
@@ -470,23 +492,25 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         items_iterable = []
         if hasattr(cart, 'items'):
             try:
+                # items can be a list (if manually populated) or a SQLAlchemy dynamic relationship
                 items_iterable = cart.items.all() if callable(getattr(cart.items, 'all', None)) else cart.items
             except Exception as e:
-                 current_app.logger.warning(f"Could not iterate cart items for cart {cart.id}: {e}")
-                 items_iterable = []
+                 # Use current_app.logger if available and in context
+                 print(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}")
+                 items_iterable = [] # Ensure it's an empty list
 
         for item in items_iterable:
              if (hasattr(item, 'artwork') and item.artwork and
                  hasattr(item.artwork, 'price') and item.artwork.price is not None and
                  hasattr(item, 'quantity')):
                  try:
-                      item_price = Decimal(item.artwork.price)
+                      item_price = Decimal(item.artwork.price) # Price from artwork should already be Decimal
                       total += item_price * Decimal(item.quantity)
                  except (TypeError, ValueError, InvalidOperation) as e:
-                      current_app.logger.warning(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}")
+                      print(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}")
                       continue
              else:
-                 current_app.logger.warning(f"Artwork data (price/quantity) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {cart.id}. Cannot calculate total accurately.")
+                 print(f"Artwork data (price/quantity) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
 
         return str(total)
 
@@ -497,7 +521,7 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
 
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
-    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'image_url', 'artist'))
+    artwork = fields.Nested("ArtworkSchema", only=('id', 'name', 'image_url', 'artist')) # Using string reference
     price_at_purchase = fields.Decimal(as_string=True, dump_only=True)
     quantity = fields.Int(dump_only=True)
 
@@ -508,10 +532,10 @@ class OrderItemSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('order_id',)
 
 class OrderSchema(ma.SQLAlchemyAutoSchema):
-    items = fields.Nested(OrderItemSchema, many=True, dump_only=True)
+    items = fields.Nested(OrderItemSchema, many=True, dump_only=True) # OrderItemSchema is defined above
     total_price = fields.Decimal(as_string=True, dump_only=True)
     status = fields.Str(dump_only=True)
-    user_id = fields.String(dump_only=True)
+    user_id = fields.String(dump_only=True) # Or fields.Nested("UserSchema", only=("id", "email")) if you want user details
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
     shipped_at = fields.DateTime(dump_only=True, allow_none=True)
@@ -556,7 +580,7 @@ class Artist(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    artworks = db.relationship('Artwork', back_populates='artist', lazy='dynamic', cascade="all, delete-orphan")
+    artworks = db.relationship('Artwork', back_populates='artist', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Artist {self.name}>"
@@ -1407,7 +1431,6 @@ class DarajaCallback(Resource):
 payment_api.add_resource(DarajaCallback, '/callback')
 
 # === ./app/resources/auth.py ===
-# === ./app/resources/auth.py ===
 from flask import request, jsonify, Blueprint
 from flask_restful import Resource, Api
 from marshmallow import ValidationError
@@ -1416,7 +1439,7 @@ from .. import db, bcrypt
 from ..models import User
 from ..schemas import user_schema
 
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt, get_jwt_identity
 from .. import BLOCKLIST
 
 auth_bp = Blueprint('auth', __name__)
@@ -1494,9 +1517,23 @@ class UserLogout(Resource):
         BLOCKLIST.add(jti)
         return {"message": "Successfully logged out"}, 200
 
+class UserProfile(Resource):
+    @jwt_required()
+    def get(self):
+        """
+        Gets the current logged-in user's profile.
+        """
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        if not user:
+            return {"message": "User not found"}, 404
+        return user_schema.dump(user), 200
+
+
 auth_api.add_resource(UserRegistration, '/signup')
 auth_api.add_resource(UserLogin, '/login')
 auth_api.add_resource(UserLogout, '/logout')
+auth_api.add_resource(UserProfile, '/me')
 
 # === ./app/resources/artwork.py ===
 from flask import request, Blueprint, jsonify

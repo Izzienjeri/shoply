@@ -1,8 +1,8 @@
-"""Add Artist model, rename Product to Artwork, establish relationships
+"""done
 
-Revision ID: 7a98d245193e
+Revision ID: 4bb9150fb57f
 Revises: 
-Create Date: 2025-05-04 04:43:31.344868
+Create Date: 2025-05-23 03:37:35.703861
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '7a98d245193e'
+revision = '4bb9150fb57f'
 down_revision = None
 branch_labels = None
 depends_on = None

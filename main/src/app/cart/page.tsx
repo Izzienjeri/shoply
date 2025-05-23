@@ -1,6 +1,7 @@
+// === app/cart/page.tsx ===
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -29,7 +30,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info } from 'lucide-react'; // Added Info
 
 const checkoutSchema = z.object({
   phoneNumber: z.string()
@@ -44,7 +45,7 @@ interface CartItemProps {
   item: CartItemType;
   onUpdateQuantity: (itemId: string, newQuantity: number) => Promise<void>;
   onRemoveItem: (itemId: string) => Promise<void>;
-  isUpdating: boolean;
+  isUpdating: boolean; // Global cart loading state
 }
 
 function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItemProps) {
@@ -78,13 +79,13 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
   const placeholderImage = "/placeholder-image.svg";
 
   return (
-    <div className="flex items-center space-x-4 py-4 border-b last:border-b-0">
-      <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+    <div className="flex items-start sm:items-center space-x-3 sm:space-x-4 py-4 border-b last:border-b-0 flex-col sm:flex-row">
+      <div className="relative h-20 w-20 sm:h-24 sm:w-24 flex-shrink-0 overflow-hidden rounded-md border bg-muted mb-2 sm:mb-0">
         <Image
           src={item.artwork.image_url || placeholderImage}
           alt={item.artwork.name}
           fill
-          sizes="(max-width: 768px) 10vw, 80px"
+          sizes="(max-width: 640px) 20vw, 96px"
           className="object-cover"
           onError={(e) => {
             (e.target as HTMLImageElement).srcset = placeholderImage;
@@ -94,57 +95,61 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
          {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-8 w-8 text-muted-foreground" />}
       </div>
 
-      <div className="flex-1 space-y-1">
-        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline">
+      <div className="flex-1 space-y-1 min-w-0">
+        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-base sm:text-lg line-clamp-2">
           {item.artwork.name}
         </Link>
-        <p className="text-sm text-muted-foreground">{item.artwork.artist.name}</p>
-        <p className="text-sm font-medium">{formatPrice(item.artwork.price)}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground">By: {item.artwork.artist.name}</p>
+        <p className="text-xs sm:text-sm font-medium">{formatPrice(item.artwork.price)}</p>
       </div>
 
-      <div className="flex flex-col items-center space-y-1">
+      <div className="flex flex-row sm:flex-col items-center sm:items-end space-x-2 sm:space-x-0 sm:space-y-1 mt-2 sm:mt-0">
          <div className="flex items-center border rounded-md">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7 sm:h-8 sm:w-8"
               onClick={() => handleQuantityChange(item.quantity - 1)}
               disabled={item.quantity <= 1 || isQuantityUpdating || isUpdating}
+              aria-label="Decrease quantity"
             >
-              <Minus className="h-4 w-4" />
-              <span className="sr-only">Decrease quantity</span>
+              <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
             </Button>
-            <span className="w-8 text-center text-sm font-medium">
-                {isQuantityUpdating ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : item.quantity}
+            <span className="w-7 text-center text-xs sm:text-sm font-medium">
+                {isQuantityUpdating ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin mx-auto" /> : item.quantity}
             </span>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7 sm:h-8 sm:w-8"
               onClick={() => handleQuantityChange(item.quantity + 1)}
               disabled={isQuantityUpdating || isUpdating || item.quantity >= item.artwork.stock_quantity}
+              aria-label="Increase quantity"
             >
-              <Plus className="h-4 w-4" />
-              <span className="sr-only">Increase quantity</span>
+              <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
             </Button>
          </div>
-        <p className="text-xs text-muted-foreground">
-            {item.artwork.stock_quantity < 5 && item.artwork.stock_quantity > 0 ? `Only ${item.artwork.stock_quantity} left` : ''}
-            {item.artwork.stock_quantity === 0 ? 'Out of stock' : ''}
-        </p>
+        {item.artwork.stock_quantity > 0 && item.artwork.stock_quantity < 5 && (
+            <p className="text-xs text-orange-600 mt-1">Only {item.artwork.stock_quantity} left</p>
+        )}
+        {item.artwork.stock_quantity === 0 && !isQuantityUpdating && (
+             <p className="text-xs text-red-600 mt-1">Out of stock</p>
+        )}
       </div>
 
-      <div className="font-medium">{formatPrice(parseFloat(item.artwork.price) * item.quantity)}</div>
+      <div className="font-medium text-sm sm:text-base w-full sm:w-auto text-right sm:text-left mt-2 sm:mt-0">
+        {formatPrice(parseFloat(item.artwork.price) * item.quantity)}
+      </div>
 
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+        className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-destructive ml-auto sm:ml-0"
         onClick={handleRemove}
         disabled={isRemoving || isUpdating}
+        aria-label="Remove item"
       >
-        {isRemoving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-        <span className="sr-only">Remove item</span>
+        {isRemoving ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin"/> : <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />}
       </Button>
     </div>
   );
@@ -158,21 +163,38 @@ export default function CartPage() {
     totalPrice,
     updateCartItem,
     removeFromCart,
-    clearCart,
+    fetchCart, // Add fetchCart to dependencies if needed for refresh
   } = useCart();
-  const { isAuthenticated, isLoading: authIsLoading } = useAuth();
+  const { isAuthenticated, isLoading: authIsLoading, user } = useAuth();
   const router = useRouter();
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [isAwaitingPaymentConfirmation, setIsAwaitingPaymentConfirmation] = useState(false);
+  const [lastCheckoutId, setLastCheckoutId] = useState<string | null>(null);
 
   const checkoutForm = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
-      phoneNumber: "",
+      phoneNumber: user?.address?.startsWith('254') ? user.address : "", // Pre-fill if user has Kenyan phone in address (example)
     },
   });
 
+   // Effect to pre-fill phone number from user profile if available
+   useEffect(() => {
+    if (user?.address) { // Or a dedicated phone field on user model
+        // Basic check, adapt if user.address isn't the phone number
+        const potentialPhone = user.address.replace(/\D/g, '');
+        if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
+             checkoutForm.setValue("phoneNumber", potentialPhone);
+        }
+    }
+   }, [user, checkoutForm]);
+
+
   const handleCheckout = async (data: CheckoutFormValues) => {
     setIsCheckoutLoading(true);
+    setIsAwaitingPaymentConfirmation(false);
+    setLastCheckoutId(null);
+
     try {
       const response = await apiClient.post<StkPushInitiationResponse>(
           '/orders/',
@@ -180,20 +202,21 @@ export default function CartPage() {
           { needsAuth: true }
       );
 
-      if (response) {
-        toast.success(response.message || "STK Push initiated. Check your phone to complete payment.");
+      if (response && response.CheckoutRequestID) {
+        toast.info("STK Push sent! Please check your phone to authorize M-Pesa payment.", { duration: 10000 });
+        setIsAwaitingPaymentConfirmation(true);
+        setLastCheckoutId(response.CheckoutRequestID); // Store for potential future status check
+        // Do NOT reset checkoutForm here, user might need to retry with same number
+        // Cart will be cleared by backend callback if successful
       } else {
-        toast.success("Checkout process initiated (received null response).");
+        toast.error(response?.message || "Failed to initiate payment. No Checkout ID received. Please try again.");
       }
-      checkoutForm.reset();
 
     } catch (error: unknown) {
         console.error("Checkout initiation failed:", error);
-        let errorMessage = "Failed to initiate checkout.";
+        let errorMessage = "Failed to initiate M-Pesa payment.";
         if (error instanceof Error) {
             errorMessage = error.message;
-        } else if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
-             errorMessage = (error as ApiErrorResponse).message;
         }
         toast.error(errorMessage);
     } finally {
@@ -201,34 +224,81 @@ export default function CartPage() {
     }
   };
 
+  // This is a simple way to refresh data when user comes back to this page after "paying"
+  useEffect(() => {
+    if (isAwaitingPaymentConfirmation) {
+        // Optional: Add a timer to automatically navigate or refresh orders after some time
+        // For now, user navigates manually.
+    }
+  }, [isAwaitingPaymentConfirmation]);
+
+
   if (authIsLoading) {
-    return <div className="flex justify-center items-center p-10"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
+    return <div className="flex justify-center items-center p-10 min-h-[300px]"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="text-center py-10">
+      <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
         <h2 className="mt-4 text-xl font-semibold">Your Cart is Empty</h2>
-        <p className="mt-2 text-muted-foreground">Looks like you need to log in to view your cart.</p>
+        <p className="mt-2 text-muted-foreground">Please log in to view or add items to your cart.</p>
         <Button asChild className="mt-4">
-          <Link href="/login">Log In</Link>
+          <Link href="/login?redirect=/cart">Log In</Link>
         </Button>
       </div>
     );
   }
 
-  if (cartIsLoading && !cart) {
+  if (isAwaitingPaymentConfirmation) {
+    return (
+        <div className="text-center py-10 flex flex-col items-center space-y-4 min-h-[calc(100vh-200px)] justify-center">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <h2 className="text-2xl font-semibold">Waiting for M-Pesa Confirmation...</h2>
+            <p className="text-muted-foreground max-w-lg">
+                Please complete the payment on your phone ({checkoutForm.getValues("phoneNumber")}).
+                Once confirmed, your order will be processed.
+            </p>
+            <Card className="mt-4 p-4 bg-blue-50 border-blue-200 text-blue-700 max-w-lg">
+                <div className="flex items-start space-x-3">
+                    <Info className="h-5 w-5 flex-shrink-0 mt-0.5"/>
+                    <div>
+                        <p className="font-semibold">Pickup Information:</p>
+                        <p className="text-sm">
+                            You can pick up your order at: <br />
+                            <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
+                        </p>
+                    </div>
+                </div>
+            </Card>
+            <p className="text-sm text-muted-foreground pt-2">
+                You can check your <Link href="/orders" className="underline text-primary hover:text-primary/80">orders page</Link> for updates.
+                The cart will update automatically once the order is confirmed.
+            </p>
+            <div className="flex space-x-4 pt-4">
+              <Button onClick={() => { setIsAwaitingPaymentConfirmation(false); /* fetchCart(); */ }} variant="outline">
+                  Cancel & Back to Cart
+              </Button>
+              <Button onClick={() => router.push('/orders')}>
+                  Go to My Orders
+              </Button>
+            </div>
+        </div>
+    );
+  }
+
+
+  if (cartIsLoading && !cart) { // Initial load of cart
     return (
         <div>
              <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart</h1>
              <div className="space-y-4">
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-28 w-full" />
              </div>
               <div className="mt-6">
                   <Skeleton className="h-10 w-1/3 ml-auto" />
-                  <Skeleton className="h-10 w-full mt-4" />
+                  <Skeleton className="h-12 w-full mt-4" />
               </div>
         </div>
     );
@@ -236,7 +306,7 @@ export default function CartPage() {
 
   if (!cart || itemCount === 0) {
     return (
-      <div className="text-center py-10">
+      <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
         <h2 className="mt-4 text-xl font-semibold">Your Cart is Empty</h2>
         <p className="mt-2 text-muted-foreground">Add some amazing artwork to get started.</p>
@@ -254,17 +324,17 @@ export default function CartPage() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Items</CardTitle>
+              <CardTitle>Items in your cart</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y">
                  {cart.items.map((item) => (
-                   <div key={item.id} className="px-6">
+                   <div key={item.id} className="px-4 sm:px-6">
                        <CartItem
                          item={item}
                          onUpdateQuantity={updateCartItem}
                          onRemoveItem={removeFromCart}
-                         isUpdating={cartIsLoading}
+                         isUpdating={cartIsLoading} // Pass global cart loading state
                        />
                    </div>
                  ))}
@@ -283,6 +353,7 @@ export default function CartPage() {
                 <span>Subtotal</span>
                 <span>{formatPrice(totalPrice)}</span>
               </div>
+              {/* Add other costs like shipping if applicable */}
               <Separator />
               <div className="flex justify-between font-semibold text-lg">
                 <span>Total</span>
@@ -310,14 +381,18 @@ export default function CartPage() {
                             {isCheckoutLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Processing...
+                                    Initiating Payment...
                                 </>
                             ) : (
-                                "Place Order & Pay"
+                                "Place Order & Pay with M-Pesa"
                             )}
                          </Button>
                     </form>
                  </Form>
+                 <p className="text-xs text-muted-foreground text-center">
+                    Upon successful M-Pesa payment, your order will be confirmed. <br/>
+                    Pickup at: <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
+                 </p>
             </CardFooter>
           </Card>
         </div>

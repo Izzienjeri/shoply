@@ -18,12 +18,20 @@ except ImportError:
     print("Faker not installed. Using basic placeholder data. (pip install Faker)")
     fake = None
 
+KENYAN_NAMES = [
+    "Wanjiku", "Omondi", "Achieng", "Kamau", "Otieno", "Njeri", "Mwangi", "Kiplagat", "Cherono", "Nyambura"
+]
+
+KENYAN_LOCATIONS = [
+    "Westlands, Nairobi", "Kisumu CBD", "Mombasa Island", "Eldoret Town", "Thika Road, Nairobi",
+    "Nyali, Mombasa", "Kasarani, Nairobi", "Lang'ata, Nairobi", "Kakamega", "Machakos Town",
+    "Kikuyu, Kiambu", "Ngong Road, Nairobi", "Rongai", "Meru Town", "Kitale"
+]
+
 def get_image_path(image_index):
-    """Constructs the relative path for the image URL field."""
     return f"{ARTWORK_IMAGE_FOLDER_RELATIVE}/{IMAGES_BASE_NAME}{image_index}.jpg"
 
 def clear_data():
-    """Clears existing data from tables in reverse dependency order."""
     print("Clearing existing data...")
     db.session.query(OrderItem).delete()
     db.session.query(CartItem).delete()
@@ -36,11 +44,12 @@ def clear_data():
     print("Data cleared.")
 
 def seed_artists(num_artists):
-    """Seeds the database with Artist data."""
     print(f"Seeding {num_artists} artists...")
     artists = []
     for i in range(num_artists):
-        artist_name = fake.name() if fake else f"Artist {i+1}"
+        first_name = fake.first_name() if fake else f"John"
+        kenyan_last_name = random.choice(KENYAN_NAMES)
+        artist_name = f"{first_name} {kenyan_last_name}"
         artist_bio = fake.paragraph(nb_sentences=3) if fake else f"This is the biography for {artist_name}."
         artist = Artist(name=artist_name, bio=artist_bio)
         artists.append(artist)
@@ -50,7 +59,6 @@ def seed_artists(num_artists):
     return artists
 
 def seed_artworks(artists, num_images_available, media_folder_base):
-    """Seeds the database with Artwork data, linking to artists and images."""
     if not artists:
         print("No artists available to assign artworks to. Skipping artwork seeding.")
         return
@@ -59,6 +67,8 @@ def seed_artworks(artists, num_images_available, media_folder_base):
     artworks = []
     image_folder_full_path = os.path.join(media_folder_base, ARTWORK_IMAGE_FOLDER_RELATIVE)
     print(f"Checking for images in: {image_folder_full_path}")
+
+    one_shilling_added = False
 
     for i in range(1, num_images_available + 1):
         image_filename = f"{IMAGES_BASE_NAME}{i}.jpg"
@@ -69,9 +79,15 @@ def seed_artworks(artists, num_images_available, media_folder_base):
             print(f"Warning: Image file not found: {image_full_path}. Skipping artwork {i}.")
             continue
 
-        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}: {random.choice(['Sunrise', 'Portrait', 'Abstract', 'Landscape'])}"
+        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}"
         description = fake.text(max_nb_chars=200) if fake else f"A beautiful piece numbered {i}."
-        price = Decimal(random.uniform(50.0, 1500.0)).quantize(Decimal("0.01"))
+
+        if not one_shilling_added:
+            price = Decimal(1)
+            one_shilling_added = True
+        else:
+            price = Decimal(random.randint(500, 15000))  # Prices between KSh 500 and 15,000
+
         stock_quantity = random.randint(0, 10)
         assigned_artist = random.choice(artists)
 
@@ -90,16 +106,15 @@ def seed_artworks(artists, num_images_available, media_folder_base):
         db.session.commit()
         print(f"{len(artworks)} artworks seeded.")
     else:
-        print("No artworks were seeded (possibly due to missing images or artists).")
+        print("No artworks were seeded.")
 
 def seed_users(num_users):
-    """Seeds the database with User data."""
     print(f"Seeding {num_users} users...")
     users = []
     for i in range(num_users):
         user_email = fake.email() if fake else f"user{i+1}@example.com"
         user_name = fake.name() if fake else f"Test User {i+1}"
-        user_address = fake.address() if fake else f"{i+1} Seed St, Testville"
+        user_address = random.choice(KENYAN_LOCATIONS)
 
         if User.query.filter_by(email=user_email).first():
             print(f"User with email {user_email} already exists, skipping.")
@@ -113,8 +128,7 @@ def seed_users(num_users):
 
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
-        print(f"Created user: {user_email}")
-
+        print(f"Created user: {user_email}, Address: {user_address}")
 
     if users:
         db.session.add_all(users)
@@ -126,14 +140,13 @@ def seed_users(num_users):
     return users
 
 def run_seed():
-    """Main function to run the seeding process."""
     app = create_app()
     with app.app_context():
         media_folder = app.config.get('MEDIA_FOLDER')
         if not media_folder or not os.path.isdir(media_folder):
-             print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
-             print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
-             return
+            print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
+            print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
+            return
 
         clear_data()
         created_artists = seed_artists(NUM_ARTISTS)
