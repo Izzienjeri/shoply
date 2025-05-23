@@ -1,3 +1,5 @@
+# === ./app/__init__.py ===
+
 import os
 from flask import Flask, jsonify, send_from_directory, abort, current_app
 from flask_sqlalchemy import SQLAlchemy
@@ -22,13 +24,12 @@ def check_if_token_in_blocklist(jwt_header, jwt_payload):
     jti = jwt_payload["jti"]
     return jti in BLOCKLIST
 
-
 @jwt.unauthorized_loader
 def missing_token_callback(error):
     return jsonify({"description": "Request does not contain an access token.", "error": "authorization_required"}), 401
 
 def create_app(config_class=Config):
-    app = Flask(__name__)
+    app = Flask(__name__) # Corrected: __name__
     app.config.from_object(config_class)
 
     print(f"DEBUG: Connecting to DB: {app.config['SQLALCHEMY_DATABASE_URI']}")
@@ -44,19 +45,15 @@ def create_app(config_class=Config):
     ma.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
 
-    from . import models
+    from . import models # Import models after db is initialized and configured
 
     @app.route('/media/<path:filename>')
     def serve_media(filename):
-        """
-        Serves files from the MEDIA_FOLDER.
-        Example: /media/artwork_images/art1.jpg will serve file from ./server/media/artwork_images/art1.jpg
-        """
         print(f"Attempting to serve media file: {filename}")
         media_folder = current_app.config.get('MEDIA_FOLDER')
         if not media_folder:
-             print("ERROR: MEDIA_FOLDER not configured in Flask app.")
-             abort(500)
+            print("ERROR: MEDIA_FOLDER not configured in Flask app.")
+            abort(500)
         try:
             return send_from_directory(media_folder, filename)
         except FileNotFoundError:
@@ -64,8 +61,8 @@ def create_app(config_class=Config):
             print(f"ERROR: File not found: {full_path}")
             abort(404)
         except Exception as e:
-             print(f"ERROR: Unexpected error serving file {filename}: {e}")
-             abort(500)
+            print(f"ERROR: Unexpected error serving file {filename}: {e}")
+            abort(500)
 
 
     from .resources.auth import auth_bp
@@ -74,6 +71,7 @@ def create_app(config_class=Config):
     from .resources.cart import cart_bp
     from .resources.order import order_bp
     from .resources.payment import payment_bp
+    from .resources.delivery import delivery_bp # <--- IMPORT NEW BLUEPRINT
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(artwork_bp, url_prefix='/api/artworks')
@@ -81,6 +79,7 @@ def create_app(config_class=Config):
     app.register_blueprint(cart_bp, url_prefix='/api/cart')
     app.register_blueprint(order_bp, url_prefix='/api/orders')
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
+    app.register_blueprint(delivery_bp, url_prefix='/api/delivery') # <--- REGISTER NEW BLUEPRINT
 
 
     @app.route('/')

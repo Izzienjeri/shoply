@@ -5,20 +5,20 @@ export interface Artist {
   bio?: string;
   created_at: string;
   updated_at: string;
-  artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description'>[]; // For artist detail page
+  artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description'>[];
 }
 
 export interface Artwork {
   id: string;
   name: string;
   description?: string;
-  price: string; // Keep as string, backend sends Decimal as_string=True
+  price: string;
   stock_quantity: number;
   created_at: string;
   updated_at: string;
   image_url?: string | null;
-  artist_id: string; // Received from backend, but mostly use nested artist object
-  artist: Pick<Artist, 'id' | 'name'>; // Artist summary
+  artist_id: string;
+  artist: Pick<Artist, 'id' | 'name'>;
 }
 
 export interface CartItem {
@@ -33,22 +33,34 @@ export interface Cart {
   created_at: string;
   updated_at: string;
   items: CartItem[];
-  total_price?: string; // Calculated by backend schema
+  total_price?: string; // This is cart subtotal from backend CartSchema
 }
+
+// --- NEW ---
+export interface DeliveryOption {
+  id: string;
+  name: string;
+  price: string; // Keep as string from backend
+  description?: string | null;
+  is_pickup: boolean;
+  active: boolean; // Though API only sends active ones
+  sort_order: number;
+}
+// --- END NEW ---
 
 export interface OrderItem {
   id: string;
   artwork_id: string;
   quantity: number;
-  price_at_purchase: string; // Backend sends Decimal as_string=True
+  price_at_purchase: string;
   artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist'>;
 }
 
 export interface Order {
   id: string;
   user_id: string;
-  total_price: string; // Backend sends Decimal as_string=True
-  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
+  total_price: string; // Grand Total (items + delivery)
+  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled'; // Add other failure statuses if needed for specific UI
   created_at: string;
   updated_at: string;
   shipped_at?: string | null;
@@ -56,38 +68,48 @@ export interface Order {
   billing_address?: string | null;
   payment_gateway_ref?: string | null;
   items: OrderItem[];
+  // --- UPDATED ---
+  delivery_fee?: string; // Optional because older orders might not have it
+  delivery_option_details?: Pick<DeliveryOption, 'id' | 'name' | 'price' | 'is_pickup' | 'description'>; // Nested details
+  // --- END UPDATED ---
 }
 
 export interface User {
   id: string;
   email: string;
   name?: string;
-  address?: string;
+  address?: string; // This is the default shipping address
   created_at: string;
-  // password_hash is not sent to frontend
 }
 
 export interface ApiErrorResponse {
     message: string;
-    errors?: Record<string, string[]>; // For validation errors
+    errors?: Record<string, string[]>;
 }
 
 export interface LoginResponse {
     message: string;
     access_token: string;
-    // Backend does not send user object on login
 }
 
 export interface SignupResponse {
     message: string;
-    user: User; // Backend sends user object on signup
+    user: User;
 }
 
 export interface StkPushInitiationResponse {
   message: string;
   CheckoutRequestID: string;
   ResponseDescription: string;
+  transaction_id: string; // Added this earlier, make sure it's used if present
 }
 
-// Type for user data fetched from a /me endpoint (if it existed)
 export interface UserProfile extends User {}
+
+// For payment status polling on cart page
+export interface PaymentTransactionStatusResponse {
+    status: 'initiated' | 'pending_stk_initiation' | 'pending_confirmation' | 'successful' | 'failed_stk_initiation' | 'failed_stk_missing_id' | 'failed_underpaid' | 'failed_processing_error' | 'cancelled_by_user' | 'failed_daraja' | 'failed_timeout' | 'failed_missing_receipt' | 'not_found';
+    checkout_request_id: string | null;
+    message: string;
+    order_id?: string;
+}

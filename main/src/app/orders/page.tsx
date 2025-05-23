@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types';
+import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types'; // OrderType now includes delivery_option_details
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/lib/utils';
@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { ListOrdered, Package, ShoppingBag, Loader2, ArrowLeft, ImageOff, Terminal } from 'lucide-react';
+import { ListOrdered, Package, ShoppingBag, Loader2, ArrowLeft, ImageOff, Terminal, Truck, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 function OrderItemCard({ item }: { item: OrderItemType }) {
@@ -50,7 +50,9 @@ function OrderItemCard({ item }: { item: OrderItemType }) {
         {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
       </div>
       <div className="flex-1 space-y-1">
-        <h4 className="font-medium hover:underline text-sm">{item.artwork.name}</h4>
+        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-sm"> {/* Added Link */}
+            {item.artwork.name}
+        </Link>
         <p className="text-xs text-muted-foreground">By {item.artwork.artist.name}</p>
         <p className="text-xs text-muted-foreground">
           Qty: {item.quantity} @ {formatPrice(item.price_at_purchase)}
@@ -124,9 +126,8 @@ export default function OrdersPage() {
       </div>
     );
   }
-  
+
   if (!isAuthenticated && !authIsLoading) {
-      // This case should ideally be handled by the redirect, but as a fallback:
       return (
         <div className="text-center py-10">
           <Package className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -138,7 +139,6 @@ export default function OrdersPage() {
         </div>
       );
   }
-
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -156,7 +156,7 @@ export default function OrdersPage() {
         </Alert>
       )}
 
-      {isLoading && orders.length === 0 && !error && ( // Show skeletons if loading and no orders yet
+      {isLoading && orders.length === 0 && !error && (
          <div className="space-y-6">
             {Array.from({ length: 3 }).map((_, index) => (<OrderCardSkeleton key={index} />))}
          </div>
@@ -192,7 +192,7 @@ export default function OrdersPage() {
                          <Badge variant={
                             order.status === 'paid' || order.status === 'delivered' ? 'default' :
                             order.status === 'pending' ? 'secondary' :
-                            order.status === 'shipped' ? 'outline' : // Needs custom color or use default
+                            order.status === 'shipped' ? 'outline' :
                             'destructive'
                          } className="capitalize mb-1 md:mb-0 w-fit md:w-auto">
                             {order.status}
@@ -209,15 +209,35 @@ export default function OrdersPage() {
                     <OrderItemCard key={item.id} item={item} />
                   ))}
                 </div>
-                {order.shipping_address && (
-                    <>
-                        <Separator className="my-4" />
-                        <div className="text-xs text-muted-foreground">
-                            <p><strong>Shipping Address:</strong> {order.shipping_address}</p>
-                            {order.payment_gateway_ref && <p><strong>M-Pesa Ref:</strong> {order.payment_gateway_ref}</p>}
+                
+                <Separator className="my-4" />
+                <div className="text-xs text-muted-foreground space-y-1">
+                    {order.delivery_option_details && (
+                        <div className="flex items-center">
+                            {order.delivery_option_details.is_pickup ? 
+                                <Package className="mr-2 h-4 w-4 text-primary" /> : 
+                                <Truck className="mr-2 h-4 w-4 text-primary" />
+                            }
+                            <p>
+                                <strong>{order.delivery_option_details.is_pickup ? "Pickup:" : "Delivery:"}</strong>{' '}
+                                {order.delivery_option_details.name}
+                                {order.delivery_fee && parseFloat(order.delivery_fee) > 0 && ` (${formatPrice(order.delivery_fee)})`}
+                            </p>
                         </div>
-                    </>
-                )}
+                    )}
+                    {order.shipping_address && (
+                        <div className="flex items-center">
+                             <Info className="mr-2 h-4 w-4 text-primary" />
+                             <p><strong>Address:</strong> {order.shipping_address}</p>
+                        </div>
+                    )}
+                    {order.payment_gateway_ref && (
+                         <div className="flex items-center">
+                            <Info className="mr-2 h-4 w-4 text-primary" />
+                            <p><strong>M-Pesa Ref:</strong> {order.payment_gateway_ref}</p>
+                         </div>
+                    )}
+                </div>
               </AccordionContent>
             </AccordionItem>
           ))}
