@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import datetime
 from sqlalchemy.dialects.mysql import DECIMAL
@@ -6,6 +5,8 @@ import json
 from flask import current_app
 
 from . import db, bcrypt
+
+
 
 def generate_uuid():
     return str(uuid.uuid4())
@@ -18,6 +19,7 @@ class Artist(db.Model):
     bio = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     artworks = db.relationship('Artwork', back_populates='artist', cascade="all, delete-orphan")
 
@@ -33,6 +35,7 @@ class User(db.Model):
     name = db.Column(db.String(100), nullable=True)
     address = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
 
     cart = db.relationship('Cart', back_populates='user', uselist=False, cascade="all, delete-orphan")
     orders = db.relationship('Order', back_populates='user', lazy='dynamic', cascade="all, delete-orphan")
@@ -59,6 +62,7 @@ class Artwork(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     image_url = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     artist_id = db.Column(db.String(36), db.ForeignKey('artists.id'), nullable=False)
 
@@ -131,6 +135,11 @@ class Order(db.Model):
 
     delivery_option_id = db.Column(db.String(36), db.ForeignKey('delivery_options.id'), nullable=True)
     delivery_fee = db.Column(DECIMAL(precision=10, scale=2), nullable=False, default=0.00)
+
+    picked_up_by_name = db.Column(db.String(150), nullable=True)
+    picked_up_by_id_no = db.Column(db.String(50), nullable=True)
+    picked_up_at = db.Column(db.DateTime, nullable=True)
+
 
     user = db.relationship('User', back_populates='orders')
     items = db.relationship('OrderItem', back_populates='order', cascade="all, delete-orphan", lazy='joined')

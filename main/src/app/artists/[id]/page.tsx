@@ -1,16 +1,17 @@
-// === app/artists/[id]/page.tsx ===
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Artist as ArtistType, Artwork as ArtworkType } from '@/lib/types'; // ArtistType includes optional artworks
+import { Artist as ArtistType, Artwork as ArtworkType } from '@/lib/types';
 import { apiClient } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 import { ArtworkCard, ArtworkCardSkeleton } from '@/components/artwork/ArtworkCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Palette, Terminal, UserCircle2 } from 'lucide-react';
+import { ArrowLeft, Palette, Terminal, UserCircle2, Edit } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 function ArtistDetailSkeleton() {
@@ -19,15 +20,15 @@ function ArtistDetailSkeleton() {
       <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
         <Skeleton className="h-32 w-32 rounded-full bg-muted" />
         <div className="space-y-3 flex-grow">
-          <Skeleton className="h-10 w-3/4" /> {/* Name */}
-          <Skeleton className="h-5 w-full" /> {/* Bio line 1 */}
-          <Skeleton className="h-5 w-full" /> {/* Bio line 2 */}
-          <Skeleton className="h-5 w-2/3" /> {/* Bio line 3 */}
+          <Skeleton className="h-10 w-3/4" />
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-2/3" />
         </div>
       </div>
       <Separator />
       <div>
-        <Skeleton className="h-8 w-1/3 mb-6" /> {/* Artworks Title */}
+        <Skeleton className="h-8 w-1/3 mb-6" />
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {Array.from({ length: 4 }).map((_, index) => (
             <ArtworkCardSkeleton key={index} />
@@ -38,7 +39,6 @@ function ArtistDetailSkeleton() {
   );
 }
 
-
 export default function ArtistDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -47,6 +47,7 @@ export default function ArtistDetailPage() {
   const [artist, setArtist] = useState<ArtistType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isAdmin, isLoading: authIsLoading } = useAuth();
 
   useEffect(() => {
     if (artistId) {
@@ -54,8 +55,7 @@ export default function ArtistDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          // This assumes the Artist type might include an 'artworks' array
-          const fetchedArtist = await apiClient.get<ArtistType>(`/artists/${artistId}`);
+          const fetchedArtist = await apiClient.get<ArtistType>(`/artists/${artistId}`, { needsAuth: true });
           setArtist(fetchedArtist);
         } catch (err: any) {
           console.error("Failed to fetch artist details:", err);
@@ -68,7 +68,7 @@ export default function ArtistDetailPage() {
     }
   }, [artistId]);
 
-  if (isLoading) {
+  if (isLoading || authIsLoading) {
     return <ArtistDetailSkeleton />;
   }
 
@@ -97,19 +97,50 @@ export default function ArtistDetailPage() {
         </div>
     );
   }
+  
+  if (!artist.is_active && !isAdmin) {
+     return (
+        <div className="text-center py-10">
+            <p className="text-xl text-muted-foreground">Artist not found.</p>
+            <Button variant="outline" onClick={() => router.push('/artists')} className="mt-6">
+                View Other Artists
+            </Button>
+        </div>
+    );
+  }
+  
+  const artworksByArtist = isAdmin 
+    ? (artist.artworks || [])
+    : (artist.artworks || []).filter(aw => aw.is_active);
 
-  const artworksByArtist = artist.artworks || [];
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-8">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Artists
-      </Button>
+      <div className="flex justify-between items-center mb-8">
+        <Button variant="outline" size="sm" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Artists
+        </Button>
+        {isAdmin && (
+          <Link href={`/admin/artists?edit=${artist.id}`} passHref>
+            <Button variant="default" size="sm">
+              <Edit className="mr-2 h-4 w-4" /> Edit in Admin
+            </Button>
+          </Link>
+        )}
+      </div>
+
+      {!artist.is_active && isAdmin && (
+        <Alert variant="warning" className="mb-6">
+            <Terminal className="h-4 w-4" />
+            <AlertTitle>Admin View: Inactive Artist</AlertTitle>
+            <AlertDescription>This artist is currently not active and is hidden from public users. Their active artworks will also be hidden.</AlertDescription>
+        </Alert>
+      )}
 
       <header className="mb-10">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-6">
             <div className="flex-shrink-0">
-                <UserCircle2 className="h-32 w-32 text-muted-foreground" /> {/* Placeholder Icon */}
+                <UserCircle2 className="h-32 w-32 text-muted-foreground" />
             </div>
             <div>
                 <h1 className="text-4xl lg:text-5xl font-bold font-serif text-primary tracking-tight mb-2">
@@ -127,7 +158,7 @@ export default function ArtistDetailPage() {
       <div>
         <h2 className="text-3xl font-semibold font-serif mb-8 flex items-center">
             <Palette className="mr-3 h-7 w-7 text-primary" />
-            Artworks by {artist.name}
+            Artworks by {artist.name} {isAdmin && "(Admin View: Showing all artist's artworks)"}
         </h2>
         {artworksByArtist.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8">
@@ -138,18 +169,12 @@ export default function ArtistDetailPage() {
         ) : (
           <div className="text-center py-10 text-muted-foreground col-span-full">
              <Palette className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <p className="text-xl">No artworks found for this artist at the moment.</p>
+            <p className="text-xl">
+                {isAdmin && (artist.artworks || []).length > 0 
+                    ? "This artist has artworks, but none are currently active for public view." 
+                    : "No artworks found for this artist at the moment."}
+            </p>
           </div>
-        )}
-         {!artist.artworks && !isLoading && ( // Explicit check if artworks array is missing from response
-            <Alert variant="default" className="mt-6">
-                <Terminal className="h-4 w-4" />
-                <AlertTitle>Artwork Information</AlertTitle>
-                <AlertDescription>
-                    Detailed artwork listings for this artist are not available in the current view.
-                    This might be due to the API response structure.
-                </AlertDescription>
-            </Alert>
         )}
       </div>
     </div>

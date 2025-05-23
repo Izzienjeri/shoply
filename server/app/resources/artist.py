@@ -1,41 +1,36 @@
-from flask import request, Blueprint, jsonify
+from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from .. import db
-from ..models import Artist, Artwork
-from ..schemas import artist_schema, artists_schema
-
+from ..models import Artist, Artwork, User
+from ..schemas import artist_schema, artists_schema, admin_artist_schema
+from ..decorators import admin_required
 
 artist_bp = Blueprint('artists', __name__)
 artist_api = Api(artist_bp)
 
 class ArtistList(Resource):
     def get(self):
-        """
-        Fetches all artists.
-        """
-        artists = Artist.query.order_by(Artist.name).all()
+        artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
         return artists_schema.dump(artists), 200
 
+    @admin_required
     def post(self):
-        """
-        Creates a new artist.
-        """
-
         json_data = request.get_json()
         if not json_data:
             return {"message": "No input data provided"}, 400
 
         try:
+            json_data.setdefault('is_active', True)
             new_artist = artist_schema.load(json_data, session=db.session)
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
         except Exception as e:
-            print(f"Unexpected error during artist schema load: {e}")
+            current_app.logger.error(f"Unexpected error during artist schema load: {e}", exc_info=True)
             abort(500, message="An internal error occurred during data processing.")
-
 
         try:
             db.session.add(new_artist)
@@ -43,25 +38,39 @@ class ArtistList(Resource):
             return artist_schema.dump(new_artist), 201
         except Exception as e:
             db.session.rollback()
-            print(f"Error creating artist in DB: {e}")
+            current_app.logger.error(f"Error creating artist in DB: {e}", exc_info=True)
             abort(500, message="An error occurred while saving the artist.")
 
 class ArtistDetail(Resource):
     def get(self, artist_id):
-        """
-        Fetches a single artist by UUID, including their artworks.
-        """
-        artist = Artist.query.options(
-            joinedload(Artist.artworks)
-        ).get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
+        is_admin_request = False
+        try:
+            jwt_payload = get_jwt()
+            if jwt_payload:
+                user_id = get_jwt_identity()
+                user = User.query.get(user_id)
+                if user and user.is_admin:
+                    is_admin_request = True
+        except Exception:
+            pass
 
+        query = Artist.query.options(
+            joinedload(Artist.artworks)
+        )
+        
+        if not is_admin_request:
+            query = query.filter(Artist.is_active == True)
+        
+        artist = query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found or not active.")
+
+        if not is_admin_request and artist.artworks:
+            artist.artworks = [aw for aw in artist.artworks if aw.is_active]
+            
         return artist_schema.dump(artist), 200
 
-    def patch(self, artist_id):
-        """
-        Updates an existing artist partially.
-        """
 
+    @admin_required
+    def patch(self, artist_id):
         artist = Artist.query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
 
         json_data = request.get_json()
@@ -83,26 +92,19 @@ class ArtistDetail(Resource):
             return artist_schema.dump(updated_artist), 200
         except Exception as e:
             db.session.rollback()
-            print(f"Error updating artist {artist_id}: {e}")
+            current_app.logger.error(f"Error updating artist {artist_id}: {e}", exc_info=True)
             abort(500, message="An error occurred while updating the artist.")
 
+    @admin_required
     def delete(self, artist_id):
-        """
-        Deletes an artist by UUID.
-        Note: This will likely cascade delete associated artworks due to relationship setting.
-        Consider consequences before enabling direct artist deletion.
-        """
-
         artist = Artist.query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
-
-
         try:
             db.session.delete(artist)
             db.session.commit()
             return '', 204
         except Exception as e:
             db.session.rollback()
-            print(f"Error deleting artist {artist_id}: {e}")
+            current_app.logger.error(f"Error deleting artist {artist_id}: {e}", exc_info=True)
             abort(500, message="An error occurred while deleting the artist.")
 
 

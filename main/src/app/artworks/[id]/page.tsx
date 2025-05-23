@@ -9,13 +9,15 @@ import { Artwork as ArtworkType } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 import { Button } from '@/components/ui/button';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle, Terminal } from 'lucide-react'; // Added Terminal
+import { Badge } from "@/components/ui/badge"; // Correct import for Badge component
+import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle, Terminal, Edit } from 'lucide-react';
 
 function ArtworkDetailSkeleton() {
   return (
@@ -39,6 +41,7 @@ function ArtworkDetailSkeleton() {
   );
 }
 
+
 export default function ArtworkDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -50,6 +53,7 @@ export default function ArtworkDetailPage() {
   const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   const { addToCart, cart } = useCart();
+  const { isAdmin, isLoading: authIsLoading } = useAuth();
   const placeholderImage = "/placeholder-image.svg";
 
   useEffect(() => {
@@ -58,7 +62,7 @@ export default function ArtworkDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const fetchedArtwork = await apiClient.get<ArtworkType>(`/artworks/${artworkId}`);
+          const fetchedArtwork = await apiClient.get<ArtworkType>(`/artworks/${artworkId}`, { needsAuth: true });
           setArtwork(fetchedArtwork);
         } catch (err: any) {
           console.error("Failed to fetch artwork:", err);
@@ -72,7 +76,7 @@ export default function ArtworkDetailPage() {
   }, [artworkId]);
 
   const handleAddToCart = async () => {
-    if (!artwork) return;
+    if (!artwork || isAdmin) return;
     setIsAddingToCart(true);
     try {
       await addToCart(artwork.id, 1);
@@ -83,9 +87,9 @@ export default function ArtworkDetailPage() {
     }
   };
 
-  const isInCart = cart?.items.some(item => item.artwork_id === artwork?.id);
+  const isInCart = !isAdmin && cart?.items.some(item => item.artwork_id === artwork?.id);
 
-  if (isLoading) {
+  if (isLoading || authIsLoading) {
     return <ArtworkDetailSkeleton />;
   }
 
@@ -93,7 +97,7 @@ export default function ArtworkDetailPage() {
     return (
       <div className="text-center py-10">
         <Alert variant="destructive" className="max-w-lg mx-auto">
-          <Terminal className="h-4 w-4" /> {/* Added Terminal icon */}
+          <Terminal className="h-4 w-4" />
           <AlertTitle>Error Fetching Artwork</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -114,12 +118,41 @@ export default function ArtworkDetailPage() {
       </div>
     );
   }
+  
+  if (!artwork.is_active && !isAdmin) {
+    return (
+      <div className="text-center py-10">
+        <p className="text-xl text-muted-foreground">Artwork not found.</p>
+         <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
+           Explore Other Artworks
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-6">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Artworks
-      </Button>
+      <div className="flex justify-between items-center mb-6">
+        <Button variant="outline" size="sm" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
+        {isAdmin && (
+          <Link href={`/admin/artworks?edit=${artwork.id}`} passHref>
+            <Button variant="default" size="sm">
+              <Edit className="mr-2 h-4 w-4" /> Edit in Admin
+            </Button>
+          </Link>
+        )}
+      </div>
+      
+      {!artwork.is_active && isAdmin && (
+        <Alert variant="warning" className="mb-6">
+            <Terminal className="h-4 w-4" />
+            <AlertTitle>Admin View: Inactive Artwork</AlertTitle>
+            <AlertDescription>This artwork is currently not active and is hidden from public users.</AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
         <div className="w-full bg-muted rounded-lg overflow-hidden border">
           <AspectRatio ratio={1 / 1}>
@@ -129,7 +162,7 @@ export default function ArtworkDetailPage() {
               fill
               className="object-cover"
               sizes="(max-width: 768px) 100vw, 50vw"
-              priority // Added priority for LCP
+              priority
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.srcset = placeholderImage;
@@ -149,7 +182,7 @@ export default function ArtworkDetailPage() {
             <h1 className="text-3xl lg:text-4xl font-bold font-serif text-primary tracking-tight">
               {artwork.name}
             </h1>
-            <Link href={`/artists/${artwork.artist.id}`} className="text-lg text-muted-foreground hover:text-primary transition-colors"> {/* Removed legacyBehavior */}
+            <Link href={`/artists/${artwork.artist.id}`} className="text-lg text-muted-foreground hover:text-primary transition-colors">
               By {artwork.artist.name}
             </Link>
           </div>
@@ -169,39 +202,48 @@ export default function ArtworkDetailPage() {
 
           <Separator />
           
-          <div className="space-y-4">
-            {artwork.stock_quantity > 0 ? (
-              <Button
-                size="lg"
-                className="w-full md:w-auto"
-                onClick={handleAddToCart}
-                disabled={isAddingToCart || isInCart}
-              >
-                {isAddingToCart ? (
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                ) : isInCart ? (
-                  <CheckCircle className="mr-2 h-5 w-5" />
-                ) : (
-                  <ShoppingCart className="mr-2 h-5 w-5" />
-                )}
-                {isAddingToCart ? 'Adding...' : isInCart ? 'Added to Cart' : 'Add to Cart'}
-              </Button>
-            ) : (
-              <Button size="lg" className="w-full md:w-auto" disabled>
-                Out of Stock
-              </Button>
-            )}
-            {artwork.stock_quantity > 0 && artwork.stock_quantity < 5 && (
-              <p className="text-sm text-orange-600">
-                Only {artwork.stock_quantity} left in stock!
-              </p>
-            )}
-             {artwork.stock_quantity === 0 && (
-              <p className="text-sm text-red-600">
-                This item is currently out of stock.
-              </p>
-            )}
-          </div>
+          {!isAdmin && (
+            <div className="space-y-4">
+              {artwork.stock_quantity > 0 ? (
+                <Button
+                  size="lg"
+                  className="w-full md:w-auto"
+                  onClick={handleAddToCart}
+                  disabled={isAddingToCart || !!isInCart}
+                >
+                  {isAddingToCart ? (
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  ) : isInCart ? (
+                    <CheckCircle className="mr-2 h-5 w-5" />
+                  ) : (
+                    <ShoppingCart className="mr-2 h-5 w-5" />
+                  )}
+                  {isAddingToCart ? 'Adding...' : isInCart ? 'Added to Cart' : 'Add to Cart'}
+                </Button>
+              ) : (
+                <Button size="lg" className="w-full md:w-auto" disabled>
+                  Out of Stock
+                </Button>
+              )}
+              {artwork.stock_quantity > 0 && artwork.stock_quantity < 5 && (
+                <p className="text-sm text-orange-600">
+                  Only {artwork.stock_quantity} left in stock!
+                </p>
+              )}
+              {artwork.stock_quantity === 0 && (
+                <p className="text-sm text-red-600">
+                  This item is currently out of stock.
+                </p>
+              )}
+            </div>
+          )}
+           {isAdmin && artwork.stock_quantity === 0 && (
+             <Badge variant="destructive">Out of Stock</Badge>
+           )}
+           {isAdmin && artwork.stock_quantity > 0 && (
+             <p className="text-sm text-muted-foreground">Stock: {artwork.stock_quantity}</p>
+           )}
+
         </div>
       </div>
     </div>

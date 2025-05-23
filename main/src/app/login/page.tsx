@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
+
 
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +40,8 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const { login, isAuthenticated, isLoading: isAuthLoading, isAdmin } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<LoginFormValues>({
@@ -51,15 +54,19 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
-        router.push('/');
+      const redirectPath = searchParams.get('redirect');
+      if (isAdmin) {
+        router.replace(redirectPath && redirectPath.startsWith('/admin') ? redirectPath : '/admin');
+      } else {
+        router.replace(redirectPath || '/');
+      }
     }
-  }, [isAuthenticated, isAuthLoading, router]);
+  }, [isAuthenticated, isAuthLoading, isAdmin, router, searchParams]);
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsSubmitting(true);
     try {
       await login(data.email, data.password);
-      toast.success("Login successful!");
     } catch (error: any) {
         console.error("Login failed:", error);
         const errorMessage = (error as ApiErrorResponse)?.message || "An error occurred during login.";
@@ -69,8 +76,8 @@ export default function LoginPage() {
     }
   };
 
-  if (isAuthLoading || isAuthenticated) {
-      return <div className="flex justify-center items-center min-h-[200px]">Loading...</div>;
+  if (isAuthLoading || (!isAuthLoading && isAuthenticated)) { 
+      return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary"/></div>;
   }
 
   return (
@@ -110,7 +117,7 @@ export default function LoginPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Logging In..." : "Login"}
+                {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Logging In...</> : "Login"}
               </Button>
             </form>
           </Form>

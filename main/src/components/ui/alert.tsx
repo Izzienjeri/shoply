@@ -1,3 +1,4 @@
+// === components/ui/alert.tsx ===
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -10,7 +11,9 @@ const alertVariants = cva(
       variant: {
         default: "bg-card text-card-foreground",
         destructive:
-          "text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
+          "text-destructive border-destructive/50 dark:border-destructive bg-card [&>svg]:text-destructive *:data-[slot=alert-description]:text-destructive/90", // Adjusted destructive for better contrast
+        warning: // New variant
+          "text-amber-700 border-amber-500/50 dark:text-amber-400 dark:border-amber-600/50 bg-card [&>svg]:text-amber-600 dark:[&>svg]:text-amber-500 *:data-[slot=alert-description]:text-amber-700/90 dark:*:data-[slot=alert-description]:text-amber-400/90",
       },
     },
     defaultVariants: {

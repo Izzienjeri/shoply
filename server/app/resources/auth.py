@@ -23,28 +23,25 @@ class UserRegistration(Resource):
             return {"message": "No input data provided"}, 400
 
         try:
-            password = json_data.get('password')
-            if not password:
-                 return {'message': {'password': ['Missing data for required field.']}}, 400
-
-            user_data = user_schema.load(json_data, session=db.session, unknown='EXCLUDE')
+            if 'password' not in json_data:
+                 return {"message": {"password": ["Password is required for registration."]}}, 400
+            
+            user_instance = user_schema.load(json_data, session=db.session, unknown='EXCLUDE')
 
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
-
-        if User.query.filter_by(email=user_data.email).first():
+        
+        if User.query.filter_by(email=user_instance.email).first():
             return {"message": "User with this email already exists"}, 409
 
-        user = user_data
-
-        user.set_password(password)
+        user_instance.set_password(json_data['password'])
 
         try:
-            db.session.add(user)
+            db.session.add(user_instance)
             db.session.commit()
             return {
                 "message": "User created successfully",
-                "user": user_schema.dump(user)
+                "user": user_schema.dump(user_instance)
             }, 201
         except Exception as e:
             db.session.rollback()
@@ -54,7 +51,6 @@ class UserRegistration(Resource):
 
 class UserLogin(Resource):
     def post(self):
-       
         json_data = request.get_json()
         if not json_data:
             return {"message": "No input data provided"}, 400
@@ -69,7 +65,16 @@ class UserLogin(Resource):
 
         if user and user.check_password(password):
             access_token = create_access_token(identity=user.id)
-            return {"message": "Login successful", "access_token": access_token}, 200
+            return {
+                "message": "Login successful",
+                "access_token": access_token,
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "name": user.name,
+                    "is_admin": user.is_admin 
+                }
+            }, 200
         else:
             return {"message": "Invalid credentials"}, 401
 
@@ -77,9 +82,6 @@ class UserLogin(Resource):
 class UserLogout(Resource):
     @jwt_required()
     def post(self):
-        """
-        Handles user logout by blocklisting the current JWT.
-        """
         jti = get_jwt()["jti"]
         BLOCKLIST.add(jti)
         return {"message": "Successfully logged out"}, 200
@@ -87,9 +89,6 @@ class UserLogout(Resource):
 class UserProfile(Resource):
     @jwt_required()
     def get(self):
-        """
-        Gets the current logged-in user's profile.
-        """
         current_user_id = get_jwt_identity()
         user = User.query.get(current_user_id)
         if not user:

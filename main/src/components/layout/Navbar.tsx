@@ -1,46 +1,41 @@
 // === components/layout/Navbar.tsx ===
-'use client'; // Needs to be a client component to use hooks later
+'use client';
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart } from 'lucide-react'; // Removed User import as it wasn't used
+import { ShoppingCart, UserCog } from 'lucide-react'; // Added UserCog for admin link
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
 
 
 export function Navbar() {
-   const { isAuthenticated, isLoading, logout, user } = useAuth();
+   const { isAuthenticated, isLoading, logout, user, isAdmin } = useAuth(); // Added isAdmin
    const { itemCount } = useCart();
 
   return (
     <nav className="bg-card border-b border-border sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Logo/Brand Name */}
         <Link href="/" className="text-xl font-bold font-serif text-primary">
           Artistry Haven
         </Link>
 
-        {/* Navigation Links */}
         <div className="hidden md:flex items-center space-x-6">
-          {/* UPDATED: Link to artworks page */}
           <Link href="/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Artwork
           </Link>
-          {/* Optional: Add link to Artists page */}
           <Link href="/artists" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Artists
           </Link>
         </div>
 
-        {/* Actions: Auth & Cart */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           <Link href="/cart" aria-label="View Cart">
              <Button variant="ghost" size="icon" className="relative">
                 <ShoppingCart className="h-5 w-5" />
                 {isAuthenticated && itemCount > 0 && (
                    <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
-                      {itemCount > 9 ? '9+' : itemCount} {/* Handle counts > 9 */}
+                      {itemCount > 9 ? '9+' : itemCount}
                    </Badge>
                 )}
              </Button>
@@ -50,8 +45,15 @@ export function Navbar() {
              <Button variant="ghost" size="sm" disabled>Loading...</Button>
           ) : isAuthenticated ? (
              <>
+              {isAdmin && ( // Show Admin link if user is admin
+                <Link href="/admin">
+                  <Button variant="ghost" size="icon" title="Admin Dashboard">
+                    <UserCog className="h-5 w-5" />
+                  </Button>
+                </Link>
+              )}
               <Link href="/orders">
-                <Button variant="ghost" size="sm">My Orders</Button>
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">My Orders</Button>
               </Link>
               <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
              </>

@@ -1,11 +1,11 @@
-// === lib/types.ts ===
 export interface Artist {
   id: string;
   name: string;
   bio?: string;
   created_at: string;
   updated_at: string;
-  artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description'>[];
+  artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description' | 'is_active'>[];
+  is_active?: boolean;
 }
 
 export interface Artwork {
@@ -19,13 +19,14 @@ export interface Artwork {
   image_url?: string | null;
   artist_id: string;
   artist: Pick<Artist, 'id' | 'name'>;
+  is_active?: boolean;
 }
 
 export interface CartItem {
   id: string;
   artwork_id: string;
   quantity: number;
-  artwork: Pick<Artwork, 'id' | 'name' | 'price' | 'image_url' | 'artist' | 'stock_quantity'>;
+  artwork: Pick<Artwork, 'id' | 'name' | 'price' | 'image_url' | 'artist' | 'stock_quantity' | 'is_active'>;
 }
 export interface Cart {
   id: string;
@@ -33,34 +34,35 @@ export interface Cart {
   created_at: string;
   updated_at: string;
   items: CartItem[];
-  total_price?: string; // This is cart subtotal from backend CartSchema
+  total_price?: string;
 }
 
-// --- NEW ---
 export interface DeliveryOption {
   id: string;
   name: string;
-  price: string; // Keep as string from backend
+  price: string;
   description?: string | null;
   is_pickup: boolean;
-  active: boolean; // Though API only sends active ones
+  active: boolean;
   sort_order: number;
+  created_at?: string;
+  updated_at?: string;
 }
-// --- END NEW ---
 
 export interface OrderItem {
   id: string;
   artwork_id: string;
   quantity: number;
   price_at_purchase: string;
-  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist'>;
+  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>;
 }
 
 export interface Order {
   id: string;
   user_id: string;
-  total_price: string; // Grand Total (items + delivery)
-  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled'; // Add other failure statuses if needed for specific UI
+  user?: Pick<User, 'id' | 'email' | 'name'>;
+  total_price: string;
+  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled' | 'picked_up';
   created_at: string;
   updated_at: string;
   shipped_at?: string | null;
@@ -68,18 +70,20 @@ export interface Order {
   billing_address?: string | null;
   payment_gateway_ref?: string | null;
   items: OrderItem[];
-  // --- UPDATED ---
-  delivery_fee?: string; // Optional because older orders might not have it
-  delivery_option_details?: Pick<DeliveryOption, 'id' | 'name' | 'price' | 'is_pickup' | 'description'>; // Nested details
-  // --- END UPDATED ---
+  delivery_fee?: string;
+  delivery_option_details?: Pick<DeliveryOption, 'id' | 'name' | 'price' | 'is_pickup' | 'description'>;
+  picked_up_by_name?: string | null;
+  picked_up_by_id_no?: string | null;
+  picked_up_at?: string | null;
 }
 
 export interface User {
   id: string;
   email: string;
   name?: string;
-  address?: string; // This is the default shipping address
+  address?: string;
   created_at: string;
+  is_admin?: boolean;
 }
 
 export interface ApiErrorResponse {
@@ -90,6 +94,12 @@ export interface ApiErrorResponse {
 export interface LoginResponse {
     message: string;
     access_token: string;
+    user?: {
+      id: string;
+      email: string;
+      name?: string;
+      is_admin?: boolean;
+    }
 }
 
 export interface SignupResponse {
@@ -101,15 +111,20 @@ export interface StkPushInitiationResponse {
   message: string;
   CheckoutRequestID: string;
   ResponseDescription: string;
-  transaction_id: string; // Added this earlier, make sure it's used if present
+  transaction_id: string;
 }
 
 export interface UserProfile extends User {}
 
-// For payment status polling on cart page
 export interface PaymentTransactionStatusResponse {
     status: 'initiated' | 'pending_stk_initiation' | 'pending_confirmation' | 'successful' | 'failed_stk_initiation' | 'failed_stk_missing_id' | 'failed_underpaid' | 'failed_processing_error' | 'cancelled_by_user' | 'failed_daraja' | 'failed_timeout' | 'failed_missing_receipt' | 'not_found';
     checkout_request_id: string | null;
     message: string;
     order_id?: string;
+}
+
+export interface AdminOrderUpdatePayload {
+    status?: Order['status'];
+    picked_up_by_name?: string;
+    picked_up_by_id_no?: string;
 }

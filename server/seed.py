@@ -5,7 +5,7 @@ import random
 from decimal import Decimal
 from faker import Faker
 from app import create_app, db
-from app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem, DeliveryOption, PaymentTransaction # Added DeliveryOption
+from app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem, DeliveryOption, PaymentTransaction
 
 NUM_ARTISTS = 10
 NUM_USERS = 5
@@ -13,6 +13,9 @@ ARTWORK_IMAGE_FOLDER_RELATIVE = 'artwork_images'
 IMAGES_BASE_NAME = 'art'
 NUM_IMAGES = 48
 DEFAULT_PASSWORD = "pass123"
+ADMIN_EMAIL = "admin@artistryhaven.io"
+ADMIN_PASSWORD = "AdminPass123!"
+
 
 try:
     fake = Faker()
@@ -35,18 +38,13 @@ def get_image_path(image_index):
 
 def clear_data():
     print("Clearing existing data...")
-    # Clear in order of dependencies to avoid FK constraint errors
     db.session.query(OrderItem).delete()
-    # Order has FK to PaymentTransaction and DeliveryOption. PaymentTransaction has FK to Cart and DeliveryOption.
-    # So Order, then PaymentTransaction, then CartItem, then Cart.
-    # DeliveryOption can be cleared before or after PaymentTransaction/Order if those FKs are nullable.
-    # Let's clear Order and PaymentTransaction before DeliveryOption just to be safe.
     db.session.query(Order).delete() 
     db.session.query(PaymentTransaction).delete() 
     db.session.query(CartItem).delete()
     db.session.query(Cart).delete()
     db.session.query(Artwork).delete()
-    db.session.query(DeliveryOption).delete() # Clear DeliveryOption
+    db.session.query(DeliveryOption).delete()
     db.session.query(User).delete()
     db.session.query(Artist).delete()
     db.session.commit()
@@ -60,7 +58,7 @@ def seed_artists(num_artists):
         kenyan_last_name = random.choice(KENYAN_NAMES)
         artist_name = f"{first_name} {kenyan_last_name}"
         artist_bio = fake.paragraph(nb_sentences=3) if fake else f"This is the biography for {artist_name}."
-        artist = Artist(name=artist_name, bio=artist_bio)
+        artist = Artist(name=artist_name, bio=artist_bio, is_active=True) # Set is_active
         artists.append(artist)
     db.session.add_all(artists)
     db.session.commit()
@@ -91,8 +89,8 @@ def seed_artworks(artists, num_images_available, media_folder_base):
         artwork_name = fake.catch_phrase() if fake else f"Artwork {i}"
         description = fake.text(max_nb_chars=200) if fake else f"A beautiful piece numbered {i}."
 
-        if not one_shilling_added: # Ensure at least one item is Ksh 1 for testing STK push
-            price = Decimal(1)  # Corrected if this was an issue
+        if not one_shilling_added:
+            price = Decimal(1)
             one_shilling_added = True
         else:
             price = Decimal(random.randint(500, 15000))
@@ -106,7 +104,8 @@ def seed_artworks(artists, num_images_available, media_folder_base):
             price=price,
             stock_quantity=stock_quantity,
             artist_id=assigned_artist.id,
-            image_url=relative_image_url
+            image_url=relative_image_url,
+            is_active=True # Set is_active
         )
         artworks.append(artwork)
 
@@ -119,12 +118,28 @@ def seed_artworks(artists, num_images_available, media_folder_base):
 
 
 def seed_users(num_users):
-    print(f"Seeding {num_users} users...")
+    print(f"Seeding {num_users} users and 1 admin...")
     users = []
+
+    # Seed Admin User
+    if not User.query.filter_by(email=ADMIN_EMAIL).first():
+        admin_user = User(
+            email=ADMIN_EMAIL,
+            name="Admin User",
+            address="Artistry Haven HQ, Nairobi",
+            is_admin=True
+        )
+        admin_user.set_password(ADMIN_PASSWORD)
+        users.append(admin_user)
+        print(f"Admin user created: {ADMIN_EMAIL}, Password: {ADMIN_PASSWORD}")
+    else:
+        print(f"Admin user {ADMIN_EMAIL} already exists.")
+
+    # Seed Regular Users
     for i in range(num_users):
         user_email = fake.email() if fake else f"user{i+1}@example.com"
         user_name = fake.name() if fake else f"Test User {i+1}"
-        user_address = random.choice(KENYAN_LOCATIONS) # Default address
+        user_address = random.choice(KENYAN_LOCATIONS)
 
         if User.query.filter_by(email=user_email).first():
             print(f"User with email {user_email} already exists, skipping.")
@@ -133,7 +148,8 @@ def seed_users(num_users):
         user = User(
             email=user_email,
             name=user_name,
-            address=user_address
+            address=user_address,
+            is_admin=False
         )
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
@@ -142,7 +158,8 @@ def seed_users(num_users):
     if users:
         db.session.add_all(users)
         db.session.commit()
-        print(f"{len(users)} users seeded (default password: '{DEFAULT_PASSWORD}').")
+        print(f"{len(users)} total users (including admin if new) seeded.")
+        print(f"Regular user default password: '{DEFAULT_PASSWORD}'")
     else:
         print("No new users were seeded.")
     return users
@@ -199,13 +216,13 @@ def run_seed():
             return
 
         clear_data()
-        seed_delivery_options() # Seed delivery options first
+        seed_delivery_options()
         created_artists = seed_artists(NUM_ARTISTS)
         seed_artworks(created_artists, NUM_IMAGES, media_folder)
-        seed_users(NUM_USERS)
+        seed_users(NUM_USERS) # This now includes admin user
         print("-" * 20)
         print("Seeding process completed!")
         print("-" * 20)
 
-if __name__ == '__main__': # Allows running seed.py directly
+if __name__ == '__main__':
     run_seed()

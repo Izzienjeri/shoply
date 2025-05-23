@@ -1,6 +1,6 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-23 04:35:36
-# Files Included: 20
+# Date and Time: 2025-05-23 06:24:42
+# Files Included: 26
 
 # === lib/utils.ts ===
 import { clsx, type ClassValue } from "clsx"
@@ -100,34 +100,35 @@ export const apiClient = {
 };
 
 # === lib/types.ts ===
-// === lib/types.ts ===
 export interface Artist {
   id: string;
   name: string;
   bio?: string;
   created_at: string;
   updated_at: string;
-  artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description'>[]; // For artist detail page
+  artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description' | 'is_active'>[];
+  is_active?: boolean;
 }
 
 export interface Artwork {
   id: string;
   name: string;
   description?: string;
-  price: string; // Keep as string, backend sends Decimal as_string=True
+  price: string;
   stock_quantity: number;
   created_at: string;
   updated_at: string;
   image_url?: string | null;
-  artist_id: string; // Received from backend, but mostly use nested artist object
-  artist: Pick<Artist, 'id' | 'name'>; // Artist summary
+  artist_id: string;
+  artist: Pick<Artist, 'id' | 'name'>;
+  is_active?: boolean;
 }
 
 export interface CartItem {
   id: string;
   artwork_id: string;
   quantity: number;
-  artwork: Pick<Artwork, 'id' | 'name' | 'price' | 'image_url' | 'artist' | 'stock_quantity'>;
+  artwork: Pick<Artwork, 'id' | 'name' | 'price' | 'image_url' | 'artist' | 'stock_quantity' | 'is_active'>;
 }
 export interface Cart {
   id: string;
@@ -135,22 +136,35 @@ export interface Cart {
   created_at: string;
   updated_at: string;
   items: CartItem[];
-  total_price?: string; // Calculated by backend schema
+  total_price?: string;
+}
+
+export interface DeliveryOption {
+  id: string;
+  name: string;
+  price: string;
+  description?: string | null;
+  is_pickup: boolean;
+  active: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface OrderItem {
   id: string;
   artwork_id: string;
   quantity: number;
-  price_at_purchase: string; // Backend sends Decimal as_string=True
-  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist'>;
+  price_at_purchase: string;
+  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>;
 }
 
 export interface Order {
   id: string;
   user_id: string;
-  total_price: string; // Backend sends Decimal as_string=True
-  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
+  user?: Pick<User, 'id' | 'email' | 'name'>;
+  total_price: string;
+  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled' | 'picked_up';
   created_at: string;
   updated_at: string;
   shipped_at?: string | null;
@@ -158,6 +172,11 @@ export interface Order {
   billing_address?: string | null;
   payment_gateway_ref?: string | null;
   items: OrderItem[];
+  delivery_fee?: string;
+  delivery_option_details?: Pick<DeliveryOption, 'id' | 'name' | 'price' | 'is_pickup' | 'description'>;
+  picked_up_by_name?: string | null;
+  picked_up_by_id_no?: string | null;
+  picked_up_at?: string | null;
 }
 
 export interface User {
@@ -166,33 +185,51 @@ export interface User {
   name?: string;
   address?: string;
   created_at: string;
-  // password_hash is not sent to frontend
+  is_admin?: boolean;
 }
 
 export interface ApiErrorResponse {
     message: string;
-    errors?: Record<string, string[]>; // For validation errors
+    errors?: Record<string, string[]>;
 }
 
 export interface LoginResponse {
     message: string;
     access_token: string;
-    // Backend does not send user object on login
+    user?: {
+      id: string;
+      email: string;
+      name?: string;
+      is_admin?: boolean;
+    }
 }
 
 export interface SignupResponse {
     message: string;
-    user: User; // Backend sends user object on signup
+    user: User;
 }
 
 export interface StkPushInitiationResponse {
   message: string;
   CheckoutRequestID: string;
   ResponseDescription: string;
+  transaction_id: string;
 }
 
-// Type for user data fetched from a /me endpoint (if it existed)
 export interface UserProfile extends User {}
+
+export interface PaymentTransactionStatusResponse {
+    status: 'initiated' | 'pending_stk_initiation' | 'pending_confirmation' | 'successful' | 'failed_stk_initiation' | 'failed_stk_missing_id' | 'failed_underpaid' | 'failed_processing_error' | 'cancelled_by_user' | 'failed_daraja' | 'failed_timeout' | 'failed_missing_receipt' | 'not_found';
+    checkout_request_id: string | null;
+    message: string;
+    order_id?: string;
+}
+
+export interface AdminOrderUpdatePayload {
+    status?: Order['status'];
+    picked_up_by_name?: string;
+    picked_up_by_id_no?: string;
+}
 
 # === app/globals.css ===
 @import "tailwindcss";
@@ -402,11 +439,1790 @@ export default function Home() {
   );
 }
 
-# === app/cart/page.tsx ===
-// === main/src/app/cart/page.tsx ===
+# === app/admin/layout.tsx ===
+import { ReactNode } from 'react';
+import Link from 'next/link';
+import { AdminGuard } from '@/components/admin/AdminGuard';
+import { Button } from '@/components/ui/button';
+import { Home, Package, Users, Settings, BarChart3, ShoppingBag, LogOut } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+
+function AdminNavbar() {
+
+    return (
+        <nav className="bg-gray-800 text-white p-4 shadow-md">
+            <div className="container mx-auto flex justify-between items-center">
+                <Link href="/admin" className="text-xl font-semibold">
+                    Artistry Haven - Admin
+                </Link>
+            </div>
+        </nav>
+    );
+}
+
+function AdminSidebar() {
+    const navItems = [
+        { href: '/admin', label: 'Dashboard', icon: Home },
+        { href: '/admin/artworks', label: 'Artworks', icon: Package },
+        { href: '/admin/artists', label: 'Artists', icon: Users },
+        { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+        { href: '/admin/delivery-options', label: 'Delivery', icon: Settings },
+    ];
+
+    return (
+        <aside className="w-64 bg-gray-100 dark:bg-gray-900 p-6 border-r dark:border-gray-700 flex flex-col">
+            <nav className="space-y-2 flex-grow">
+                {navItems.map((item) => (
+                    <Link
+                        key={item.label}
+                        href={item.href}
+                        className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
+                    >
+                        <item.icon className="mr-3 h-5 w-5" />
+                        {item.label}
+                    </Link>
+                ))}
+            </nav>
+            <div className="mt-auto">
+                 <Link href="/"
+                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
+                 >
+                    <LogOut className="mr-3 h-5 w-5" />
+                    Back to Site
+                 </Link>
+            </div>
+        </aside>
+    );
+}
+
+
+export default function AdminLayout({ children }: { children: ReactNode }) {
+  return (
+    <AdminGuard>
+      <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
+        <AdminNavbar />
+        <div className="flex flex-1 overflow-hidden">
+          <AdminSidebar />
+          <main className="flex-1 p-6 md:p-8 overflow-y-auto">
+            {children}
+          </main>
+        </div>
+      </div>
+    </AdminGuard>
+  );
+}
+
+# === app/admin/page.tsx ===
+// === app/admin/page.tsx ===
+'use client'; // Make it a client component to use hooks if needed
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Package, Users, DollarSign, ShoppingBag, Settings } from "lucide-react";
+import Link from "next/link";
+import { Button } from '@/components/ui/button';
+
+// Dummy data for now, replace with API calls later
+const stats = [
+    { title: "Total Artworks", value: "120", icon: Package, href: "/admin/artworks" },
+    { title: "Total Artists", value: "15", icon: Users, href: "/admin/artists" },
+    { title: "Pending Orders", value: "5", icon: ShoppingBag, href: "/admin/orders?status=pending" },
+    { title: "Total Revenue (Month)", value: "Ksh 250,000", icon: DollarSign, href: "#" },
+];
+
+export default function AdminDashboardPage() {
+  return (
+    <div className="space-y-8">
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Admin Dashboard</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Overview of your art store.</p>
+      </header>
+
+      <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <Link key={stat.title} href={stat.href} passHref>
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                <stat.icon className="h-5 w-5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stat.value}</div>
+                {/* <p className="text-xs text-muted-foreground">+20.1% from last month</p> */}
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Orders</CardTitle>
+            <CardDescription>A list of the most recent orders.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Placeholder for recent orders list - to be implemented */}
+            <p className="text-muted-foreground">Recent orders will be displayed here.</p>
+            <div className="mt-4">
+                <Link href="/admin/orders" className="text-sm font-medium text-primary hover:underline">
+                    View all orders →
+                </Link>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales Analytics</CardTitle>
+             <CardDescription>Monthly sales performance chart.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Placeholder for sales chart - to be implemented */}
+            <div className="h-64 bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-md">
+              <p className="text-muted-foreground">Sales chart will be displayed here.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Quick Actions Section */}
+      <section>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Quick Actions</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <Link href="/admin/artworks/new" passHref>
+                  <Button variant="outline" className="w-full justify-start p-4 h-auto">
+                      <Package className="mr-3 h-5 w-5" />
+                      <div>
+                          <p className="font-semibold">Add New Artwork</p>
+                          <p className="text-xs text-muted-foreground">Create a new piece for the gallery.</p>
+                      </div>
+                  </Button>
+              </Link>
+              <Link href="/admin/artists/new" passHref>
+                   <Button variant="outline" className="w-full justify-start p-4 h-auto">
+                      <Users className="mr-3 h-5 w-5" />
+                       <div>
+                          <p className="font-semibold">Add New Artist</p>
+                          <p className="text-xs text-muted-foreground">Register a new artist profile.</p>
+                      </div>
+                  </Button>
+              </Link>
+               <Link href="/admin/delivery-options/new" passHref>
+                   <Button variant="outline" className="w-full justify-start p-4 h-auto">
+                      <Settings className="mr-3 h-5 w-5" />
+                       <div>
+                          <p className="font-semibold">Manage Delivery Options</p>
+                          <p className="text-xs text-muted-foreground">Add or update shipping methods.</p>
+                      </div>
+                  </Button>
+              </Link>
+          </div>
+      </section>
+    </div>
+  );
+}
+
+# === app/admin/delivery-options/page.tsx ===
+// === app/admin/delivery-options/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useForm, SubmitHandler, FieldValues } from 'react-hook-form'; // Import FieldValues
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  SortingState,
+  ColumnFiltersState,
+  Row,
+  Column,
+  HeaderGroup,
+  Cell,
+} from '@tanstack/react-table';
+
+import { DeliveryOption as DeliveryOptionType, ApiErrorResponse } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+import { formatPrice, cn } from '@/lib/utils';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2 } from 'lucide-react';
+
+const deliveryOptionFormSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  price: z.coerce.number().min(0, "Price must be non-negative"),
+  description: z.string().optional().nullable(),
+  is_pickup: z.boolean().default(false),
+  active: z.boolean().default(true),
+  sort_order: z.coerce.number().int().default(0),
+});
+
+// Output type (after Zod validation)
+type DeliveryOptionFormValues = z.infer<typeof deliveryOptionFormSchema>;
+// Input type (for form state and defaultValues)
+type DeliveryOptionFormInput = z.input<typeof deliveryOptionFormSchema>;
+
+
+interface DeliveryOptionApiPayload {
+    name: string;
+    price: string; // API expects string for decimal
+    description?: string | null;
+    is_pickup: boolean;
+    active: boolean;
+    sort_order: number;
+}
+
+
+export default function AdminDeliveryOptionsPage() {
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingOption, setEditingOption] = useState<DeliveryOptionType | null>(null);
+  const [showFormDialog, setShowFormDialog] = useState(false);
+  const [optionToDelete, setOptionToDelete] = useState<DeliveryOptionType | null>(null);
+
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'sort_order', desc: false }]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  const form = useForm<DeliveryOptionFormInput, any, DeliveryOptionFormValues>({ // Typed useForm correctly
+    resolver: zodResolver(deliveryOptionFormSchema),
+    defaultValues: {
+      name: "",
+      price: 0,
+      description: null, // Use null for optional nullable fields in defaultValues
+      is_pickup: false,
+      active: true,
+      sort_order: 0,
+    },
+  });
+
+  const fetchDeliveryOptions = async () => {
+    setIsLoading(true);
+    try {
+      const fetchedOptions = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
+      setDeliveryOptions(fetchedOptions || []);
+    } catch (error) {
+      console.error("Failed to fetch delivery options:", error);
+      toast.error("Could not load delivery options.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeliveryOptions();
+  }, []);
+
+  const handleFormSubmit: SubmitHandler<DeliveryOptionFormValues> = async (values) => {
+    setIsSubmitting(true);
+    const payload: DeliveryOptionApiPayload = {
+        ...values, // values here are DeliveryOptionFormValues (output of Zod)
+        price: values.price.toString(),
+        description: values.description || null,
+    };
+
+    try {
+      if (editingOption) {
+        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
+        toast.success("Delivery option updated successfully!");
+      } else {
+        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
+        toast.success("Delivery option created successfully!");
+      }
+      setShowFormDialog(false);
+      setEditingOption(null);
+      form.reset({ // form.reset expects DeliveryOptionFormInput
+        name: "",
+        price: 0,
+        description: null,
+        is_pickup: false,
+        active: true,
+        sort_order: 0,
+      });
+      fetchDeliveryOptions();
+    } catch (error: any) {
+      const apiError = error as ApiErrorResponse;
+      toast.error(apiError.message || "An error occurred.");
+      if (apiError.errors) {
+        Object.entries(apiError.errors).forEach(([field, messages]) => {
+          form.setError(field as keyof DeliveryOptionFormInput, { type: "server", message: messages.join(", ") });
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (option: DeliveryOptionType) => {
+    setEditingOption(option);
+    form.reset({ // form.reset expects DeliveryOptionFormInput
+      name: option.name,
+      price: parseFloat(option.price), // Convert string from API to number for form
+      description: option.description || null,
+      is_pickup: option.is_pickup,
+      active: option.active,
+      sort_order: option.sort_order,
+    });
+    setShowFormDialog(true);
+  };
+
+  const openNewDialog = () => {
+    setEditingOption(null);
+    form.reset({ // Reset to default DeliveryOptionFormInput values
+        name: "",
+        price: 0,
+        description: null,
+        is_pickup: false,
+        active: true,
+        sort_order: 0,
+    });
+    setShowFormDialog(true);
+  };
+
+  const handleDeleteOption = async () => {
+    if (!optionToDelete) return;
+    setIsSubmitting(true);
+    try {
+      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
+      toast.success("Delivery option deleted successfully!");
+      setOptionToDelete(null);
+      fetchDeliveryOptions();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete delivery option.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const columns: ColumnDef<DeliveryOptionType>[] = useMemo(() => [
+    {
+      accessorKey: "name",
+      header: ({ column }: { column: Column<DeliveryOptionType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Name <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+    },
+    {
+      accessorKey: "price",
+      header: "Price",
+      cell: ({ row }: { row: Row<DeliveryOptionType> }) => formatPrice(row.original.price),
+    },
+    {
+      accessorKey: "is_pickup",
+      header: "Type",
+      cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
+        <Badge variant={row.original.is_pickup ? "outline" : "default"}>
+          {row.original.is_pickup ? "Pickup" : "Delivery"}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "active",
+      header: "Status",
+      cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
+        <Badge variant={row.original.active ? "default" : "secondary"}>
+          {row.original.active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "sort_order",
+      header: "Sort Order",
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
+        <div className="flex space-x-2">
+          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
+            <Edit3 className="h-4 w-4" />
+          </Button>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </AlertDialogTrigger>
+        </div>
+      ),
+    },
+  ], [form]); // Added form to dependency array as openEditDialog calls form.reset
+
+  const table = useReactTable({
+    data: deliveryOptions,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    state: {
+      sorting,
+      columnFilters,
+    },
+  });
+
+   if (isLoading) {
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                 <h1 className="text-2xl font-semibold">Manage Delivery Options</h1>
+                <Skeleton className="h-10 w-36" />
+            </div>
+            <Skeleton className="h-10 w-full" />
+            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Manage Delivery Options</h1>
+        <Button onClick={openNewDialog}>
+          <PlusCircle className="mr-2 h-4 w-4" /> Add New Option
+        </Button>
+      </div>
+
+      <div className="flex items-center py-4">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by name..."
+            value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+            onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup: HeaderGroup<DeliveryOptionType>) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row: Row<DeliveryOptionType>) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell: Cell<DeliveryOptionType, unknown>) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No delivery options found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+      </div>
+
+      <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
+          setShowFormDialog(isOpen);
+          if (!isOpen) { form.reset(); setEditingOption(null); }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Option Name</FormLabel>
+                    <FormControl><Input placeholder="e.g., Nairobi CBD Delivery" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Price (Ksh)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 200.00" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description (Optional)</FormLabel>
+                    <FormControl><Textarea placeholder="Details about this option..." {...field} value={field.value || ""} className="min-h-[80px]" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="sort_order"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sort Order</FormLabel>
+                    <FormControl><Input type="number" placeholder="0" {...field} /></FormControl>
+                    <FormDescription>Lower numbers appear first.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                 <FormField
+                    control={form.control}
+                    name="is_pickup"
+                    render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                        <FormLabel className="font-normal">Is Pickup Location?</FormLabel>
+                    </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="active"
+                    render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                        <FormLabel className="font-normal">Active</FormLabel>
+                    </FormItem>
+                    )}
+                />
+              </div>
+              <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {editingOption ? 'Save Changes' : 'Create Option'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!optionToDelete} onOpenChange={(isOpen) => !isOpen && setOptionToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOptionToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteOption}
+              disabled={isSubmitting}
+              className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+# === app/admin/orders/page.tsx ===
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { useForm, SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  SortingState,
+  ColumnFiltersState,
+  Row,
+  Column,
+  HeaderGroup,
+  Cell,
+} from '@tanstack/react-table';
+
+import { Order as OrderType, OrderItem as OrderItemType, ApiErrorResponse, AdminOrderUpdatePayload, User as UserType, DeliveryOption as DeliveryOptionType } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+import { formatPrice, cn } from '@/lib/utils';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck } from 'lucide-react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Separator } from '@/components/ui/separator';
+
+
+const orderUpdateFormSchema = z.object({
+  status: z.enum(['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'picked_up']),
+  picked_up_by_name: z.string().optional().nullable(),
+  picked_up_by_id_no: z.string().optional().nullable(),
+});
+type OrderUpdateFormValues = z.infer<typeof orderUpdateFormSchema>;
+
+const placeholderImage = "/placeholder-image.svg";
+
+function OrderItemDetailsCard({ item }: { item: OrderItemType }) {
+  return (
+    <div className="flex items-center space-x-3 py-2 border-b last:border-b-0">
+      <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+        <Image
+          src={item.artwork.image_url || placeholderImage}
+          alt={item.artwork.name}
+          fill
+          sizes="48px"
+          className="object-cover"
+        />
+      </div>
+      <div className="flex-1 space-y-0.5">
+        <p className="text-sm font-medium">{item.artwork.name}</p>
+        <p className="text-xs text-muted-foreground">Qty: {item.quantity} @ {formatPrice(item.price_at_purchase)}</p>
+      </div>
+      <div className="text-sm font-medium">{formatPrice(parseFloat(item.price_at_purchase) * item.quantity)}</div>
+    </div>
+  );
+}
+
+
+export default function AdminOrdersPage() {
+  const [orders, setOrders] = useState<OrderType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<OrderType | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [viewingOrderDetails, setViewingOrderDetails] = useState<OrderType | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+
+
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  const form = useForm<OrderUpdateFormValues>({
+    resolver: zodResolver(orderUpdateFormSchema),
+  });
+
+  const fetchOrders = async () => {
+    setIsLoading(true);
+    try {
+      const fetchedOrders = await apiClient.get<OrderType[]>('/orders/', { needsAuth: true });
+      setOrders(fetchedOrders || []);
+    } catch (error) {
+      console.error("Failed to fetch orders:", error);
+      toast.error("Could not load orders.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const handleUpdateSubmit: SubmitHandler<OrderUpdateFormValues> = async (values) => {
+    if (!editingOrder) return;
+    setIsSubmitting(true);
+
+    const payload: AdminOrderUpdatePayload = { status: values.status };
+    if (values.status === 'picked_up') {
+      if (!values.picked_up_by_name || !values.picked_up_by_id_no) {
+        toast.error("Picker name and ID number are required for 'Picked Up' status.");
+        setIsSubmitting(false);
+        return;
+      }
+      payload.picked_up_by_name = values.picked_up_by_name;
+      payload.picked_up_by_id_no = values.picked_up_by_id_no;
+    } else {
+        payload.picked_up_by_name = '';
+        payload.picked_up_by_id_no = '';
+    }
+
+
+    try {
+      await apiClient.patch<OrderType>(`/orders/${editingOrder.id}`, payload, { needsAuth: true });
+      toast.success("Order status updated successfully!");
+      setShowEditDialog(false);
+      setEditingOrder(null);
+      form.reset();
+      fetchOrders();
+    } catch (error: any) {
+      const apiError = error as ApiErrorResponse;
+      toast.error(apiError.message || "An error occurred.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (order: OrderType) => {
+    setEditingOrder(order);
+    form.reset({
+      status: order.status,
+      picked_up_by_name: order.picked_up_by_name || "",
+      picked_up_by_id_no: order.picked_up_by_id_no || "",
+    });
+    setShowEditDialog(true);
+  };
+
+  const openDetailsDialog = (order: OrderType) => {
+    setViewingOrderDetails(order);
+    setShowDetailsDialog(true);
+  };
+
+  const currentStatus = form.watch('status');
+
+  const columns: ColumnDef<OrderType>[] = useMemo(() => [
+    {
+      accessorKey: "id",
+      header: ({ column }: { column: Column<OrderType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Order ID <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<OrderType> }) => <span className="font-mono text-xs">{row.original.id.substring(0,8)}...</span>,
+    },
+    {
+      accessorKey: "user.email",
+      header: "Customer",
+      cell: ({ row }: { row: Row<OrderType> }) => row.original.user?.email || row.original.user_id.substring(0,8)+'...',
+    },
+    {
+      accessorKey: "created_at",
+      header: "Date Placed",
+      cell: ({ row }: { row: Row<OrderType> }) => new Date(row.original.created_at).toLocaleDateString(),
+    },
+    {
+      accessorKey: "total_price",
+      header: "Total",
+      cell: ({ row }: { row: Row<OrderType> }) => formatPrice(row.original.total_price),
+    },
+    {
+        accessorKey: "delivery_option_details.name",
+        header: "Delivery",
+        cell: ({ row }: { row: Row<OrderType> }) => (
+            <div className="text-xs">
+                <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
+                {row.original.delivery_option_details?.is_pickup && <Badge variant="outline" className="mt-1">Pickup</Badge>}
+            </div>
+        ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }: { row: Row<OrderType> }) => (
+        <Badge
+          variant={
+            row.original.status === 'paid' || row.original.status === 'delivered' || row.original.status === 'picked_up' ? 'default' :
+            row.original.status === 'pending' ? 'secondary' :
+            row.original.status === 'shipped' ? 'outline' :
+            'destructive'
+          }
+          className="capitalize"
+        >
+          {row.original.status.replace('_', ' ')}
+        </Badge>
+      ),
+      filterFn: (row: Row<OrderType>, id: string, value: any) => value.includes(row.getValue(id)),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }: { row: Row<OrderType> }) => (
+        <div className="flex space-x-1">
+          <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(row.original)} title="View Details">
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit Status">
+            <Edit3 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ], []);
+
+  const table = useReactTable({
+    data: orders,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    state: {
+      sorting,
+      columnFilters,
+    },
+  });
+
+  if (isLoading && orders.length === 0) {
+    return (
+        <div className="space-y-4">
+            <h1 className="text-2xl font-semibold">Manage Orders</h1>
+            <Skeleton className="h-10 w-full" />
+            {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight">Manage Orders</h1>
+
+      <div className="flex items-center py-4">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by Order ID or Customer..."
+            value={(table.getColumn("id")?.getFilterValue() as string) ?? ""}
+            onChange={(event) => table.getColumn("id")?.setFilterValue(event.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup: HeaderGroup<OrderType>) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row: Row<OrderType>) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell: Cell<OrderType, unknown>) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No orders found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+      </div>
+
+      <Dialog open={showEditDialog} onOpenChange={(isOpen) => {
+          setShowEditDialog(isOpen);
+          if (!isOpen) { form.reset(); setEditingOrder(null); }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Order Status</DialogTitle>
+            <DialogDescription>Order ID: {editingOrder?.id.substring(0,8)}...</DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleUpdateSubmit)} className="space-y-4 py-4">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {(['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'picked_up'] as const).map(s => (
+                          <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {currentStatus === 'picked_up' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="picked_up_by_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Picked Up By (Name)</FormLabel>
+                        <FormControl><Input placeholder="Full name of collector" {...field} value={field.value || ''} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="picked_up_by_id_no"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Picker's ID Number</FormLabel>
+                        <FormControl><Input placeholder="ID or Passport No." {...field} value={field.value || ''} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+              <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Update Status
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Order Details Dialog */}
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+                <DialogTitle>Order Details: {viewingOrderDetails?.id.substring(0,8)}...</DialogTitle>
+            </DialogHeader>
+            {viewingOrderDetails && (
+                <div className="py-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div><strong>Order ID:</strong> {viewingOrderDetails.id}</div>
+                        <div><strong>Date:</strong> {new Date(viewingOrderDetails.created_at).toLocaleString()}</div>
+                        <div><strong>Customer:</strong> {viewingOrderDetails.user?.name || viewingOrderDetails.user?.email || 'N/A'}</div>
+                        <div><strong>Status:</strong> <Badge className="capitalize">{viewingOrderDetails.status.replace('_',' ')}</Badge></div>
+                        <div><strong>Total Amount:</strong> {formatPrice(viewingOrderDetails.total_price)}</div>
+                        <div><strong>M-Pesa Ref:</strong> {viewingOrderDetails.payment_gateway_ref || 'N/A'}</div>
+                    </div>
+                    <Separator />
+                    <div>
+                        <h4 className="font-semibold mb-1">Delivery Details:</h4>
+                        <p className="text-sm"><strong>Method:</strong> {viewingOrderDetails.delivery_option_details?.name || 'N/A'}</p>
+                        <p className="text-sm"><strong>Fee:</strong> {formatPrice(viewingOrderDetails.delivery_fee || '0')}</p>
+                        <p className="text-sm"><strong>Address:</strong> {viewingOrderDetails.shipping_address || 'N/A'}</p>
+                         {viewingOrderDetails.delivery_option_details?.is_pickup && viewingOrderDetails.status === 'picked_up' && (
+                            <>
+                                <p className="text-sm mt-1"><strong>Picked Up By:</strong> {viewingOrderDetails.picked_up_by_name || 'N/A'}</p>
+                                <p className="text-sm"><strong>Picker's ID:</strong> {viewingOrderDetails.picked_up_by_id_no || 'N/A'}</p>
+                                <p className="text-sm"><strong>Picked Up At:</strong> {viewingOrderDetails.picked_up_at ? new Date(viewingOrderDetails.picked_up_at).toLocaleString() : 'N/A'}</p>
+                            </>
+                         )}
+                    </div>
+                     <Separator />
+                    <div>
+                        <h4 className="font-semibold mb-2">Items:</h4>
+                        <div className="space-y-2">
+                            {viewingOrderDetails.items.map(item => <OrderItemDetailsCard key={item.id} item={item} />)}
+                        </div>
+                    </div>
+                </div>
+            )}
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+    </div>
+  );
+}
+
+# === app/admin/artworks/page.tsx ===
+// === app/admin/artworks/page.tsx ===
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { useForm, SubmitHandler, FieldValues } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  SortingState,
+  ColumnFiltersState,
+  Row,
+  Column,
+  HeaderGroup,
+  Cell,
+} from '@tanstack/react-table';
+
+import { Artwork as ArtworkType, Artist as ArtistType, ApiErrorResponse } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+import { formatPrice, cn } from '@/lib/utils';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink } from 'lucide-react';
+
+const artworkFormSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    artist_id: z.string().min(1, "Artist is required"),
+    price: z.coerce.number().min(0, "Price must be non-negative"),
+    stock_quantity: z.coerce.number().int().min(0, "Stock must be a non-negative integer"),
+    description: z.string().optional().nullable(), // Made explicit
+    is_active: z.boolean().default(true),
+    image_file: z.instanceof(File).optional().nullable(),
+  });
+  
+  // This is the output type, typically used for validated data
+  type ArtworkFormValues = z.infer<typeof artworkFormSchema>;
+  
+  // Add this line: This is the input type for the form, before Zod processing
+  type ArtworkFormInput = z.input<typeof artworkFormSchema>;
+  
+  
+  interface ArtworkApiPayload {
+    name: string;
+    artist_id: string;
+    price: string;
+    stock_quantity: number;
+    description?: string | null; // Match schema for consistency
+    is_active: boolean;
+  }
+  
+  const placeholderImage = "/placeholder-image.svg";
+  
+  export default function AdminArtworksPage() {
+    // ... rest of your component state
+    const [artworks, setArtworks] = useState<ArtworkType[]>([]);
+    const [artists, setArtists] = useState<ArtistType[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [editingArtwork, setEditingArtwork] = useState<ArtworkType | null>(null);
+    const [showFormDialog, setShowFormDialog] = useState(false);
+    const [artworkToDelete, setArtworkToDelete] = useState<ArtworkType | null>(null);
+  
+    const [sorting, setSorting] = useState<SortingState>([]);
+    const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  
+    const form = useForm<ArtworkFormInput, any, ArtworkFormValues>({ // Now ArtworkFormInput is defined
+      resolver: zodResolver(artworkFormSchema),
+      defaultValues: {
+        name: "",
+        artist_id: "",
+        price: 0,
+        stock_quantity: 0,
+        description: null,
+        is_active: true,
+        image_file: null,
+      },
+    });
+  
+    // ... rest of your component code
+    // ... (fetchArtworksAndArtists, useEffect, handleFormSubmit, etc.) ...
+    // ... (openEditDialog, openNewDialog, handleDeleteArtwork, columns, table definition) ...
+    // ... (JSX for loading state, page layout, table, dialogs) ...
+  // Ensure the rest of your file remains the same as you provided.
+  // The key change is adding the `type ArtworkFormInput = z.input<typeof artworkFormSchema>;` line.
+  
+    const fetchArtworksAndArtists = async () => {
+      setIsLoading(true);
+      try {
+        const [fetchedArtworks, fetchedArtists] = await Promise.all([
+          apiClient.get<ArtworkType[]>('/artworks/', { needsAuth: true }),
+          apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
+        ]);
+        setArtworks(fetchedArtworks || []);
+        setArtists(fetchedArtists || []);
+      } catch (error) {
+        console.error("Failed to fetch artworks or artists:", error);
+        toast.error("Could not load data.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+  
+    useEffect(() => {
+      fetchArtworksAndArtists();
+    }, []);
+  
+    const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
+      setIsSubmitting(true);
+  
+      try {
+        if (editingArtwork) { // --- EDITING ---
+          if (values.image_file) {
+              const formData = new FormData();
+              (Object.keys(values) as Array<keyof ArtworkFormValues>).forEach(key => {
+                  const value = values[key];
+                  if (key === 'image_file' && value instanceof File) {
+                      formData.append(key, value);
+                  } else if (key === 'price' && typeof value === 'number') {
+                      formData.append(key, value.toString());
+                  } else if (value !== undefined && value !== null) { // Check for null explicitly for optional fields
+                      formData.append(key, String(value));
+                  }
+              });
+              await apiClient.patch<ArtworkType>(
+                  `/artworks/${editingArtwork.id}`,
+                  formData,
+                  { needsAuth: true, isFormData: true }
+              );
+          } else { // No new image file, send JSON
+              const { image_file, ...jsonPayloadData } = values;
+              const apiPayload: ArtworkApiPayload = {
+                  ...jsonPayloadData,
+                  description: jsonPayloadData.description ?? undefined, // Ensure undefined if null for JSON
+                  price: values.price.toString(),
+              };
+              await apiClient.patch<ArtworkType>(
+                  `/artworks/${editingArtwork.id}`,
+                  apiPayload,
+                  { needsAuth: true, isFormData: false }
+              );
+          }
+          toast.success("Artwork updated successfully!");
+  
+        } else { // --- CREATING NEW ---
+          if (values.image_file) {
+              const formData = new FormData();
+              (Object.keys(values) as Array<keyof ArtworkFormValues>).forEach(key => {
+                  const value = values[key];
+                   if (key === 'image_file' && value instanceof File) {
+                      formData.append(key, value);
+                  } else if (key === 'price' && typeof value === 'number') {
+                      formData.append(key, value.toString());
+                  } else if (value !== undefined && value !== null) {
+                      formData.append(key, String(value));
+                  }
+              });
+              await apiClient.post<ArtworkType>(
+                  '/artworks/',
+                  formData,
+                  { needsAuth: true, isFormData: true }
+              );
+          } else {
+              const { image_file, ...jsonPayloadData } = values;
+               const apiPayload: ArtworkApiPayload = {
+                  ...jsonPayloadData,
+                  description: jsonPayloadData.description ?? undefined,
+                  price: values.price.toString(),
+              };
+              await apiClient.post<ArtworkType>(
+                  '/artworks/',
+                  apiPayload,
+                  { needsAuth: true, isFormData: false }
+              );
+          }
+          toast.success("Artwork created successfully!");
+        }
+  
+        setShowFormDialog(false);
+        setEditingArtwork(null);
+        form.reset({ // form.reset takes ArtworkFormInput (or Partial<ArtworkFormInput>)
+          name: "",
+          artist_id: artists.length > 0 ? artists[0].id : "",
+          price: 0,
+          stock_quantity: 0,
+          description: null,
+          is_active: true,
+          image_file: null,
+        });
+        fetchArtworksAndArtists();
+      } catch (error: any) {
+        const apiError = error as ApiErrorResponse;
+        toast.error(apiError.message || "An error occurred.");
+        if (apiError.errors) {
+          Object.entries(apiError.errors).forEach(([field, messages]) => {
+            form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
+          });
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+  
+    const openEditDialog = (artwork: ArtworkType) => {
+      setEditingArtwork(artwork);
+      form.reset({ // form.reset takes ArtworkFormInput (or Partial<ArtworkFormInput>)
+        name: artwork.name,
+        artist_id: artwork.artist_id,
+        price: parseFloat(artwork.price),
+        stock_quantity: artwork.stock_quantity,
+        description: artwork.description || null,
+        is_active: artwork.is_active === undefined ? true : artwork.is_active,
+        image_file: null,
+      });
+      setShowFormDialog(true);
+    };
+  
+    const openNewDialog = () => {
+      setEditingArtwork(null);
+      form.reset({ // form.reset takes ArtworkFormInput (or Partial<ArtworkFormInput>)
+          name: "",
+          artist_id: artists.length > 0 ? artists[0].id : "",
+          price: 0,
+          stock_quantity: 0,
+          description: null,
+          is_active: true,
+          image_file: null,
+      });
+      setShowFormDialog(true);
+    };
+  
+    const handleDeleteArtwork = async () => {
+      if (!artworkToDelete) return;
+      setIsSubmitting(true);
+      try {
+        await apiClient.delete(`/artworks/${artworkToDelete.id}`, { needsAuth: true });
+        toast.success("Artwork deleted successfully!");
+        setArtworkToDelete(null);
+        fetchArtworksAndArtists();
+      } catch (error: any) {
+        toast.error(error.message || "Failed to delete artwork.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+  
+    const columns: ColumnDef<ArtworkType>[] = useMemo(() => [
+      {
+        accessorKey: "image_url",
+        header: "Image",
+        cell: ({ row }: { row: Row<ArtworkType> }) => {
+          const artwork = row.original;
+          return (
+            <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+              <Image
+                src={artwork.image_url || placeholderImage}
+                alt={artwork.name}
+                fill
+                sizes="64px"
+                className="object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+              />
+              {!artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
+            </div>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: "name",
+        header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Name <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        ),
+        cell: ({ row }: { row: Row<ArtworkType> }) => <Link href={`/artworks/${row.original.id}`} target="_blank" className="hover:underline font-medium">{row.original.name} <ExternalLink className="inline h-3 w-3 ml-1" /></Link>,
+      },
+      {
+        accessorKey: "artist.name",
+        header: "Artist",
+        cell: ({ row }: { row: Row<ArtworkType> }) => row.original.artist?.name || 'N/A',
+      },
+      {
+        accessorKey: "price",
+        header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Price <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        ),
+        cell: ({ row }: { row: Row<ArtworkType> }) => formatPrice(row.original.price),
+      },
+      {
+        accessorKey: "stock_quantity",
+        header: "Stock",
+        cell: ({ row }: { row: Row<ArtworkType> }) => row.original.stock_quantity,
+      },
+      {
+        accessorKey: "is_active",
+        header: "Status",
+        cell: ({ row }: { row: Row<ArtworkType> }) => (
+          <Badge variant={row.original.is_active ? "default" : "secondary"}>
+            {row.original.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+        filterFn: (row: Row<ArtworkType>, id: string, value: any) => value.includes(row.getValue(id))
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }: { row: Row<ArtworkType> }) => {
+          const artwork = row.original;
+          return (
+            <div className="flex space-x-2">
+              <Button variant="ghost" size="icon" onClick={() => openEditDialog(artwork)} title="Edit">
+                <Edit3 className="h-4 w-4" />
+              </Button>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => setArtworkToDelete(artwork)} title="Delete">
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </AlertDialogTrigger>
+            </div>
+          );
+        },
+      },
+    ], [artists, form]); // form is a dependency because openEditDialog and openNewDialog use form.reset
+  
+    const table = useReactTable({
+      data: artworks,
+      columns,
+      getCoreRowModel: getCoreRowModel(),
+      getPaginationRowModel: getPaginationRowModel(),
+      getSortedRowModel: getSortedRowModel(),
+      getFilteredRowModel: getFilteredRowModel(),
+      onSortingChange: setSorting,
+      onColumnFiltersChange: setColumnFilters,
+      state: {
+        sorting,
+        columnFilters,
+      },
+    });
+  
+  
+    if (isLoading && artworks.length === 0) {
+      return (
+          <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                  <h1 className="text-2xl font-semibold">Manage Artworks</h1>
+                  <Skeleton className="h-10 w-32" />
+              </div>
+              <Skeleton className="h-10 w-full" />
+              {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+          </div>
+      );
+    }
+  
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Manage Artworks</h1>
+          <Button onClick={openNewDialog}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New Artwork
+          </Button>
+        </div>
+  
+        <div className="flex items-center py-4">
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Filter by name..."
+              value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+              onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+  
+        <div className="rounded-md border bg-card">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtworkType>) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows?.length ? (
+                table.getRowModel().rows.map((row: Row<ArtworkType>) => (
+                  <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                    {row.getVisibleCells().map((cell: Cell<ArtworkType, unknown>) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                    No artworks found.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+  
+        <div className="flex items-center justify-end space-x-2 py-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            Next
+          </Button>
+        </div>
+  
+        <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
+            setShowFormDialog(isOpen);
+            if (!isOpen) {
+                form.reset(); // Default reset uses defaultValues from useForm
+                setEditingArtwork(null);
+            }
+        }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingArtwork ? 'Edit Artwork' : 'Add New Artwork'}</DialogTitle>
+              <DialogDescription>
+                {editingArtwork ? 'Update the details of the artwork.' : 'Fill in the details for the new artwork.'}
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name</FormLabel>
+                      <FormControl><Input placeholder="Artwork Title" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="artist_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Artist</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an artist" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {artists.map((artist) => (
+                            <SelectItem key={artist.id} value={artist.id} disabled={!artist.is_active && artist.id !== editingArtwork?.artist_id}>
+                              {artist.name} {!artist.is_active && "(Inactive)"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                      control={form.control}
+                      name="price"
+                      render={({ field }) => (
+                      <FormItem>
+                          <FormLabel>Price (Ksh)</FormLabel>
+                          <FormControl><Input type="number" step="0.01" placeholder="e.g., 1500.00" {...field} /></FormControl>
+                          <FormMessage />
+                      </FormItem>
+                      )}
+                  />
+                  <FormField
+                      control={form.control}
+                      name="stock_quantity"
+                      render={({ field }) => (
+                      <FormItem>
+                          <FormLabel>Stock Quantity</FormLabel>
+                          <FormControl><Input type="number" placeholder="e.g., 10" {...field} /></FormControl>
+                          <FormMessage />
+                      </FormItem>
+                      )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl><Textarea placeholder="Describe the artwork..." {...field} value={field.value || ""} className="min-h-[100px]" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="image_file"
+                  render={({ field: { onChange, value, ...rest } }) => (
+                    <FormItem>
+                      <FormLabel>Artwork Image</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => onChange(e.target.files ? e.target.files[0] : null)}
+                          {...rest}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                          {editingArtwork && editingArtwork.image_url && !value && (
+                              <span>Current image: <a href={editingArtwork.image_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">View</a>. Upload a new file to replace it.</span>
+                          )}
+                           {!editingArtwork?.image_url && !value && "No image uploaded."}
+                           {value && value instanceof File && `New image selected: ${value.name}`}
+                           {value && typeof value === 'string' && `Image: ${value}`}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="is_active"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Active</FormLabel>
+                        <FormDescription>
+                          Uncheck to hide this artwork from the public store.
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <DialogClose asChild>
+                      <Button type="button" variant="outline" onClick={() => {
+                          form.reset(); // Resets to defaultValues
+                          setEditingArtwork(null);
+                      }}>Cancel</Button>
+                  </DialogClose>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingArtwork ? 'Save Changes' : 'Create Artwork'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+  
+        <AlertDialog open={!!artworkToDelete} onOpenChange={(isOpen) => !isOpen && setArtworkToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the artwork
+                "{artworkToDelete?.name}".
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setArtworkToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteArtwork}
+                disabled={isSubmitting}
+                className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+              >
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+# === app/cart/page.tsx ===
+// === app/cart/page.tsx ===
+'use client';
+
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -418,7 +2234,13 @@ import { toast } from 'sonner';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice, cn } from '@/lib/utils';
-import { ApiErrorResponse, CartItem as CartItemType, StkPushInitiationResponse } from '@/lib/types';
+import {
+    ApiErrorResponse,
+    CartItem as CartItemType,
+    StkPushInitiationResponse,
+    DeliveryOption as DeliveryOptionType, // Import DeliveryOptionType
+    PaymentTransactionStatusResponse
+} from '@/lib/types';
 import { apiClient } from '@/lib/api';
 
 import { Button } from "@/components/ui/button";
@@ -431,20 +2253,16 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
+  FormLabel, // <--- MAKE SURE FormLabel IS HERE if you use it for the Mpesa phone field
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label"
 
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle, Truck, Package } from 'lucide-react';
 
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle } from 'lucide-react';
-
-interface PaymentTransactionStatusResponse {
-    status: 'initiated' | 'pending_stk_initiation' | 'pending_confirmation' | 'successful' | 'failed_stk_initiation' | 'failed_stk_missing_id' | 'failed_underpaid' | 'failed_processing_error' | 'cancelled_by_user' | 'failed_daraja' | 'failed_timeout' | 'failed_missing_receipt' | 'not_found';
-    checkout_request_id: string | null;
-    message: string;
-    order_id?: string;
-}
 
 const checkoutSchema = z.object({
   phoneNumber: z.string()
@@ -452,6 +2270,7 @@ const checkoutSchema = z.object({
     .length(12, "Phone number must be 12 digits (e.g. 2547XXXXXXXX)")
     .startsWith("254", "Phone number must start with 254")
     .regex(/^[0-9]+$/, "Phone number must contain only digits"),
+  // deliveryOptionId is now handled by state, not directly in this form schema for Mpesa part
 });
 type CheckoutFormValues = z.infer<typeof checkoutSchema>;
 
@@ -574,10 +2393,11 @@ export default function CartPage() {
     cart,
     isLoading: cartIsLoading,
     itemCount,
-    totalPrice,
+    totalPrice: cartSubtotal, // Renamed for clarity
     updateCartItem,
     removeFromCart,
     fetchCart,
+    clearCart, // If user logs out while checkout polling active
   } = useCart();
   const { isAuthenticated, isLoading: authIsLoading, user } = useAuth();
   const router = useRouter();
@@ -587,12 +2407,18 @@ export default function CartPage() {
   const [pollingMessage, setPollingMessage] = useState<string>("Please complete the M-Pesa payment on your phone.");
   const [paymentStatus, setPaymentStatus] = useState<PaymentTransactionStatusResponse['status'] | null>(null);
 
+  // --- NEW STATES FOR DELIVERY ---
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionType[]>([]);
+  const [isLoadingDeliveryOptions, setIsLoadingDeliveryOptions] = useState(false);
+  const [selectedDeliveryOptionId, setSelectedDeliveryOptionId] = useState<string | null>(null);
+  const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('pickup'); // Default to pickup
+  // --- END NEW STATES ---
+
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingAttemptsRef = useRef<number>(0);
 
-  const MAX_POLLING_ATTEMPTS = 24; 
+  const MAX_POLLING_ATTEMPTS = 24;
   const POLLING_INTERVAL_MS = 5000;
-
 
   const checkoutForm = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutSchema),
@@ -601,14 +2427,59 @@ export default function CartPage() {
     },
   });
 
-   useEffect(() => {
-    if (user?.address && !isStkFlowActive) { 
-        const potentialPhone = user.address.replace(/\D/g, '');
-        if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
-             checkoutForm.setValue("phoneNumber", potentialPhone);
+  // Fetch delivery options on mount if authenticated
+  useEffect(() => {
+    if (isAuthenticated && !isStkFlowActive) {
+      const fetchDeliveryOpts = async () => {
+        setIsLoadingDeliveryOptions(true);
+        try {
+          const opts = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
+          setDeliveryOptions(opts || []);
+          // Auto-select "In Store Pick Up" if available
+          const pickupOption = opts?.find(opt => opt.is_pickup);
+          if (pickupOption) {
+            setSelectedDeliveryOptionId(pickupOption.id);
+            setDeliveryType('pickup');
+          } else if (opts && opts.length > 0) {
+            // If no pickup, select first available delivery option
+            setSelectedDeliveryOptionId(opts[0].id);
+            setDeliveryType('delivery');
+          }
+        } catch (error) {
+          console.error("Failed to fetch delivery options:", error);
+          toast.error("Could not load delivery options.");
+        } finally {
+          setIsLoadingDeliveryOptions(false);
         }
+      };
+      fetchDeliveryOpts();
     }
-   }, [user, checkoutForm, isStkFlowActive]);
+  }, [isAuthenticated, isStkFlowActive]);
+
+  // Pre-fill phone number from user profile
+  useEffect(() => {
+    if (user?.address && !isStkFlowActive) {
+      const potentialPhone = user.address.replace(/\D/g, ''); // Simplistic extraction
+      if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
+        checkoutForm.setValue("phoneNumber", potentialPhone);
+      }
+    }
+  }, [user, checkoutForm, isStkFlowActive]);
+
+  // Calculate delivery cost and grand total
+  const selectedDeliveryOption = useMemo(() => {
+    return deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId);
+  }, [deliveryOptions, selectedDeliveryOptionId]);
+
+  const deliveryCost = useMemo(() => {
+    if (!selectedDeliveryOption) return 0;
+    return parseFloat(selectedDeliveryOption.price) || 0;
+  }, [selectedDeliveryOption]);
+
+  const grandTotal = useMemo(() => {
+    return cartSubtotal + deliveryCost;
+  }, [cartSubtotal, deliveryCost]);
+
 
   const stopPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -621,15 +2492,22 @@ export default function CartPage() {
   const handlePaymentSuccess = useCallback((orderId?: string) => {
     stopPolling();
     setPaymentStatus('successful');
-    setPollingMessage("Payment successful! Your order has been placed.");
+    let successMessage = "Payment successful! Your order has been placed.";
+    if (selectedDeliveryOption?.is_pickup) {
+        successMessage += ` You can pick up your order at: ${selectedDeliveryOption.description || 'Dynamic Mall, Shop M90, CBD, Nairobi.'}`;
+    } else if (selectedDeliveryOption) {
+        successMessage += ` It will be delivered via ${selectedDeliveryOption.name}.`;
+    }
+
+    setPollingMessage(successMessage);
     toast.success("Order Placed Successfully!", {
-        description: "You can pick up your order at Dynamic Mall, Shop M90, CBD, Nairobi.",
+        description: successMessage.replace("Payment successful! Your order has been placed.", ""), // Shorter description
         duration: 15000,
-        action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } : 
+        action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } :
                          { label: "My Orders", onClick: () => router.push(`/orders`) },
     });
-    fetchCart(); 
-  }, [stopPolling, router, fetchCart]);
+    fetchCart(); // To clear cart items from UI as backend clears them
+  }, [stopPolling, router, fetchCart, selectedDeliveryOption]);
 
   const handlePaymentFailure = useCallback((message: string, finalStatus?: PaymentTransactionStatusResponse['status']) => {
     stopPolling();
@@ -641,8 +2519,7 @@ export default function CartPage() {
 
 
   const pollPaymentStatus = useCallback(async (checkoutIdToPoll: string) => {
-    if (!checkoutIdToPoll) { 
-        console.warn("pollPaymentStatus called without checkoutIdToPoll");
+    if (!checkoutIdToPoll) {
         handlePaymentFailure("Cannot check payment status: Missing transaction ID.", "failed_processing_error");
         return;
     }
@@ -657,73 +2534,63 @@ export default function CartPage() {
     try {
       const statusResponse = await apiClient.get<PaymentTransactionStatusResponse>(`/orders/status/${checkoutIdToPoll}`, { needsAuth: true });
       if (statusResponse) {
-        setPaymentStatus(statusResponse.status); 
-        
+        setPaymentStatus(statusResponse.status);
         if (statusResponse.status === 'successful') {
           handlePaymentSuccess(statusResponse.order_id);
         } else if (['failed_stk_initiation', 'failed_stk_missing_id', 'failed_underpaid', 'failed_processing_error', 'cancelled_by_user', 'failed_daraja', 'failed_timeout', 'failed_missing_receipt'].includes(statusResponse.status)) {
           handlePaymentFailure(statusResponse.message || "Payment process encountered an issue.", statusResponse.status);
         } else if (statusResponse.status === 'not_found') {
            handlePaymentFailure("Transaction details not found. This could be a delay or an issue. Please contact support if payment was made.", 'not_found');
-        } else { // Pending states
+        } else {
            setPollingMessage(statusResponse.message || "Awaiting M-Pesa confirmation...");
         }
-      } else { // Should ideally not happen if apiClient throws on non-OK
+      } else {
         setPollingMessage("Could not retrieve payment status. Still trying...");
       }
     } catch (error: any) {
       console.error("Polling error:", error);
-      if (error.message?.includes('404') || error.message?.toLowerCase().includes('not found')) {
+      if (error.message?.includes('401')) { // Handle potential token expiry during long polling
+         toast.error("Session expired. Please log in and try again.");
+         handlePaymentFailure("Authentication error during polling. Please log in again.", "failed_processing_error");
+         clearCart(); // Clear local cart state
+         router.push('/login?redirect=/cart');
+      } else if (error.message?.includes('404') || error.message?.toLowerCase().includes('not found')) {
         handlePaymentFailure("Could not find this transaction to check its status. If you paid, contact support.", 'not_found');
       } else {
         setPollingMessage("Error checking status. Retrying...");
       }
     }
-  }, [handlePaymentSuccess, handlePaymentFailure]); // Dependencies for useCallback
+  }, [handlePaymentSuccess, handlePaymentFailure, router, clearCart]);
 
 
   useEffect(() => {
     const isFinalSuccessState = paymentStatus === 'successful';
-    const isFinalNonSuccessState = 
-        paymentStatus === 'failed_stk_initiation' ||
-        paymentStatus === 'failed_stk_missing_id' ||
-        paymentStatus === 'failed_underpaid' ||
-        paymentStatus === 'failed_processing_error' ||
-        paymentStatus === 'cancelled_by_user' ||
-        paymentStatus === 'failed_daraja' ||
-        paymentStatus === 'failed_timeout' ||
-        paymentStatus === 'failed_missing_receipt' ||
+    const isFinalNonSuccessState =
+        paymentStatus === 'failed_stk_initiation' || paymentStatus === 'failed_stk_missing_id' ||
+        paymentStatus === 'failed_underpaid' || paymentStatus === 'failed_processing_error' ||
+        paymentStatus === 'cancelled_by_user' || paymentStatus === 'failed_daraja' ||
+        paymentStatus === 'failed_timeout' || paymentStatus === 'failed_missing_receipt' ||
         paymentStatus === 'not_found';
 
-    if (stkCheckoutId && isStkFlowActive && 
-        !isFinalSuccessState && 
-        !isFinalNonSuccessState &&
-        !pollingIntervalRef.current) { 
-          
+    if (stkCheckoutId && isStkFlowActive && !isFinalSuccessState && !isFinalNonSuccessState && !pollingIntervalRef.current) {
       pollingAttemptsRef.current = 0;
       if (paymentStatus === null || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') {
-         setPollingMessage("Waiting for M-Pesa confirmation..."); 
+         setPollingMessage("Waiting for M-Pesa confirmation...");
       }
-      
-      pollPaymentStatus(stkCheckoutId);
-      
-      // After initial poll, re-check conditions to set interval
-      // This logic needs to be careful not to miss the state update from the first pollPaymentStatus call
-      // It's safer to let the interval start and let pollPaymentStatus handle stopping via final states.
-      if (!pollingIntervalRef.current) { // Check again ensures it wasn't stopped by the first poll
+      pollPaymentStatus(stkCheckoutId); // Initial poll
+
+      if (!pollingIntervalRef.current && stkCheckoutId) { // Ensure it wasn't stopped by initial poll
         pollingIntervalRef.current = setInterval(() => {
-            if (stkCheckoutId) { 
+            if (stkCheckoutId) {
                  pollPaymentStatus(stkCheckoutId);
             } else {
-                stopPolling(); 
+                stopPolling();
             }
         }, POLLING_INTERVAL_MS);
       }
     } else if (isFinalSuccessState || isFinalNonSuccessState) {
-        // If a final state is reached (possibly by an update outside this effect's direct initiation)
         stopPolling();
     }
-    
     return () => {
       stopPolling();
     };
@@ -731,21 +2598,33 @@ export default function CartPage() {
 
 
   const handleInitiateCheckout = async (data: CheckoutFormValues) => {
-    setIsStkFlowActive(true); 
-    setStkCheckoutId(null);   
-    setPaymentStatus('initiated'); 
+    if (!selectedDeliveryOptionId) {
+        toast.error("Please select a delivery or pickup option.");
+        return;
+    }
+    if (grandTotal <= 0) {
+        toast.error("Total amount must be greater than zero to proceed with M-Pesa payment.");
+        return;
+    }
+
+    setIsStkFlowActive(true);
+    setStkCheckoutId(null);
+    setPaymentStatus('initiated');
     setPollingMessage("Initiating M-Pesa payment...");
 
     try {
-      const response = await apiClient.post<StkPushInitiationResponse & { transaction_id?: string }>(
-          '/orders/', 
-          { phone_number: data.phoneNumber },
+      const response = await apiClient.post<StkPushInitiationResponse>(
+          '/orders/',
+          {
+            phone_number: data.phoneNumber,
+            delivery_option_id: selectedDeliveryOptionId,
+          },
           { needsAuth: true }
       );
 
       if (response && response.CheckoutRequestID) {
         toast.info("STK Push sent! Please authorize payment on your phone.", { duration: 10000 });
-        setStkCheckoutId(response.CheckoutRequestID); 
+        setStkCheckoutId(response.CheckoutRequestID);
       } else {
         const message = response?.message || response?.ResponseDescription || "Failed to initiate payment. No Checkout ID received.";
         handlePaymentFailure(message, 'failed_stk_initiation');
@@ -756,12 +2635,30 @@ export default function CartPage() {
     }
   };
 
+  const handleDeliveryTypeChange = (type: 'pickup' | 'delivery') => {
+    setDeliveryType(type);
+    if (type === 'pickup') {
+        const pickupOpt = deliveryOptions.find(opt => opt.is_pickup);
+        if (pickupOpt) setSelectedDeliveryOptionId(pickupOpt.id);
+    } else {
+        // If switching to delivery, and a delivery option is already selected, keep it.
+        // Otherwise, select the first non-pickup option if available.
+        const currentIsPickup = deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId)?.is_pickup;
+        if (selectedDeliveryOptionId === null || currentIsPickup) {
+            const firstDeliveryOpt = deliveryOptions.find(opt => !opt.is_pickup);
+            if (firstDeliveryOpt) setSelectedDeliveryOptionId(firstDeliveryOpt.id);
+            else setSelectedDeliveryOptionId(null); // No delivery options available
+        }
+    }
+  };
+
+
   // --- Render logic ---
 
-  if (authIsLoading) { 
+  if (authIsLoading) {
     return <div className="flex justify-center items-center p-10 min-h-[300px]"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
   }
-  if (!isAuthenticated) { 
+  if (!isAuthenticated) {
     return (
       <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -777,42 +2674,29 @@ export default function CartPage() {
   if (isStkFlowActive) {
     let statusIcon = <Loader2 className="h-12 w-12 animate-spin text-primary" />;
     let statusTitle = "Processing Payment...";
-    let alertVariantForComponent: "default" | "destructive" = "default"; 
-    let successAlertClasses = ""; 
+    let alertVariantForComponent: "default" | "destructive" = "default";
+    let successAlertClasses = "";
 
     if (paymentStatus === 'successful') {
         statusIcon = <CheckCircle className="h-12 w-12 text-green-600" />;
         statusTitle = "Payment Successful!";
-        alertVariantForComponent = "default"; 
         successAlertClasses = "bg-green-50 border-green-500 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400";
     } else if (paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found')) {
         statusIcon = <XCircle className="h-12 w-12 text-red-600" />;
         statusTitle = "Payment Issue";
-        alertVariantForComponent = "destructive"; 
-    } else if (stkCheckoutId || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation' || paymentStatus === 'pending_confirmation') { 
+        alertVariantForComponent = "destructive";
+    } else if (stkCheckoutId || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation' || paymentStatus === 'pending_confirmation') {
         statusTitle = "Waiting for M-Pesa Confirmation...";
-        alertVariantForComponent = "default";
     }
-
 
     return (
         <div className="text-center py-10 flex flex-col items-center space-y-6 min-h-[calc(100vh-200px)] justify-center">
             {statusIcon}
-            <h2 className="text-2xl font-semibold">
-                {statusTitle}
-            </h2>
-            
-            <Alert 
-                variant={alertVariantForComponent} 
-                className={cn("max-w-md text-left", successAlertClasses)}
-            >
-                {/* Conditionally render leading icon within Alert based on its structure */}
-                {/* For shadcn, Alert > svg + AlertTitle + AlertDescription */}
-                {paymentStatus === 'successful' && <CheckCircle className="h-4 w-4" />}
-                {paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') && <XCircle className="h-4 w-4" />}
-                {/* Show loader if stkCheckoutId is present AND status is one of the loading states */}
-                {stkCheckoutId && (paymentStatus === null || paymentStatus === 'pending_confirmation' || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') && <Loader2 className="h-4 w-4 animate-spin" />}
-                
+            <h2 className="text-2xl font-semibold">{statusTitle}</h2>
+            <Alert variant={alertVariantForComponent} className={cn("max-w-md text-left", successAlertClasses)}>
+                {(paymentStatus === 'successful' && <CheckCircle className="h-4 w-4" />) ||
+                 (paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') && <XCircle className="h-4 w-4" />) ||
+                 (stkCheckoutId && (paymentStatus === null || paymentStatus === 'pending_confirmation' || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') && <Loader2 className="h-4 w-4 animate-spin" />)}
                 <AlertTitle className="capitalize">
                     {paymentStatus ? paymentStatus.replace(/_/g, ' ') : "Status"}
                  </AlertTitle>
@@ -820,35 +2704,35 @@ export default function CartPage() {
                     {pollingMessage || "Please wait while we confirm your payment."}
                 </AlertDescription>
             </Alert>
-
-            {(paymentStatus === 'successful') && (
-                <Card className={cn("mt-4 p-4 max-w-lg", successAlertClasses)}> 
+            {paymentStatus === 'successful' && selectedDeliveryOption && (
+                <Card className={cn("mt-4 p-4 max-w-lg text-left", successAlertClasses)}>
                     <div className="flex items-start space-x-3">
-                        <Info className={cn("h-5 w-5 flex-shrink-0 mt-0.5", paymentStatus === 'successful' ? "text-green-700 dark:text-green-400" : "")}/>
+                        <Info className={cn("h-5 w-5 flex-shrink-0 mt-0.5", "text-green-700 dark:text-green-400")}/>
                         <div>
-                            <p className="font-semibold">Order Confirmed! Pickup Information:</p>
+                            <p className="font-semibold">
+                                {selectedDeliveryOption.is_pickup ? "Pickup Information:" : "Delivery Information:"}
+                            </p>
                             <p className="text-sm">
-                                You can pick up your order at: <br />
-                                <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
+                                {selectedDeliveryOption.is_pickup
+                                    ? selectedDeliveryOption.description || "Dynamic Mall, Shop M90, CBD, Nairobi."
+                                    : `Your order will be delivered via ${selectedDeliveryOption.name} to your registered address: ${user?.address || 'Not specified'}.`}
                             </p>
                         </div>
                     </div>
                 </Card>
             )}
-            
             <div className="flex space-x-4 pt-4">
               {paymentStatus !== 'successful' && (
-                  <Button 
-                    onClick={() => { 
-                        stopPolling(); 
-                        setIsStkFlowActive(false); 
-                        setPaymentStatus(null); 
-                        setStkCheckoutId(null);
-                        checkoutForm.reset(); 
-                    }} 
+                  <Button
+                    onClick={() => {
+                        stopPolling(); setIsStkFlowActive(false); setPaymentStatus(null); setStkCheckoutId(null);
+                        checkoutForm.reset();
+                        // Re-fetch cart in case of partial failures or to reset context if needed
+                        fetchCart();
+                    }}
                     variant="outline"
                   >
-                      { paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') ? "Try Again / Back to Cart" : "Cancel & Back to Cart"}
+                      {paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') ? "Try Again / Back to Cart" : "Cancel & Back to Cart"}
                   </Button>
               )}
               <Button onClick={() => router.push('/orders')}>
@@ -859,7 +2743,7 @@ export default function CartPage() {
     );
   }
 
-  if (cartIsLoading && !cart && !isStkFlowActive) { 
+  if ((cartIsLoading || isLoadingDeliveryOptions) && !cart && !isStkFlowActive) {
     return (
         <div>
              <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart</h1>
@@ -870,11 +2754,12 @@ export default function CartPage() {
               <div className="mt-6">
                   <Skeleton className="h-10 w-1/3 ml-auto" />
                   <Skeleton className="h-12 w-full mt-4" />
+                  <Skeleton className="h-10 w-full mt-2" />
               </div>
         </div>
     );
   }
-  if ((!cart || itemCount === 0) && !isStkFlowActive) { 
+  if ((!cart || itemCount === 0) && !isStkFlowActive) {
      return (
       <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -887,6 +2772,9 @@ export default function CartPage() {
     );
   }
 
+  const pickupOptions = deliveryOptions.filter(opt => opt.is_pickup);
+  const actualDeliveryOptions = deliveryOptions.filter(opt => !opt.is_pickup);
+
   return (
     <div>
       <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})</h1>
@@ -898,13 +2786,13 @@ export default function CartPage() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y">
-                 {cart?.items.map((item) => ( 
+                 {cart?.items.map((item) => (
                    <div key={item.id} className="px-4 sm:px-6">
                        <CartItem
                          item={item}
                          onUpdateQuantity={updateCartItem}
                          onRemoveItem={removeFromCart}
-                         isUpdating={cartIsLoading} 
+                         isUpdating={cartIsLoading}
                        />
                    </div>
                  ))}
@@ -921,12 +2809,94 @@ export default function CartPage() {
             <CardContent className="space-y-4">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>{formatPrice(totalPrice)}</span>
+                <span>{formatPrice(cartSubtotal)}</span>
+              </div>
+
+              {/* Delivery/Pickup Options */}
+              <Separator />
+              <div>
+                <Label className="text-base font-semibold mb-2 block">Shipping Options</Label>
+                <RadioGroup
+                    value={deliveryType}
+                    onValueChange={(value: 'pickup' | 'delivery') => handleDeliveryTypeChange(value)}
+                    className="mb-3 grid grid-cols-2 gap-2"
+                >
+                    <Label htmlFor="pickup"
+                        className={cn(
+                            "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                            deliveryType === 'pickup' && "border-primary"
+                        )}>
+                        <RadioGroupItem value="pickup" id="pickup" className="sr-only" />
+                        <Package className="mb-2 h-6 w-6" />
+                        Pick Up
+                    </Label>
+                    <Label htmlFor="delivery"
+                        className={cn(
+                            "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                            deliveryType === 'delivery' && "border-primary"
+                        )}>
+                        <RadioGroupItem value="delivery" id="delivery" className="sr-only" />
+                        <Truck className="mb-2 h-6 w-6" />
+                        Delivery
+                    </Label>
+                </RadioGroup>
+
+                {isLoadingDeliveryOptions && <Loader2 className="h-5 w-5 animate-spin my-2" />}
+
+                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && pickupOptions.length > 0 && (
+                    <Select
+                        value={selectedDeliveryOptionId || ""}
+                        onValueChange={(value) => setSelectedDeliveryOptionId(value)}
+                    >
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select pickup location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {pickupOptions.map(opt => (
+                                <SelectItem key={opt.id} value={opt.id}>
+                                    {opt.name} - ({formatPrice(opt.price)})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && pickupOptions.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No pickup options available.</p>
+                )}
+
+                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && actualDeliveryOptions.length > 0 && (
+                     <Select
+                        value={selectedDeliveryOptionId || ""}
+                        onValueChange={(value) => setSelectedDeliveryOptionId(value)}
+                    >
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select delivery zone" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {actualDeliveryOptions.map(opt => (
+                                <SelectItem key={opt.id} value={opt.id}>
+                                    {opt.name} - ({formatPrice(opt.price)})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && actualDeliveryOptions.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No delivery options available.</p>
+                )}
+                {selectedDeliveryOption && (
+                    <p className="text-xs text-muted-foreground mt-1">{selectedDeliveryOption.description}</p>
+                )}
+              </div>
+
+              <div className="flex justify-between">
+                <span>Delivery Fee</span>
+                <span>{formatPrice(deliveryCost)}</span>
               </div>
               <Separator />
               <div className="flex justify-between font-semibold text-lg">
-                <span>Total</span>
-                <span>{formatPrice(totalPrice)}</span>
+                <span>Grand Total</span>
+                <span>{formatPrice(grandTotal)}</span>
               </div>
             </CardContent>
             <CardFooter className="flex-col items-stretch space-y-4">
@@ -936,7 +2906,7 @@ export default function CartPage() {
                          <FormField
                             control={checkoutForm.control}
                             name="phoneNumber"
-                            render={({ field }) => ( 
+                            render={({ field }) => (
                               <FormItem>
                                 <FormLabel>M-Pesa Phone Number</FormLabel>
                                 <FormControl>
@@ -946,22 +2916,27 @@ export default function CartPage() {
                               </FormItem>
                             )}
                           />
-                         <Button type="submit" className="w-full" 
-                                 disabled={isStkFlowActive || itemCount === 0 || cartIsLoading || authIsLoading}> 
-                            {isStkFlowActive ? ( 
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Processing... 
-                                </>
+                         <Button type="submit" className="w-full"
+                                 disabled={isStkFlowActive || itemCount === 0 || cartIsLoading || authIsLoading || !selectedDeliveryOptionId || grandTotal <=0}>
+                            {isStkFlowActive ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
                             ) : (
                                 "Place Order & Pay with M-Pesa"
                             )}
                          </Button>
                     </form>
                  </Form>
-                 <p className="text-xs text-muted-foreground text-center">
-                    Pickup at: <strong>Dynamic Mall, Shop M90, CBD, Nairobi.</strong>
-                 </p>
+                 {selectedDeliveryOption && selectedDeliveryOption.is_pickup && (
+                     <p className="text-xs text-muted-foreground text-center">
+                        Selected Pickup: {selectedDeliveryOption.name}
+                     </p>
+                 )}
+                 {selectedDeliveryOption && !selectedDeliveryOption.is_pickup && (
+                     <p className="text-xs text-muted-foreground text-center">
+                        Selected Delivery: {selectedDeliveryOption.name} <br/>
+                        {user?.address ? `To: ${user.address}` : "Please ensure your address is updated in your profile."}
+                     </p>
+                 )}
             </CardFooter>
           </Card>
         </div>
@@ -977,7 +2952,7 @@ export default function CartPage() {
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types';
+import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types'; // OrderType now includes delivery_option_details
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/lib/utils';
@@ -1001,7 +2976,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { ListOrdered, Package, ShoppingBag, Loader2, ArrowLeft, ImageOff, Terminal } from 'lucide-react';
+import { ListOrdered, Package, ShoppingBag, Loader2, ArrowLeft, ImageOff, Terminal, Truck, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 function OrderItemCard({ item }: { item: OrderItemType }) {
@@ -1023,7 +2998,9 @@ function OrderItemCard({ item }: { item: OrderItemType }) {
         {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
       </div>
       <div className="flex-1 space-y-1">
-        <h4 className="font-medium hover:underline text-sm">{item.artwork.name}</h4>
+        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-sm"> {/* Added Link */}
+            {item.artwork.name}
+        </Link>
         <p className="text-xs text-muted-foreground">By {item.artwork.artist.name}</p>
         <p className="text-xs text-muted-foreground">
           Qty: {item.quantity} @ {formatPrice(item.price_at_purchase)}
@@ -1097,9 +3074,8 @@ export default function OrdersPage() {
       </div>
     );
   }
-  
+
   if (!isAuthenticated && !authIsLoading) {
-      // This case should ideally be handled by the redirect, but as a fallback:
       return (
         <div className="text-center py-10">
           <Package className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -1111,7 +3087,6 @@ export default function OrdersPage() {
         </div>
       );
   }
-
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -1129,7 +3104,7 @@ export default function OrdersPage() {
         </Alert>
       )}
 
-      {isLoading && orders.length === 0 && !error && ( // Show skeletons if loading and no orders yet
+      {isLoading && orders.length === 0 && !error && (
          <div className="space-y-6">
             {Array.from({ length: 3 }).map((_, index) => (<OrderCardSkeleton key={index} />))}
          </div>
@@ -1165,7 +3140,7 @@ export default function OrdersPage() {
                          <Badge variant={
                             order.status === 'paid' || order.status === 'delivered' ? 'default' :
                             order.status === 'pending' ? 'secondary' :
-                            order.status === 'shipped' ? 'outline' : // Needs custom color or use default
+                            order.status === 'shipped' ? 'outline' :
                             'destructive'
                          } className="capitalize mb-1 md:mb-0 w-fit md:w-auto">
                             {order.status}
@@ -1182,15 +3157,35 @@ export default function OrdersPage() {
                     <OrderItemCard key={item.id} item={item} />
                   ))}
                 </div>
-                {order.shipping_address && (
-                    <>
-                        <Separator className="my-4" />
-                        <div className="text-xs text-muted-foreground">
-                            <p><strong>Shipping Address:</strong> {order.shipping_address}</p>
-                            {order.payment_gateway_ref && <p><strong>M-Pesa Ref:</strong> {order.payment_gateway_ref}</p>}
+                
+                <Separator className="my-4" />
+                <div className="text-xs text-muted-foreground space-y-1">
+                    {order.delivery_option_details && (
+                        <div className="flex items-center">
+                            {order.delivery_option_details.is_pickup ? 
+                                <Package className="mr-2 h-4 w-4 text-primary" /> : 
+                                <Truck className="mr-2 h-4 w-4 text-primary" />
+                            }
+                            <p>
+                                <strong>{order.delivery_option_details.is_pickup ? "Pickup:" : "Delivery:"}</strong>{' '}
+                                {order.delivery_option_details.name}
+                                {order.delivery_fee && parseFloat(order.delivery_fee) > 0 && ` (${formatPrice(order.delivery_fee)})`}
+                            </p>
                         </div>
-                    </>
-                )}
+                    )}
+                    {order.shipping_address && (
+                        <div className="flex items-center">
+                             <Info className="mr-2 h-4 w-4 text-primary" />
+                             <p><strong>Address:</strong> {order.shipping_address}</p>
+                        </div>
+                    )}
+                    {order.payment_gateway_ref && (
+                         <div className="flex items-center">
+                            <Info className="mr-2 h-4 w-4 text-primary" />
+                            <p><strong>M-Pesa Ref:</strong> {order.payment_gateway_ref}</p>
+                         </div>
+                    )}
+                </div>
               </AccordionContent>
             </AccordionItem>
           ))}
@@ -2034,7 +4029,6 @@ export default function ArtworkDetailPage() {
 }
 
 # === contexts/AuthContext.tsx ===
-// === contexts/AuthContext.tsx ===
 'use client';
 
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
@@ -2064,7 +4058,16 @@ const setAuthToken = (token: string | null): void => {
    }
 };
 
-export const clearAuthToken = (): void => setAuthToken(null);
+export const clearAuthToken = (): void => {
+    setAuthToken(null);
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.removeItem('isAdmin');
+        } catch (error) {
+            console.error("Failed to remove isAdmin from localStorage:", error);
+        }
+    }
+};
 
 
 interface AuthContextType {
@@ -2072,8 +4075,9 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (userData: Omit<User, 'id'|'created_at'> & {password: string}) => Promise<void>;
+  signup: (userData: Omit<User, 'id'|'created_at'|'is_admin'> & {password: string}) => Promise<void>;
   logout: () => Promise<void>;
   fetchUser: () => Promise<void>;
 }
@@ -2083,73 +4087,93 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(() => getAuthToken());
-  const [isLoading, setIsLoading] = useState<boolean>(true); // Start true to load token and potentially user
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+        return localStorage.getItem('isAdmin') === 'true';
+    } catch (error) {
+        console.error("Failed to read isAdmin from localStorage:", error);
+        return false;
+    }
+  });
+
+  const storeAdminStatus = (isAdminFlag: boolean) => {
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.setItem('isAdmin', String(isAdminFlag));
+        } catch (error) {
+            console.error("Failed to store isAdmin in localStorage:", error);
+        }
+    }
+    setIsAdmin(isAdminFlag);
+  };
 
   const fetchUser = useCallback(async () => {
     const currentToken = getAuthToken();
     if (!currentToken) {
        setToken(null);
        setUser(null);
+       storeAdminStatus(false);
        setIsLoading(false);
        return;
     }
 
-    // If token exists, but user is not loaded, set token and try to fetch user
     if (currentToken && !user) {
-        setToken(currentToken); // Ensure token state is up-to-date
+        setToken(currentToken);
     }
 
     setIsLoading(true);
     try {
-       // IMPORTANT: The backend currently does NOT have a `/api/auth/me` endpoint.
-       // This is a placeholder for if one is added.
-       // If this endpoint doesn't exist, this call will fail, and user will remain null.
        const fetchedUser = await apiClient.get<UserProfile>('/auth/me', { needsAuth: true });
        if (fetchedUser) {
           setUser(fetchedUser);
+          storeAdminStatus(!!fetchedUser.is_admin);
        } else {
-          // If /auth/me exists but returns no user for a valid token (unlikely but possible)
           setUser(null);
-          // Potentially clear token if it's deemed invalid by this response
-          // clearAuthToken(); setToken(null);
+          storeAdminStatus(false);
        }
     } catch (error: any) {
-       console.warn("Failed to fetch user (e.g., /auth/me endpoint might not exist or token is invalid):", error.message);
-       // Don't clear token here if it's just that /me doesn't exist.
-       // If it's a 401, the apiClient might handle it, or we might need to.
-       // For now, assume a failed fetch means user data isn't available.
+       console.warn("Failed to fetch user:", error.message);
        setUser(null);
        if (error.message?.includes("401") || error.message?.includes("Unauthorized")) {
             clearAuthToken();
             setToken(null);
+       } else {
        }
     } finally {
        setIsLoading(false);
     }
-  }, [user]); // Added user to dependency array to avoid re-fetching if user is already loaded
+  }, [user]);
 
   useEffect(() => {
-     // Only run fetchUser on initial mount or if token changes and user isn't loaded
      const currentToken = getAuthToken();
      if (currentToken && !user) {
          fetchUser();
+     } else if (!currentToken) {
+         setUser(null);
+         setToken(null);
+         storeAdminStatus(false);
+         setIsLoading(false);
      } else {
-         setIsLoading(false); // No token, or user already loaded
+         setIsLoading(false);
      }
   }, [fetchUser, user]);
 
 
   const login = async (email: string, password: string) => {
-     // No need to setIsLoading(true) here, as page loading state should not be affected
-     // Individual components can handle their own submit loading state
      try {
          const response = await apiClient.post<LoginResponse>('/auth/login', { email, password });
 
          if (response && typeof response.access_token === 'string') {
              setAuthToken(response.access_token);
              setToken(response.access_token);
-             // Backend login doesn't return user object, so call fetchUser
-             await fetchUser(); // This will attempt /auth/me
+             if (response.user) {
+                 setUser(response.user as UserProfile);
+                 storeAdminStatus(!!response.user.is_admin);
+             } else {
+                 await fetchUser();
+             }
          } else {
              console.error("Login failed: Invalid response structure from server.", response);
              throw new Error("Login failed: Received an invalid response from the server.");
@@ -2159,32 +4183,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
          clearAuthToken();
          setToken(null);
          setUser(null);
-         throw error; // Re-throw for the form to handle
+         throw error;
      }
   };
 
- const signup = async (userData: Omit<User, 'id'|'created_at'> & {password: string}) => {
-    // No need to setIsLoading(true) here
+ const signup = async (userData: Omit<User, 'id'|'created_at'|'is_admin'> & {password: string}) => {
      try {
          const response = await apiClient.post<SignupResponse>('/auth/signup', userData);
-         if (response && response.user) {
-            // Signup on backend does not auto-login or return a token.
-            // It just creates the user. User needs to login separately.
-            // If backend auto-logged in and returned a token:
-            // setAuthToken(response.access_token);
-            // setToken(response.access_token);
-            // setUser(response.user);
-         } else {
+         if (!response || !response.user) {
             throw new Error("Signup response did not include user data.");
          }
      } catch (error) {
          console.error("Signup failed:", error);
-         throw error; // Re-throw for the form to handle
+         throw error;
      }
  };
 
   const logout = async () => {
-     // setIsLoading(true); // Not for global loading, component can handle its own
      const currentToken = getAuthToken();
      try {
         if (currentToken) {
@@ -2196,19 +4211,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         clearAuthToken();
         setToken(null);
         setUser(null);
-        // setIsLoading(false);
-        // Force reload or redirect to ensure all states are cleared, and cart context also updates
         window.location.href = '/';
      }
   };
 
-  // Derived state: isAuthenticated depends on token, user, and loading status
-  // Considered authenticated if not loading, and token is present.
-  // User object might still be null if /me endpoint is not available.
   const isAuthenticated = !isLoading && !!token;
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, isAuthenticated, login, signup, logout, fetchUser }}>
+    <AuthContext.Provider value={{ user, token, isLoading, isAuthenticated, isAdmin, login, signup, logout, fetchUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -2404,6 +4414,47 @@ export function useIsMobile() {
   return !!isMobile
 }
 
+# === components/admin/AdminGuard.tsx ===
+'use client';
+
+import { useEffect, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { Loader2 } from 'lucide-react';
+
+interface AdminGuardProps {
+  children: ReactNode;
+}
+
+export function AdminGuard({ children }: AdminGuardProps) {
+  const { isAuthenticated, isAdmin, isLoading: authIsLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authIsLoading) {
+      if (!isAuthenticated) {
+        router.replace('/login?redirect=/admin');
+      } else if (!isAdmin) {
+        router.replace('/');
+      }
+    }
+  }, [isAuthenticated, isAdmin, authIsLoading, router]);
+
+  if (authIsLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isAuthenticated && isAdmin) {
+    return <>{children}</>;
+  }
+
+  return null; 
+}
+
 # === components/artwork/ArtworkCard.tsx ===
 // === components/artwork/ArtworkCard.tsx ===
 import React from 'react';
@@ -2535,48 +4586,43 @@ export function Footer() {
 
 # === components/layout/Navbar.tsx ===
 // === components/layout/Navbar.tsx ===
-'use client'; // Needs to be a client component to use hooks later
+'use client';
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart } from 'lucide-react'; // Removed User import as it wasn't used
+import { ShoppingCart, UserCog } from 'lucide-react'; // Added UserCog for admin link
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
 
 
 export function Navbar() {
-   const { isAuthenticated, isLoading, logout, user } = useAuth();
+   const { isAuthenticated, isLoading, logout, user, isAdmin } = useAuth(); // Added isAdmin
    const { itemCount } = useCart();
 
   return (
     <nav className="bg-card border-b border-border sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Logo/Brand Name */}
         <Link href="/" className="text-xl font-bold font-serif text-primary">
           Artistry Haven
         </Link>
 
-        {/* Navigation Links */}
         <div className="hidden md:flex items-center space-x-6">
-          {/* UPDATED: Link to artworks page */}
           <Link href="/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Artwork
           </Link>
-          {/* Optional: Add link to Artists page */}
           <Link href="/artists" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Artists
           </Link>
         </div>
 
-        {/* Actions: Auth & Cart */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           <Link href="/cart" aria-label="View Cart">
              <Button variant="ghost" size="icon" className="relative">
                 <ShoppingCart className="h-5 w-5" />
                 {isAuthenticated && itemCount > 0 && (
                    <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
-                      {itemCount > 9 ? '9+' : itemCount} {/* Handle counts > 9 */}
+                      {itemCount > 9 ? '9+' : itemCount}
                    </Badge>
                 )}
              </Button>
@@ -2586,8 +4632,15 @@ export function Navbar() {
              <Button variant="ghost" size="sm" disabled>Loading...</Button>
           ) : isAuthenticated ? (
              <>
+              {isAdmin && ( // Show Admin link if user is admin
+                <Link href="/admin">
+                  <Button variant="ghost" size="icon" title="Admin Dashboard">
+                    <UserCog className="h-5 w-5" />
+                  </Button>
+                </Link>
+              )}
               <Link href="/orders">
-                <Button variant="ghost" size="sm">My Orders</Button>
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">My Orders</Button>
               </Link>
               <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
              </>
