@@ -7,18 +7,19 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Artwork as ArtworkType } from '@/lib/types';
 import { apiClient } from '@/lib/api';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, cn } from '@/lib/utils';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { Button } from '@/components/ui/button';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from '@/components/ui/separator';
-import { Badge } from "@/components/ui/badge"; // Correct import for Badge component
-import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle, Terminal, Edit } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle, Terminal, Edit, InfoIcon, DollarSign, Package, PackageCheck, PackageX } from 'lucide-react';
 
+// Skeleton remains the same
 function ArtworkDetailSkeleton() {
   return (
     <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
@@ -48,12 +49,12 @@ export default function ArtworkDetailPage() {
   const artworkId = params.id as string;
 
   const [artwork, setArtwork] = useState<ArtworkType | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // General page loading
   const [error, setError] = useState<string | null>(null);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   const { addToCart, cart } = useCart();
-  const { isAdmin, isLoading: authIsLoading } = useAuth();
+  const { isAdmin, isLoading: authIsLoading } = useAuth(); // Auth-specific loading
   const placeholderImage = "/placeholder-image.svg";
 
   useEffect(() => {
@@ -89,6 +90,7 @@ export default function ArtworkDetailPage() {
 
   const isInCart = !isAdmin && cart?.items.some(item => item.artwork_id === artwork?.id);
 
+  // Combined loading state check
   if (isLoading || authIsLoading) {
     return <ArtworkDetailSkeleton />;
   }
@@ -139,19 +141,28 @@ export default function ArtworkDetailPage() {
         {isAdmin && (
           <Link href={`/admin/artworks?edit=${artwork.id}`} passHref>
             <Button variant="default" size="sm">
-              <Edit className="mr-2 h-4 w-4" /> Edit in Admin
+              <Edit className="mr-2 h-4 w-4" /> Edit in Admin Panel
             </Button>
           </Link>
         )}
       </div>
       
-      {!artwork.is_active && isAdmin && (
+      {isAdmin && !artwork.is_active && (
         <Alert variant="warning" className="mb-6">
-            <Terminal className="h-4 w-4" />
+            <InfoIcon className="h-4 w-4" />
             <AlertTitle>Admin View: Inactive Artwork</AlertTitle>
-            <AlertDescription>This artwork is currently not active and is hidden from public users.</AlertDescription>
+            <AlertDescription>This artwork is currently marked as inactive and is hidden from public users.</AlertDescription>
         </Alert>
       )}
+       {isAdmin && artwork.is_active && (
+        // Use default variant and add custom styling for "info" look
+        <Alert variant="default" className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400">
+            <InfoIcon className="h-4 w-4" />
+            <AlertTitle>Admin View: Active Artwork</AlertTitle>
+            <AlertDescription>This artwork is currently active and visible to public users.</AlertDescription>
+        </Alert>
+      )}
+
 
       <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
         <div className="w-full bg-muted rounded-lg overflow-hidden border">
@@ -187,9 +198,22 @@ export default function ArtworkDetailPage() {
             </Link>
           </div>
 
-          <p className="text-2xl font-semibold text-primary">
-            {formatPrice(artwork.price)}
-          </p>
+          <div className="flex items-center space-x-2">
+            <DollarSign className="h-6 w-6 text-primary" />
+            <p className="text-2xl font-semibold text-primary">
+                {formatPrice(artwork.price)}
+            </p>
+          </div>
+          
+          {isAdmin && (
+            <div className="flex items-center space-x-2">
+                 {artwork.stock_quantity > 0 ? <PackageCheck className="h-6 w-6 text-green-600" /> : <PackageX className="h-6 w-6 text-red-600" />}
+                <p className={cn("text-lg", artwork.stock_quantity > 0 ? "text-muted-foreground" : "text-red-600 font-semibold")}>
+                    Stock: {artwork.stock_quantity} {artwork.stock_quantity === 0 && "(Out of Stock)"}
+                </p>
+            </div>
+          )}
+
 
           <Separator />
 
@@ -209,7 +233,7 @@ export default function ArtworkDetailPage() {
                   size="lg"
                   className="w-full md:w-auto"
                   onClick={handleAddToCart}
-                  disabled={isAddingToCart || !!isInCart}
+                  disabled={authIsLoading || isAddingToCart || !!isInCart} // Used authIsLoading here
                 >
                   {isAddingToCart ? (
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -230,20 +254,13 @@ export default function ArtworkDetailPage() {
                   Only {artwork.stock_quantity} left in stock!
                 </p>
               )}
-              {artwork.stock_quantity === 0 && (
-                <p className="text-sm text-red-600">
+               {artwork.stock_quantity === 0 && (
+                <p className="text-sm text-red-600 font-semibold">
                   This item is currently out of stock.
                 </p>
               )}
             </div>
           )}
-           {isAdmin && artwork.stock_quantity === 0 && (
-             <Badge variant="destructive">Out of Stock</Badge>
-           )}
-           {isAdmin && artwork.stock_quantity > 0 && (
-             <p className="text-sm text-muted-foreground">Stock: {artwork.stock_quantity}</p>
-           )}
-
         </div>
       </div>
     </div>
