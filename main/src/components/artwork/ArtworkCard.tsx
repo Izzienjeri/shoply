@@ -1,4 +1,3 @@
-// === components/artwork/ArtworkCard.tsx ===
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -10,7 +9,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice, cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { ImageOff, ShoppingCartIcon, Edit, DollarSign, PackageCheck, PackageX } from 'lucide-react';
+import { ImageOff, ShoppingCartIcon, Edit, DollarSign, PackageCheck, PackageX, EyeOff } from 'lucide-react';
 
 interface ArtworkCardProps {
   artwork: Artwork;
@@ -19,24 +18,25 @@ interface ArtworkCardProps {
 
 export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
   const { addToCart, isLoading: isCartLoading, cart } = useCart();
-  const { isAdmin, isLoading: authIsLoading } = useAuth(); // Corrected: authIsLoading from useAuth is aliased if needed, or use directly
+  const { isAdmin, isLoading: authIsLoading } = useAuth();
   const placeholderImage = "/placeholder-image.svg";
 
   const handleAddToCart = async () => {
-    if (isAdmin) return;
+    if (isAdmin || !artwork.is_active || (artwork.artist && !artwork.artist.is_active)) return;
     try {
       await addToCart(artwork.id, 1);
     } catch (error) {
-      console.error("Add to cart failed from ArtworkCard (already handled in context):", error);
     }
   };
 
   const isInCart = !isAdmin && cart?.items.some(item => item.artwork_id === artwork.id);
+  const isActuallyAvailable = artwork.is_active && artwork.artist?.is_active;
 
   return (
     <Card className="overflow-hidden flex flex-col h-full group border shadow-sm hover:shadow-lg transition-shadow duration-300">
        <CardHeader className="p-0 border-b relative">
-         <Link href={`/artworks/${artwork.id}`} className="block">
+         <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
+           <a className={cn(!isActuallyAvailable && "opacity-60 group-hover:opacity-80 transition-opacity")}>
            <AspectRatio ratio={1 / 1} className="bg-muted overflow-hidden">
              <Image
                src={artwork.image_url || placeholderImage}
@@ -56,22 +56,28 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                   <ImageOff className="h-12 w-12 text-gray-400" />
                 </div>
               )}
+              {!isAdmin && !isActuallyAvailable && (
+                 <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                     <Badge variant="destructive">Unavailable</Badge>
+                 </div>
+              )}
            </AspectRatio>
+           </a>
          </Link>
          {isAdmin && (
-            <Badge
-                variant={artwork.is_active ? 'default' : 'secondary'}
-                className="absolute top-2 right-2 z-10"
-            >
-                {artwork.is_active ? 'Active' : 'Inactive'}
-            </Badge>
+            <div className="absolute top-2 right-2 z-10 space-y-1">
+             {!artwork.is_active && <Badge variant={'destructive'} className="block">Artwork Inactive</Badge>}
+             {artwork.artist && !artwork.artist.is_active && <Badge variant={'destructive'} className="block opacity-80">Artist Inactive</Badge>}
+            </div>
          )}
        </CardHeader>
        <CardContent className="p-4 flex-grow">
-         <Link href={`/artworks/${artwork.id}`} className="block">
-           <CardTitle className="text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1">
+         <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
+           <a className={cn("block", !isActuallyAvailable && "pointer-events-none")}>
+           <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isActuallyAvailable && "text-muted-foreground")}>
              {artwork.name}
            </CardTitle>
+           </a>
          </Link>
          <Link href={`/artists/${artwork.artist.id}`} className="text-sm text-muted-foreground hover:text-primary transition-colors">
            {artwork.artist.name}
@@ -99,7 +105,7 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
             </span>
         )}
          {isAdmin ? (
-           <Link href={`/admin/artworks?edit=${artwork.id}`} className="w-full">
+           <Link href={`/admin/artworks?edit=${artwork.id}`} className="w-full" legacyBehavior>
              <Button size="sm" variant="outline" className="w-full">
                <Edit className="mr-2 h-4 w-4" /> Edit Artwork
              </Button>
@@ -107,14 +113,14 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
          ) : (
            <Button
               size="sm"
-              variant={artwork.stock_quantity === 0 ? "outline" : "default"}
+              variant={(artwork.stock_quantity === 0 || !isActuallyAvailable) ? "outline" : "default"}
               onClick={handleAddToCart}
-              // Corrected: useAuth().isLoading is the auth loading state.
-              // isCartLoading is from useCart().
-              disabled={authIsLoading || isCartLoading || artwork.stock_quantity === 0 || isInCart}
-              aria-label={artwork.stock_quantity === 0 ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}
+              disabled={authIsLoading || isCartLoading || artwork.stock_quantity === 0 || isInCart || !isActuallyAvailable}
+              aria-label={!isActuallyAvailable ? 'Unavailable' : artwork.stock_quantity === 0 ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}
            >
-              {artwork.stock_quantity === 0 ? (
+              {!isActuallyAvailable ? (
+                 <> <EyeOff className="mr-2 h-4 w-4" /> Unavailable</>
+              ) : artwork.stock_quantity === 0 ? (
                   'Out of Stock'
               ) : isInCart ? (
                   'In Cart'
@@ -130,7 +136,6 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
   );
 }
 
-// Skeleton remains the same
 export function ArtworkCardSkeleton() {
   return (
     <Card className="overflow-hidden flex flex-col h-full">

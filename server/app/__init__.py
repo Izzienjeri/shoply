@@ -1,4 +1,3 @@
-
 import os
 from flask import Flask, jsonify, send_from_directory, abort, current_app
 from flask_sqlalchemy import SQLAlchemy
@@ -14,7 +13,6 @@ migrate = Migrate()
 jwt = JWTManager()
 bcrypt = Bcrypt()
 ma = Marshmallow()
-cors = CORS()
 
 BLOCKLIST = set()
 
@@ -31,44 +29,31 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    print(f"DEBUG: Connecting to DB: {app.config['SQLALCHEMY_DATABASE_URI']}")
-
-    app.config['MEDIA_FOLDER'] = Config.MEDIA_FOLDER 
-    app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
-    print(f"DEBUG: Media folder (base) set to: {app.config['MEDIA_FOLDER']}")
-    print(f"DEBUG: Upload folder (artworks) set to: {app.config['UPLOAD_FOLDER']}")
-
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        print(f"DEBUG: Created UPLOAD_FOLDER at {app.config['UPLOAD_FOLDER']}")
-
-
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     bcrypt.init_app(app)
     ma.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
+    
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
 
     from . import models
 
     @app.route('/media/<path:filename>')
     def serve_media(filename):
-        print(f"Attempting to serve media file: {filename}")
         media_folder = current_app.config.get('MEDIA_FOLDER')
         if not media_folder:
-            print("ERROR: MEDIA_FOLDER not configured in Flask app.")
+            current_app.logger.error("ERROR: MEDIA_FOLDER not configured in Flask app.")
             abort(500)
         try:
             return send_from_directory(media_folder, filename)
         except FileNotFoundError:
-            full_path = os.path.join(media_folder, filename)
-            print(f"ERROR: File not found: {full_path}")
+            current_app.logger.warning(f"Media file not found: {filename}")
             abort(404)
         except Exception as e:
-            print(f"ERROR: Unexpected error serving file {filename}: {e}")
+            current_app.logger.error(f"Unexpected error serving file {filename}: {e}", exc_info=True)
             abort(500)
-
 
     from .resources.auth import auth_bp
     from .resources.artwork import artwork_bp
@@ -77,6 +62,7 @@ def create_app(config_class=Config):
     from .resources.order import order_bp
     from .resources.payment import payment_bp
     from .resources.delivery import delivery_bp
+    from .resources.admin_dashboard import admin_dashboard_bp 
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(artwork_bp, url_prefix='/api/artworks')
@@ -85,10 +71,11 @@ def create_app(config_class=Config):
     app.register_blueprint(order_bp, url_prefix='/api/orders')
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
     app.register_blueprint(delivery_bp, url_prefix='/api/delivery')
+    app.register_blueprint(admin_dashboard_bp, url_prefix='/api/admin/dashboard')
 
 
     @app.route('/')
     def index():
-        return "Shoply Artwork Backend is running!"
+        return "Artistry Haven Backend is running!"
 
     return app

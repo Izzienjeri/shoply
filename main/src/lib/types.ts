@@ -19,7 +19,7 @@ export interface Artwork {
   updated_at: string;
   image_url?: string | null;
   artist_id: string;
-  artist: Pick<Artist, 'id' | 'name'>;
+  artist: Pick<Artist, 'id' | 'name' | 'is_active'>;
   is_active?: boolean;
 }
 
@@ -55,7 +55,7 @@ export interface OrderItem {
   artwork_id: string;
   quantity: number;
   price_at_purchase: string;
-  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>;
+  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>; 
 }
 
 export interface Order {
@@ -128,4 +128,16 @@ export interface AdminOrderUpdatePayload {
     status?: Order['status'];
     picked_up_by_name?: string;
     picked_up_by_id_no?: string;
+}
+
+export interface AdminDashboardStatsData {
+  total_artworks: number;
+  active_artworks: number;
+  total_artists: number;
+  active_artists: number;
+  pending_orders_count: number;
+  paid_orders_count: number;
+  revenue_this_month: string;
+  recent_orders: Order[];
+  sales_trend: { month: string; revenue: number }[];
 }

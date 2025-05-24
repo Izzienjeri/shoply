@@ -1,5 +1,4 @@
-
-from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions
+from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions, missing as marshmallow_missing_value
 from flask import url_for, current_app
 from decimal import Decimal, InvalidOperation
 
@@ -20,37 +19,19 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('password_hash',)
         sqla_session = db.session
 
-class ArtistSchema(ma.SQLAlchemyAutoSchema):
-    name = fields.Str(required=True)
-    bio = fields.Str()
-    artworks_for_detail = fields.Nested("ArtworkSchema", many=True, dump_only=True, attribute="artworks", exclude=("artist",))
-    artworks_count = fields.Method("get_artworks_count", dump_only=True)
-    is_active = fields.Bool()
-
-    def get_artworks_count(self, obj):
-        if hasattr(obj, '_artworks_count_val'):
-            return obj._artworks_count_val
-        if obj.artworks:
-            return len(obj.artworks)
-        return 0
-
-    class Meta:
-        model = Artist
-        load_instance = True
-        sqla_session = db.session
-
 class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
     stock_quantity = fields.Int(validate=validate.Range(min=0))
     image_url = fields.String(required=False, allow_none=True)
     artist = fields.Nested("ArtistSchema", only=('id', 'name', 'is_active'), dump_only=True)
     artist_id = fields.Str(required=True, load_only=True)
-    is_active = fields.Bool() 
+    is_active = fields.Bool(load_default=True)
 
     class Meta:
         model = Artwork
         load_instance = True
         sqla_session = db.session
+        include_fk = True
 
     @post_dump
     def make_image_url_absolute(self, data, **kwargs):
@@ -59,9 +40,8 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
             try:
                 _app = current_app._get_current_object() if not current_app else current_app
                 if _app:
-                    with _app.app_context(): 
-                         absolute_url = url_for('serve_media', filename=relative_path, _external=True)
-                         data['image_url'] = absolute_url
+                    absolute_url = url_for('serve_media', filename=relative_path, _external=True)
+                    data['image_url'] = absolute_url
                 else:
                     data['image_url'] = relative_path
             except RuntimeError:
@@ -72,9 +52,31 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
             data['image_url'] = None
         return data
 
+class ArtistSchema(ma.SQLAlchemyAutoSchema):
+    name = fields.Str(required=True)
+    bio = fields.Str()
+    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, attribute="artworks", exclude=("artist",))
+    artworks_count = fields.Method("get_artworks_count", dump_only=True)
+    is_active = fields.Bool(load_default=True)
+
+    def get_artworks_count(self, obj):
+        if hasattr(obj, '_artworks_count_val'):
+            return obj._artworks_count_val
+        if hasattr(obj, 'artworks_for_display'):
+            return len(obj.artworks_for_display)
+        return len(obj.artworks) if obj.artworks else 0
+
+
+    class Meta:
+        model = Artist
+        load_instance = True
+        sqla_session = db.session
+        include_relationships = True
+
+
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
     artwork = fields.Nested(
-        "ArtworkSchema",
+        ArtworkSchema,
         only=('id', 'name', 'price', 'image_url', 'artist', 'stock_quantity', 'is_active')
     )
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
@@ -94,26 +96,26 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         items_iterable = []
         if hasattr(cart, 'items'):
             try:
-                items_iterable = cart.items.all() if callable(getattr(cart.items, 'all', None)) else cart.items
+                items_iterable = cart.items
             except Exception as e:
-                print(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}")
+                current_app.logger.error(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}", exc_info=True)
                 items_iterable = []
 
         for item in items_iterable:
-            if (hasattr(item, 'artwork') and item.artwork and
+            if (item.artwork and item.artwork.is_active and
+                item.artwork.artist and item.artwork.artist.is_active and
                 hasattr(item.artwork, 'price') and item.artwork.price is not None and
-                hasattr(item, 'quantity') and
-                item.artwork.is_active):
+                hasattr(item, 'quantity')):
                 try:
                     item_price = Decimal(item.artwork.price)
                     total += item_price * Decimal(item.quantity)
                 except (TypeError, ValueError, InvalidOperation) as e:
-                    print(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}")
+                    current_app.logger.error(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}", exc_info=True)
                     continue
-            elif hasattr(item, 'artwork') and item.artwork and not item.artwork.is_active:
-                 print(f"Skipping inactive artwork {item.artwork.name} from cart total calculation.")
+            elif item.artwork and (not item.artwork.is_active or (item.artwork.artist and not item.artwork.artist.is_active)):
+                 current_app.logger.info(f"Skipping inactive artwork '{item.artwork.name}' or artwork by inactive artist from cart total calculation.")
             else:
-                print(f"Artwork data (price/quantity/active status) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
+                current_app.logger.warning(f"Artwork data (price/quantity/active status/artist status) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
         return str(total)
 
     class Meta:
@@ -122,7 +124,7 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         sqla_session = db.session
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
-    artwork = fields.Nested("ArtworkSchema", only=('id', 'name', 'image_url', 'artist', 'is_active'))
+    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'image_url', 'artist', 'is_active'))
     price_at_purchase = fields.Decimal(as_string=True, dump_only=True)
     quantity = fields.Int(dump_only=True)
 
@@ -138,8 +140,8 @@ class DeliveryOptionSchema(ma.SQLAlchemyAutoSchema):
     description = fields.Str(allow_none=True)
     is_pickup = fields.Bool(required=True)
     id = fields.Str(dump_only=True)
-    active = fields.Bool()
-    sort_order = fields.Int()
+    active = fields.Bool(load_default=True)
+    sort_order = fields.Int(load_default=0)
 
     class Meta:
         model = DeliveryOption
@@ -171,22 +173,21 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
 
 
 user_schema = UserSchema()
-artist_schema = ArtistSchema()
-artwork_schema = ArtworkSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
 delivery_option_schema_public = DeliveryOptionSchema(exclude=('created_at', 'updated_at', 'active', 'sort_order'))
+artist_schema = ArtistSchema()
+artwork_schema = ArtworkSchema()
 
 
 users_schema = UserSchema(many=True)
 artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
-delivery_options_schema_public = DeliveryOptionSchema(many=True, exclude=('created_at', 'updated_at', 'active', 'sort_order'))
+delivery_options_schema_public = DeliveryOptionSchema(many=True, exclude=('created_at', 'updated_at'))
 
 
 admin_artist_schema = ArtistSchema()
 admin_artwork_schema = ArtworkSchema()
 delivery_option_schema_admin = DeliveryOptionSchema()
 delivery_options_schema_admin = DeliveryOptionSchema(many=True)
-

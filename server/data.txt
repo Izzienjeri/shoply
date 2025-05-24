@@ -1,10 +1,8 @@
 # Extracted Python Code
-# Date and Time: 2025-05-25 00:01:35
-# Files Included: 16
+# Date and Time: 2025-05-25 01:47:11
+# Files Included: 17
 
 # === ./seed.py ===
-# === ./seed.py ===
-
 import os
 import random
 from decimal import Decimal
@@ -13,14 +11,13 @@ from app import create_app, db
 from app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem, DeliveryOption, PaymentTransaction
 
 NUM_ARTISTS = 10
-NUM_USERS = 5
+NUM_USERS = 10
 ARTWORK_IMAGE_FOLDER_RELATIVE = 'artwork_images'
 IMAGES_BASE_NAME = 'art'
 NUM_IMAGES = 48
 DEFAULT_PASSWORD = "pass123"
 ADMIN_EMAIL = "admin@artistryhaven.io"
-ADMIN_PASSWORD = "AdminPass123!"
-
+TEST_USER_EMAIL = "testuser@artistryhaven.io"
 
 try:
     fake = Faker()
@@ -42,29 +39,24 @@ def get_image_path(image_index):
     return f"{ARTWORK_IMAGE_FOLDER_RELATIVE}/{IMAGES_BASE_NAME}{image_index}.jpg"
 
 def clear_data():
-    print("Clearing existing data...")
+    print("Clearing existing data (but not users/artists/artworks/delivery options)...")
     db.session.query(OrderItem).delete()
-    db.session.query(Order).delete() 
-    db.session.query(PaymentTransaction).delete() 
+    db.session.query(Order).delete()
+    db.session.query(PaymentTransaction).delete()
     db.session.query(CartItem).delete()
     db.session.query(Cart).delete()
-    db.session.query(Artwork).delete()
-    db.session.query(DeliveryOption).delete()
-    db.session.query(User).delete()
-    db.session.query(Artist).delete()
     db.session.commit()
     print("Data cleared.")
 
 def seed_artists(num_artists):
     print(f"Seeding {num_artists} artists...")
     artists = []
-    for i in range(num_artists):
-        first_name = fake.first_name() if fake else f"John"
+    for _ in range(num_artists):
+        first_name = fake.first_name() if fake else "John"
         kenyan_last_name = random.choice(KENYAN_NAMES)
-        artist_name = f"{first_name} {kenyan_last_name}"
-        artist_bio = fake.paragraph(nb_sentences=3) if fake else f"This is the biography for {artist_name}."
-        artist = Artist(name=artist_name, bio=artist_bio, is_active=True) # Set is_active
-        artists.append(artist)
+        name = f"{first_name} {kenyan_last_name}"
+        bio = fake.paragraph(nb_sentences=3) if fake else f"Bio for {name}."
+        artists.append(Artist(name=name, bio=bio, is_active=True))
     db.session.add_all(artists)
     db.session.commit()
     print("Artists seeded.")
@@ -72,45 +64,28 @@ def seed_artists(num_artists):
 
 def seed_artworks(artists, num_images_available, media_folder_base):
     if not artists:
-        print("No artists available to assign artworks to. Skipping artwork seeding.")
+        print("No artists available for artworks.")
         return
 
-    print(f"Seeding artworks (up to {num_images_available} based on image files)...")
+    print(f"Seeding artworks from {num_images_available} images...")
     artworks = []
     image_folder_full_path = os.path.join(media_folder_base, ARTWORK_IMAGE_FOLDER_RELATIVE)
-    print(f"Checking for images in: {image_folder_full_path}")
-
-    one_shilling_added = False
 
     for i in range(1, num_images_available + 1):
         image_filename = f"{IMAGES_BASE_NAME}{i}.jpg"
         image_full_path = os.path.join(image_folder_full_path, image_filename)
-        relative_image_url = get_image_path(i)
-
         if not os.path.exists(image_full_path):
-            print(f"Warning: Image file not found: {image_full_path}. Skipping artwork {i}.")
+            print(f"Missing image: {image_full_path}, skipping.")
             continue
 
-        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}"
-        description = fake.text(max_nb_chars=200) if fake else f"A beautiful piece numbered {i}."
-
-        if not one_shilling_added:
-            price = Decimal(1)
-            one_shilling_added = True
-        else:
-            price = Decimal(random.randint(500, 15000))
-
-        stock_quantity = random.randint(0, 10)
-        assigned_artist = random.choice(artists)
-
         artwork = Artwork(
-            name=artwork_name,
-            description=description,
-            price=price,
-            stock_quantity=stock_quantity,
-            artist_id=assigned_artist.id,
-            image_url=relative_image_url,
-            is_active=True # Set is_active
+            name=fake.catch_phrase() if fake else f"Artwork {i}",
+            description=fake.text(max_nb_chars=200) if fake else f"Description for artwork {i}.",
+            price=Decimal(random.randint(500, 15000)),
+            stock_quantity=random.randint(0, 10),
+            artist_id=random.choice(artists).id,
+            image_url=get_image_path(i),
+            is_active=True
         )
         artworks.append(artwork)
 
@@ -119,114 +94,93 @@ def seed_artworks(artists, num_images_available, media_folder_base):
         db.session.commit()
         print(f"{len(artworks)} artworks seeded.")
     else:
-        print("No artworks were seeded.")
+        print("No artworks seeded.")
 
-
-def seed_users(num_users):
-    print(f"Seeding {num_users} users and 1 admin...")
+def seed_users():
+    print(f"Seeding 10 users (including 1 admin, 1 test user)...")
     users = []
 
-    # Seed Admin User
+    # Admin
     if not User.query.filter_by(email=ADMIN_EMAIL).first():
-        admin_user = User(
-            email=ADMIN_EMAIL,
-            name="Admin User",
-            address="Artistry Haven HQ, Nairobi",
-            is_admin=True
-        )
-        admin_user.set_password(ADMIN_PASSWORD)
-        users.append(admin_user)
-        print(f"Admin user created: {ADMIN_EMAIL}, Password: {ADMIN_PASSWORD}")
+        admin = User(email=ADMIN_EMAIL, name="Admin User", address="Artistry Haven HQ", is_admin=True)
+        admin.set_password(DEFAULT_PASSWORD)
+        users.append(admin)
+        print(f"Admin created: {ADMIN_EMAIL}")
     else:
-        print(f"Admin user {ADMIN_EMAIL} already exists.")
+        print("Admin already exists.")
 
-    # Seed Regular Users
-    for i in range(num_users):
-        user_email = fake.email() if fake else f"user{i+1}@example.com"
-        user_name = fake.name() if fake else f"Test User {i+1}"
-        user_address = random.choice(KENYAN_LOCATIONS)
+    # Test User
+    if not User.query.filter_by(email=TEST_USER_EMAIL).first():
+        test_user = User(email=TEST_USER_EMAIL, name="Test User", address="Nairobi", is_admin=False)
+        test_user.set_password(DEFAULT_PASSWORD)
+        users.append(test_user)
+        print(f"Test user created: {TEST_USER_EMAIL}")
+    else:
+        print("Test user already exists.")
 
-        if User.query.filter_by(email=user_email).first():
-            print(f"User with email {user_email} already exists, skipping.")
+    # 8 other users
+    for i in range(8):
+        email = fake.unique.email() if fake else f"user{i+1}@example.com"
+        if User.query.filter_by(email=email).first():
             continue
-
         user = User(
-            email=user_email,
-            name=user_name,
-            address=user_address,
+            email=email,
+            name=fake.name() if fake else f"User {i+1}",
+            address=random.choice(KENYAN_LOCATIONS),
             is_admin=False
         )
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
-        print(f"Created user: {user_email}, Address: {user_address}")
 
     if users:
         db.session.add_all(users)
         db.session.commit()
-        print(f"{len(users)} total users (including admin if new) seeded.")
-        print(f"Regular user default password: '{DEFAULT_PASSWORD}'")
+        print(f"{len(users)} users seeded. All passwords: '{DEFAULT_PASSWORD}'")
     else:
-        print("No new users were seeded.")
-    return users
+        print("No new users added.")
 
 def seed_delivery_options():
     print("Seeding delivery options...")
     options_data = [
-        {"name": "In Store Pick Up", "price": "0.00", "is_pickup": True, "active": True, "sort_order": 0, "description": "Collect your order from Dynamic Mall, Shop M90, CBD, Nairobi."},
-        {"name": "Diaspora (Kitengela Via Rembo)", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 10},
-        {"name": "Nairobi CBD", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 20},
-        {"name": "Zone 1 (Upper-Hill, Statehouse, etc. - 6km Proximity)", "price": "300.00", "is_pickup": False, "active": True, "sort_order": 30, "description": "Upper-Hill, Statehouse, Rhapta Road, Parklands, Pangani, City Stadium"},
-        {"name": "Zone 2 (N/West, Madaraka, South B/C, etc.)", "price": "400.00", "is_pickup": False, "active": True, "sort_order": 40, "description": "N/ West, Madaraka, South B/C, Mbagathi, Kilimani, Riara Road, Jamhuri, Yaya, Prestige, Kileleshwa, Westlands"},
-        {"name": "The Central Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 50},
-        {"name": "The Coastal Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 51},
-        {"name": "The Eastern Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 52},
-        {"name": "The North Eastern Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 53},
-        {"name": "The Nyanza Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 54},
-        {"name": "The Rift Valley Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 55},
-        {"name": "The Western Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 56},
-        {"name": "Zone 3 (Kikuyu, Kinoo, Kahawa, JKIA, etc.)", "price": "500.00", "is_pickup": False, "active": True, "sort_order": 60, "description": "Kikuyu, Kinoo, Muthiga, Kahawa Sukari, Kahawa West, KU, Nyayo Estate, Kayole, Nasra Garden, JKIA, Kerarapon-Karen"},
-        {"name": "Zone 4 (Kiambu Town, Ruiru, Utawala, etc.)", "price": "700.00", "is_pickup": False, "active": True, "sort_order": 70, "description": "Kiambu Town ,Ruiru,Kimbo,Utawala"},
-        {"name": "To Door Couriers (G4S/Fargo)", "price": "1000.00", "is_pickup": False, "active": True, "sort_order": 80},
-        {"name": "Zone 5 (Ngong Town, Rongai)", "price": "1000.00", "is_pickup": False, "active": True, "sort_order": 90},
+        {"name": "In Store Pick Up", "price": "0.00", "is_pickup": True, "active": True, "sort_order": 0},
+        {"name": "Nairobi CBD", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 10},
+        {"name": "Zone 1 (Upper-Hill)", "price": "300.00", "is_pickup": False, "active": True, "sort_order": 20},
     ]
 
-    options_to_add = []
-    for opt_data in options_data:
-        if not DeliveryOption.query.filter_by(name=opt_data["name"]).first():
-            option = DeliveryOption(
-                name=opt_data["name"],
-                price=Decimal(opt_data["price"]),
-                is_pickup=opt_data.get("is_pickup", False),
-                active=opt_data.get("active", True),
-                sort_order=opt_data.get("sort_order", 0),
-                description=opt_data.get("description")
-            )
-            options_to_add.append(option)
-    
-    if options_to_add:
-        db.session.add_all(options_to_add)
-        db.session.commit()
-        print(f"{len(options_to_add)} new delivery options seeded.")
-    else:
-        print("All delivery options already exist.")
+    new_options = []
+    for opt in options_data:
+        if not DeliveryOption.query.filter_by(name=opt["name"]).first():
+            new_options.append(DeliveryOption(
+                name=opt["name"],
+                price=Decimal(opt["price"]),
+                is_pickup=opt["is_pickup"],
+                active=opt["active"],
+                sort_order=opt["sort_order"],
+                description=opt.get("description", "")
+            ))
 
+    if new_options:
+        db.session.add_all(new_options)
+        db.session.commit()
+        print(f"{len(new_options)} delivery options seeded.")
+    else:
+        print("Delivery options already exist.")
 
 def run_seed():
     app = create_app()
     with app.app_context():
         media_folder = app.config.get('MEDIA_FOLDER')
         if not media_folder or not os.path.isdir(media_folder):
-            print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
-            print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
+            print(f"ERROR: MEDIA_FOLDER '{media_folder}' is missing or invalid.")
             return
 
         clear_data()
         seed_delivery_options()
-        created_artists = seed_artists(NUM_ARTISTS)
-        seed_artworks(created_artists, NUM_IMAGES, media_folder)
-        seed_users(NUM_USERS) # This now includes admin user
+        artists = seed_artists(NUM_ARTISTS)
+        seed_artworks(artists, NUM_IMAGES, media_folder)
+        seed_users()
         print("-" * 20)
-        print("Seeding process completed!")
+        print("Seeding complete.")
         print("-" * 20)
 
 if __name__ == '__main__':
@@ -247,7 +201,7 @@ if __name__ =='__main__':
     app.run(debug=True)
 
 # === ./app/schemas.py ===
-from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions
+from marshmallow import fields, validate, post_dump, exceptions as marshmallow_exceptions, missing as marshmallow_missing_value
 from flask import url_for, current_app
 from decimal import Decimal, InvalidOperation
 
@@ -268,37 +222,19 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('password_hash',)
         sqla_session = db.session
 
-class ArtistSchema(ma.SQLAlchemyAutoSchema):
-    name = fields.Str(required=True)
-    bio = fields.Str()
-    artworks_for_detail = fields.Nested("ArtworkSchema", many=True, dump_only=True, attribute="artworks", exclude=("artist",))
-    artworks_count = fields.Method("get_artworks_count", dump_only=True)
-    is_active = fields.Bool()
-
-    def get_artworks_count(self, obj):
-        if hasattr(obj, '_artworks_count_val'):
-            return obj._artworks_count_val
-        if obj.artworks:
-            return len(obj.artworks)
-        return 0
-
-    class Meta:
-        model = Artist
-        load_instance = True
-        sqla_session = db.session
-
 class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
     stock_quantity = fields.Int(validate=validate.Range(min=0))
     image_url = fields.String(required=False, allow_none=True)
     artist = fields.Nested("ArtistSchema", only=('id', 'name', 'is_active'), dump_only=True)
     artist_id = fields.Str(required=True, load_only=True)
-    is_active = fields.Bool() 
+    is_active = fields.Bool(load_default=True)
 
     class Meta:
         model = Artwork
         load_instance = True
         sqla_session = db.session
+        include_fk = True
 
     @post_dump
     def make_image_url_absolute(self, data, **kwargs):
@@ -307,9 +243,8 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
             try:
                 _app = current_app._get_current_object() if not current_app else current_app
                 if _app:
-                    with _app.app_context(): 
-                         absolute_url = url_for('serve_media', filename=relative_path, _external=True)
-                         data['image_url'] = absolute_url
+                    absolute_url = url_for('serve_media', filename=relative_path, _external=True)
+                    data['image_url'] = absolute_url
                 else:
                     data['image_url'] = relative_path
             except RuntimeError:
@@ -320,9 +255,31 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
             data['image_url'] = None
         return data
 
+class ArtistSchema(ma.SQLAlchemyAutoSchema):
+    name = fields.Str(required=True)
+    bio = fields.Str()
+    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, attribute="artworks", exclude=("artist",))
+    artworks_count = fields.Method("get_artworks_count", dump_only=True)
+    is_active = fields.Bool(load_default=True)
+
+    def get_artworks_count(self, obj):
+        if hasattr(obj, '_artworks_count_val'):
+            return obj._artworks_count_val
+        if hasattr(obj, 'artworks_for_display'):
+            return len(obj.artworks_for_display)
+        return len(obj.artworks) if obj.artworks else 0
+
+
+    class Meta:
+        model = Artist
+        load_instance = True
+        sqla_session = db.session
+        include_relationships = True
+
+
 class CartItemSchema(ma.SQLAlchemyAutoSchema):
     artwork = fields.Nested(
-        "ArtworkSchema",
+        ArtworkSchema,
         only=('id', 'name', 'price', 'image_url', 'artist', 'stock_quantity', 'is_active')
     )
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
@@ -342,26 +299,26 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         items_iterable = []
         if hasattr(cart, 'items'):
             try:
-                items_iterable = cart.items.all() if callable(getattr(cart.items, 'all', None)) else cart.items
+                items_iterable = cart.items
             except Exception as e:
-                print(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}")
+                current_app.logger.error(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}", exc_info=True)
                 items_iterable = []
 
         for item in items_iterable:
-            if (hasattr(item, 'artwork') and item.artwork and
+            if (item.artwork and item.artwork.is_active and
+                item.artwork.artist and item.artwork.artist.is_active and
                 hasattr(item.artwork, 'price') and item.artwork.price is not None and
-                hasattr(item, 'quantity') and
-                item.artwork.is_active):
+                hasattr(item, 'quantity')):
                 try:
                     item_price = Decimal(item.artwork.price)
                     total += item_price * Decimal(item.quantity)
                 except (TypeError, ValueError, InvalidOperation) as e:
-                    print(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}")
+                    current_app.logger.error(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}", exc_info=True)
                     continue
-            elif hasattr(item, 'artwork') and item.artwork and not item.artwork.is_active:
-                 print(f"Skipping inactive artwork {item.artwork.name} from cart total calculation.")
+            elif item.artwork and (not item.artwork.is_active or (item.artwork.artist and not item.artwork.artist.is_active)):
+                 current_app.logger.info(f"Skipping inactive artwork '{item.artwork.name}' or artwork by inactive artist from cart total calculation.")
             else:
-                print(f"Artwork data (price/quantity/active status) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
+                current_app.logger.warning(f"Artwork data (price/quantity/active status/artist status) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
         return str(total)
 
     class Meta:
@@ -370,7 +327,7 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
         sqla_session = db.session
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
-    artwork = fields.Nested("ArtworkSchema", only=('id', 'name', 'image_url', 'artist', 'is_active'))
+    artwork = fields.Nested(ArtworkSchema, only=('id', 'name', 'image_url', 'artist', 'is_active'))
     price_at_purchase = fields.Decimal(as_string=True, dump_only=True)
     quantity = fields.Int(dump_only=True)
 
@@ -386,8 +343,8 @@ class DeliveryOptionSchema(ma.SQLAlchemyAutoSchema):
     description = fields.Str(allow_none=True)
     is_pickup = fields.Bool(required=True)
     id = fields.Str(dump_only=True)
-    active = fields.Bool()
-    sort_order = fields.Int()
+    active = fields.Bool(load_default=True)
+    sort_order = fields.Int(load_default=0)
 
     class Meta:
         model = DeliveryOption
@@ -419,18 +376,18 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
 
 
 user_schema = UserSchema()
-artist_schema = ArtistSchema()
-artwork_schema = ArtworkSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
 delivery_option_schema_public = DeliveryOptionSchema(exclude=('created_at', 'updated_at', 'active', 'sort_order'))
+artist_schema = ArtistSchema()
+artwork_schema = ArtworkSchema()
 
 
 users_schema = UserSchema(many=True)
 artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
-delivery_options_schema_public = DeliveryOptionSchema(many=True, exclude=('created_at', 'updated_at', 'active', 'sort_order'))
+delivery_options_schema_public = DeliveryOptionSchema(many=True, exclude=('created_at', 'updated_at'))
 
 
 admin_artist_schema = ArtistSchema()
@@ -748,7 +705,6 @@ migrate = Migrate()
 jwt = JWTManager()
 bcrypt = Bcrypt()
 ma = Marshmallow()
-cors = CORS()
 
 BLOCKLIST = set()
 
@@ -765,44 +721,31 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    print(f"DEBUG: Connecting to DB: {app.config['SQLALCHEMY_DATABASE_URI']}")
-
-    app.config['MEDIA_FOLDER'] = Config.MEDIA_FOLDER 
-    app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
-    print(f"DEBUG: Media folder (base) set to: {app.config['MEDIA_FOLDER']}")
-    print(f"DEBUG: Upload folder (artworks) set to: {app.config['UPLOAD_FOLDER']}")
-
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        print(f"DEBUG: Created UPLOAD_FOLDER at {app.config['UPLOAD_FOLDER']}")
-
-
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     bcrypt.init_app(app)
     ma.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
+    
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
 
     from . import models
 
     @app.route('/media/<path:filename>')
     def serve_media(filename):
-        print(f"Attempting to serve media file: {filename}")
         media_folder = current_app.config.get('MEDIA_FOLDER')
         if not media_folder:
-            print("ERROR: MEDIA_FOLDER not configured in Flask app.")
+            current_app.logger.error("ERROR: MEDIA_FOLDER not configured in Flask app.")
             abort(500)
         try:
             return send_from_directory(media_folder, filename)
         except FileNotFoundError:
-            full_path = os.path.join(media_folder, filename)
-            print(f"ERROR: File not found: {full_path}")
+            current_app.logger.warning(f"Media file not found: {filename}")
             abort(404)
         except Exception as e:
-            print(f"ERROR: Unexpected error serving file {filename}: {e}")
+            current_app.logger.error(f"Unexpected error serving file {filename}: {e}", exc_info=True)
             abort(500)
-
 
     from .resources.auth import auth_bp
     from .resources.artwork import artwork_bp
@@ -811,6 +754,7 @@ def create_app(config_class=Config):
     from .resources.order import order_bp
     from .resources.payment import payment_bp
     from .resources.delivery import delivery_bp
+    from .resources.admin_dashboard import admin_dashboard_bp 
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(artwork_bp, url_prefix='/api/artworks')
@@ -819,11 +763,12 @@ def create_app(config_class=Config):
     app.register_blueprint(order_bp, url_prefix='/api/orders')
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
     app.register_blueprint(delivery_bp, url_prefix='/api/delivery')
+    app.register_blueprint(admin_dashboard_bp, url_prefix='/api/admin/dashboard')
 
 
     @app.route('/')
     def index():
-        return "Shoply Artwork Backend is running!"
+        return "Artistry Haven Backend is running!"
 
     return app
 
@@ -1036,7 +981,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from .. import db
 from ..models import Artist, Artwork, User
-from ..schemas import artist_schema, artists_schema
+from ..schemas import artist_schema, artists_schema, ArtworkSchema
 from ..decorators import admin_required
 
 artist_bp = Blueprint('artists', __name__)
@@ -1058,9 +1003,11 @@ class ArtistList(Resource):
         if is_admin_request:
             current_app.logger.info("Admin request: Fetching all artists with artwork counts for ArtistList.")
             artists = Artist.query.options(selectinload(Artist.artworks)).order_by(Artist.name).all()
+            for artist in artists:
+                 artist._artworks_count_val = len(artist.artworks)
         else:
             artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
-        
+
         return artists_schema.dump(artists), 200
 
     @admin_required
@@ -1091,11 +1038,11 @@ class ArtistDetail(Resource):
     def get(self, artist_id):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt() 
+            jwt_payload = get_jwt()
             if jwt_payload:
-                user_id = get_jwt_identity()
-                user_obj = User.query.get(user_id)
-                if user_obj and user_obj.is_admin:
+                user_id_from_token = get_jwt_identity()
+                user = User.query.get(user_id_from_token)
+                if user and user.is_admin:
                     is_admin_request = True
         except Exception:
             pass
@@ -1112,10 +1059,18 @@ class ArtistDetail(Resource):
         if not is_admin_request and not artist.is_active:
              return {"message": f"Artist with ID {artist_id} not found or not active."}, 404
 
-        if not is_admin_request and hasattr(artist, 'artworks_for_detail'):
-             artist.artworks_for_detail = [aw for aw in artist.artworks_for_detail if aw.is_active]
-            
-        return artist_schema.dump(artist), 200
+        if is_admin_request:
+            artist_dump_data = artist_schema.dump(artist)
+        else:
+            active_artworks = [aw for aw in artist.artworks if aw.is_active]
+            artist.artworks_for_display = active_artworks
+
+            artist_dump_data = artist_schema.dump(artist)
+
+            artist_dump_data['artworks'] = ArtworkSchema(many=True, exclude=("artist",)).dump(active_artworks)
+            artist_dump_data['artworks_count'] = len(active_artworks)
+
+        return artist_dump_data, 200
 
 
     @admin_required
@@ -1125,6 +1080,8 @@ class ArtistDetail(Resource):
         json_data = request.get_json()
         if not json_data:
             return {"message": "No input data provided"}, 400
+        
+        is_active_in_payload = json_data.get('is_active')
 
         try:
             updated_artist = artist_schema.load(
@@ -1137,8 +1094,16 @@ class ArtistDetail(Resource):
             return {"message": "Validation errors", "errors": err.messages}, 400
 
         try:
+            if is_active_in_payload is False and artist.is_active is True:
+                current_app.logger.info(f"Artist {artist.id} is being deactivated. Deactivating associated artworks.")
+                for artwork_item in artist.artworks:
+                    artwork_item.is_active = False
+                    current_app.logger.info(f"Deactivated artwork {artwork_item.id} for artist {artist.id}")
+            
+
             db.session.commit()
-            return artist_schema.dump(updated_artist), 200
+            refreshed_artist = Artist.query.options(selectinload(Artist.artworks)).get(artist_id)
+            return artist_schema.dump(refreshed_artist), 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating artist {artist_id}: {e}", exc_info=True)
@@ -1396,6 +1361,84 @@ class DeliveryOptionList(Resource):
 
 # delivery_option_schema_public might not be used here if only list is exposed publicly
 delivery_api.add_resource(DeliveryOptionList, '/options') # Route for GET /api/delivery/options
+
+# === ./app/resources/admin_dashboard.py ===
+from flask import Blueprint, jsonify, current_app
+from flask_restful import Resource, Api
+from sqlalchemy import func, extract
+from datetime import datetime, timedelta
+from decimal import Decimal
+
+from .. import db
+from ..models import Artwork, Artist, Order, OrderItem
+from ..decorators import admin_required
+
+admin_dashboard_bp = Blueprint('admin_dashboard', __name__)
+admin_dashboard_api = Api(admin_dashboard_bp)
+
+class AdminDashboardStats(Resource):
+    @admin_required
+    def get(self):
+        try:
+            total_artworks = db.session.query(func.count(Artwork.id)).scalar()
+            active_artworks = db.session.query(func.count(Artwork.id)).filter(Artwork.is_active == True).scalar()
+            
+            total_artists = db.session.query(func.count(Artist.id)).scalar()
+            active_artists = db.session.query(func.count(Artist.id)).filter(Artist.is_active == True).scalar()
+
+            pending_orders_count = db.session.query(func.count(Order.id)).filter(Order.status == 'pending').scalar()
+            paid_orders_count = db.session.query(func.count(Order.id)).filter(Order.status == 'paid').scalar()
+
+            current_month = datetime.utcnow().month
+            current_year = datetime.utcnow().year
+            
+            revenue_this_month = db.session.query(func.sum(Order.total_price))\
+                .filter(
+                    extract('month', Order.created_at) == current_month,
+                    extract('year', Order.created_at) == current_year,
+                    Order.status.in_(['paid', 'delivered', 'picked_up'])
+                ).scalar() or Decimal('0.00')
+
+            recent_orders = Order.query.order_by(Order.created_at.desc()).limit(5).all()
+            
+            sales_trend_data = []
+            for i in range(5, -1, -1):
+                month_date = datetime.utcnow() - timedelta(days=i*30)
+                month_val = month_date.month
+                year_val = month_date.year
+                
+                monthly_revenue = db.session.query(func.sum(Order.total_price))\
+                    .filter(
+                        extract('month', Order.created_at) == month_val,
+                        extract('year', Order.created_at) == year_val,
+                        Order.status.in_(['paid', 'delivered', 'picked_up'])
+                    ).scalar() or Decimal('0.00')
+                sales_trend_data.append({
+                    "month": month_date.strftime("%b %Y"),
+                    "revenue": float(monthly_revenue)
+                })
+
+
+            from ..schemas import orders_schema
+            
+            stats = {
+                "total_artworks": total_artworks,
+                "active_artworks": active_artworks,
+                "total_artists": total_artists,
+                "active_artists": active_artists,
+                "pending_orders_count": pending_orders_count,
+                "paid_orders_count": paid_orders_count,
+                "revenue_this_month": str(revenue_this_month),
+                "recent_orders": orders_schema.dump(recent_orders),
+                "sales_trend": sales_trend_data
+            }
+            return jsonify(stats)
+
+        except Exception as e:
+            current_app.logger.error(f"Error fetching dashboard stats: {e}", exc_info=True)
+            return {"message": "Error fetching dashboard statistics"}, 500
+
+admin_dashboard_api.add_resource(AdminDashboardStats, '/stats')
 
 # === ./app/resources/payment.py ===
 # === ./app/resources/payment.py ===
@@ -1722,6 +1765,7 @@ auth_api.add_resource(UserLogout, '/logout')
 auth_api.add_resource(UserProfile, '/me')
 
 # === ./app/resources/artwork.py ===
+# === ./app/resources/artwork.py ===
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
@@ -1733,11 +1777,18 @@ import uuid
 
 from .. import db
 from ..models import Artwork, Artist, User
-from ..schemas import artwork_schema, artworks_schema
+# from ..schemas import artwork_schema, artworks_schema, ArtworkSchema # OLD WAY
+from .. import schemas  # NEW WAY: Import the module itself
 from ..decorators import admin_required
 
 artwork_bp = Blueprint('artworks', __name__)
 artwork_api = Api(artwork_bp)
+
+# Access schemas via the module:
+# artwork_schema_instance = schemas.artwork_schema
+# artworks_schema_instance = schemas.artworks_schema
+# ArtworkSchema_class = schemas.ArtworkSchema 
+# It's better to use the instances directly if they are defined in schemas.py
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -1783,7 +1834,7 @@ class ArtworkList(Resource):
                 .filter(Artwork.is_active == True, Artist.is_active == True)\
                 .order_by(Artwork.created_at.desc()).all()
         
-        return artworks_schema.dump(artworks), 200
+        return schemas.artworks_schema.dump(artworks), 200 # Use schemas.artworks_schema
 
     @admin_required
     def post(self):
@@ -1793,8 +1844,15 @@ class ArtworkList(Resource):
         if 'is_active' not in form_data:
             form_data['is_active'] = True
         else:
-            form_data['is_active'] = form_data['is_active'].lower() in ['true', 'on', '1']
+            form_data['is_active'] = str(form_data['is_active']).lower() in ['true', 'on', '1', 'yes']
 
+        artist_id_val = form_data.get('artist_id')
+        if artist_id_val:
+            artist = Artist.query.get(artist_id_val)
+            if not artist:
+                abort(400, message=f"Artist with ID {artist_id_val} not found.")
+        else:
+             abort(400, message="artist_id is required.")
 
         uploaded_image_path = None
         if image_file:
@@ -1806,10 +1864,13 @@ class ArtworkList(Resource):
         elif 'image_url' in form_data and form_data['image_url']:
             pass
         else:
-            form_data['image_url'] = None
+            if not image_file:
+                 return {"message": "image_file is required for new artworks."}, 400
+            form_data['image_url'] = None 
 
         try:
-            new_artwork_instance = artwork_schema.load(form_data, session=db.session)
+            # Use schemas.artwork_schema here
+            new_artwork_instance = schemas.artwork_schema.load(form_data, session=db.session)
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
         except Exception as e:
@@ -1819,7 +1880,7 @@ class ArtworkList(Resource):
         try:
             db.session.add(new_artwork_instance)
             db.session.commit()
-            return artwork_schema.dump(new_artwork_instance), 201
+            return schemas.artwork_schema.dump(new_artwork_instance), 201 # Use schemas.artwork_schema
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artwork in DB: {e}", exc_info=True)
@@ -1851,7 +1912,7 @@ class ArtworkDetail(Resource):
             if not artwork.is_active or (artwork.artist and not artwork.artist.is_active):
                 return {"message": f"Artwork with ID {artwork_id} not found or not active."}, 404
         
-        return artwork_schema.dump(artwork), 200
+        return schemas.artwork_schema.dump(artwork), 200 # Use schemas.artwork_schema
 
     @admin_required
     def patch(self, artwork_id):
@@ -1863,8 +1924,13 @@ class ArtworkDetail(Resource):
         image_file = request.files.get('image_file')
         
         if 'is_active' in form_data:
-            form_data['is_active'] = form_data['is_active'].lower() in ['true', 'on', '1']
+            form_data['is_active'] = str(form_data['is_active']).lower() in ['true', 'on', '1', 'yes']
 
+        new_artist_id = form_data.get('artist_id')
+        if new_artist_id and new_artist_id != artwork.artist_id:
+            artist = Artist.query.get(new_artist_id)
+            if not artist:
+                abort(400, message=f"New artist with ID {new_artist_id} not found.")
 
         if image_file:
             old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url) if artwork.image_url else None
@@ -1881,23 +1947,21 @@ class ArtworkDetail(Resource):
             else:
                 return {"message": "Invalid image file or error during upload for update."}, 400
         elif 'image_url' in form_data and form_data['image_url'] == "" : 
-            form_data['image_url'] = None
             if artwork.image_url:
                 old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
                 if os.path.exists(old_image_path_abs):
-                    try: os.remove(old_image_path_abs)
-                    except: pass
+                    try: 
+                        os.remove(old_image_path_abs)
+                        current_app.logger.info(f"Deleted image {old_image_path_abs} as image_url was set to empty.")
+                    except OSError as e:
+                        current_app.logger.error(f"Error deleting image {old_image_path_abs}: {e}")
+            form_data['image_url'] = None
         elif 'image_url' in form_data :
-            pass 
-
-
-        if 'artist_id' in form_data:
-             artist_id_val = form_data.get('artist_id')
-             if not artist_id_val or not Artist.query.get(artist_id_val):
-                 abort(400, message=f"Invalid artist_id provided for update: {artist_id_val}")
+            pass
 
         try:
-            updated_artwork = artwork_schema.load(
+            # Use schemas.artwork_schema
+            updated_artwork = schemas.artwork_schema.load(
                 form_data,
                 instance=artwork,
                 partial=True, 
@@ -1909,7 +1973,7 @@ class ArtworkDetail(Resource):
         try:
             db.session.commit()
             refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(artwork.id)
-            return artwork_schema.dump(refreshed_artwork), 200
+            return schemas.artwork_schema.dump(refreshed_artwork), 200 # Use schemas.artwork_schema
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating artwork {artwork_id}: {e}", exc_info=True)
