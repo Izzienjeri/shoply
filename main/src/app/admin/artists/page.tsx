@@ -67,7 +67,7 @@ import {
 } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2, Users } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2, Users, PackageIcon } from 'lucide-react';
 
 const artistFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -94,6 +94,8 @@ export default function AdminArtistsPage() {
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+
 
   const form = useForm<ArtistFormInput, any, ArtistFormValues>({
     resolver: zodResolver(artistFormSchema),
@@ -174,7 +176,7 @@ export default function AdminArtistsPage() {
     setIsSubmitting(true);
     try {
       await apiClient.delete(`/artists/${artistToDelete.id}`, { needsAuth: true });
-      toast.success("Artist deleted successfully! (Associated artworks might also be affected)");
+      toast.success("Artist deleted successfully! Associated artworks were also deleted.");
       setArtistToDelete(null);
       fetchArtists();
     } catch (error: any) {
@@ -192,13 +194,31 @@ export default function AdminArtistsPage() {
           Name <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <div className="font-medium">{row.original.name}</div>
+      )
     },
     {
       accessorKey: "bio",
       header: "Bio",
       cell: ({ row }: { row: Row<ArtistType> }) => (
-        <p className="truncate max-w-xs">{row.original.bio || "N/A"}</p>
+        <p className="truncate max-w-xs text-sm text-muted-foreground">{row.original.bio || "N/A"}</p>
       ),
+    },
+    {
+      accessorKey: "artworks_count",
+      header: ({ column }: { column: Column<ArtistType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Artworks <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <div className="flex items-center justify-center">
+            <PackageIcon className="h-4 w-4 mr-1.5 text-muted-foreground"/>
+            {row.original.artworks_count !== undefined ? row.original.artworks_count : (row.original.artworks?.length || 0)}
+        </div>
+      ),
+      sortingFn: 'alphanumeric',
     },
     {
       accessorKey: "is_active",
@@ -208,12 +228,13 @@ export default function AdminArtistsPage() {
           {row.original.is_active ? "Active" : "Inactive"}
         </Badge>
       ),
+       filterFn: (row, id, value) => value.includes(row.getValue(id)),
     },
     {
       id: "actions",
-      header: "Actions",
+      header: () => <div className="text-right">Actions</div>,
       cell: ({ row }: { row: Row<ArtistType> }) => (
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 justify-end">
           <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
             <Edit3 className="h-4 w-4" />
           </Button>
@@ -234,9 +255,11 @@ export default function AdminArtistsPage() {
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
     state: {
       sorting,
       columnFilters,
+      globalFilter,
     },
   });
 
@@ -266,9 +289,9 @@ export default function AdminArtistsPage() {
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Filter by name..."
-            value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
+            placeholder="Search artists by name or bio..."
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-10"
           />
         </div>
@@ -280,7 +303,7 @@ export default function AdminArtistsPage() {
             {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtistType>) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} className="whitespace-nowrap">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -377,7 +400,7 @@ export default function AdminArtistsPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the artist "{artistToDelete?.name}".
-              Associated artworks might also be deleted depending on database setup.
+              Associated artworks will also be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

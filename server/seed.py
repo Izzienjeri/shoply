@@ -1,5 +1,3 @@
-# === ./seed.py ===
-
 import os
 import random
 from decimal import Decimal
@@ -8,14 +6,13 @@ from app import create_app, db
 from app.models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem, DeliveryOption, PaymentTransaction
 
 NUM_ARTISTS = 10
-NUM_USERS = 5
+NUM_USERS = 10
 ARTWORK_IMAGE_FOLDER_RELATIVE = 'artwork_images'
 IMAGES_BASE_NAME = 'art'
 NUM_IMAGES = 48
 DEFAULT_PASSWORD = "pass123"
 ADMIN_EMAIL = "admin@artistryhaven.io"
-ADMIN_PASSWORD = "AdminPass123!"
-
+TEST_USER_EMAIL = "testuser@artistryhaven.io"
 
 try:
     fake = Faker()
@@ -37,29 +34,24 @@ def get_image_path(image_index):
     return f"{ARTWORK_IMAGE_FOLDER_RELATIVE}/{IMAGES_BASE_NAME}{image_index}.jpg"
 
 def clear_data():
-    print("Clearing existing data...")
+    print("Clearing existing data (but not users/artists/artworks/delivery options)...")
     db.session.query(OrderItem).delete()
-    db.session.query(Order).delete() 
-    db.session.query(PaymentTransaction).delete() 
+    db.session.query(Order).delete()
+    db.session.query(PaymentTransaction).delete()
     db.session.query(CartItem).delete()
     db.session.query(Cart).delete()
-    db.session.query(Artwork).delete()
-    db.session.query(DeliveryOption).delete()
-    db.session.query(User).delete()
-    db.session.query(Artist).delete()
     db.session.commit()
     print("Data cleared.")
 
 def seed_artists(num_artists):
     print(f"Seeding {num_artists} artists...")
     artists = []
-    for i in range(num_artists):
-        first_name = fake.first_name() if fake else f"John"
+    for _ in range(num_artists):
+        first_name = fake.first_name() if fake else "John"
         kenyan_last_name = random.choice(KENYAN_NAMES)
-        artist_name = f"{first_name} {kenyan_last_name}"
-        artist_bio = fake.paragraph(nb_sentences=3) if fake else f"This is the biography for {artist_name}."
-        artist = Artist(name=artist_name, bio=artist_bio, is_active=True) # Set is_active
-        artists.append(artist)
+        name = f"{first_name} {kenyan_last_name}"
+        bio = fake.paragraph(nb_sentences=3) if fake else f"Bio for {name}."
+        artists.append(Artist(name=name, bio=bio, is_active=True))
     db.session.add_all(artists)
     db.session.commit()
     print("Artists seeded.")
@@ -67,45 +59,28 @@ def seed_artists(num_artists):
 
 def seed_artworks(artists, num_images_available, media_folder_base):
     if not artists:
-        print("No artists available to assign artworks to. Skipping artwork seeding.")
+        print("No artists available for artworks.")
         return
 
-    print(f"Seeding artworks (up to {num_images_available} based on image files)...")
+    print(f"Seeding artworks from {num_images_available} images...")
     artworks = []
     image_folder_full_path = os.path.join(media_folder_base, ARTWORK_IMAGE_FOLDER_RELATIVE)
-    print(f"Checking for images in: {image_folder_full_path}")
-
-    one_shilling_added = False
 
     for i in range(1, num_images_available + 1):
         image_filename = f"{IMAGES_BASE_NAME}{i}.jpg"
         image_full_path = os.path.join(image_folder_full_path, image_filename)
-        relative_image_url = get_image_path(i)
-
         if not os.path.exists(image_full_path):
-            print(f"Warning: Image file not found: {image_full_path}. Skipping artwork {i}.")
+            print(f"Missing image: {image_full_path}, skipping.")
             continue
 
-        artwork_name = fake.catch_phrase() if fake else f"Artwork {i}"
-        description = fake.text(max_nb_chars=200) if fake else f"A beautiful piece numbered {i}."
-
-        if not one_shilling_added:
-            price = Decimal(1)
-            one_shilling_added = True
-        else:
-            price = Decimal(random.randint(500, 15000))
-
-        stock_quantity = random.randint(0, 10)
-        assigned_artist = random.choice(artists)
-
         artwork = Artwork(
-            name=artwork_name,
-            description=description,
-            price=price,
-            stock_quantity=stock_quantity,
-            artist_id=assigned_artist.id,
-            image_url=relative_image_url,
-            is_active=True # Set is_active
+            name=fake.catch_phrase() if fake else f"Artwork {i}",
+            description=fake.text(max_nb_chars=200) if fake else f"Description for artwork {i}.",
+            price=Decimal(random.randint(500, 15000)),
+            stock_quantity=random.randint(0, 10),
+            artist_id=random.choice(artists).id,
+            image_url=get_image_path(i),
+            is_active=True
         )
         artworks.append(artwork)
 
@@ -114,114 +89,93 @@ def seed_artworks(artists, num_images_available, media_folder_base):
         db.session.commit()
         print(f"{len(artworks)} artworks seeded.")
     else:
-        print("No artworks were seeded.")
+        print("No artworks seeded.")
 
-
-def seed_users(num_users):
-    print(f"Seeding {num_users} users and 1 admin...")
+def seed_users():
+    print(f"Seeding 10 users (including 1 admin, 1 test user)...")
     users = []
 
-    # Seed Admin User
+    # Admin
     if not User.query.filter_by(email=ADMIN_EMAIL).first():
-        admin_user = User(
-            email=ADMIN_EMAIL,
-            name="Admin User",
-            address="Artistry Haven HQ, Nairobi",
-            is_admin=True
-        )
-        admin_user.set_password(ADMIN_PASSWORD)
-        users.append(admin_user)
-        print(f"Admin user created: {ADMIN_EMAIL}, Password: {ADMIN_PASSWORD}")
+        admin = User(email=ADMIN_EMAIL, name="Admin User", address="Artistry Haven HQ", is_admin=True)
+        admin.set_password(DEFAULT_PASSWORD)
+        users.append(admin)
+        print(f"Admin created: {ADMIN_EMAIL}")
     else:
-        print(f"Admin user {ADMIN_EMAIL} already exists.")
+        print("Admin already exists.")
 
-    # Seed Regular Users
-    for i in range(num_users):
-        user_email = fake.email() if fake else f"user{i+1}@example.com"
-        user_name = fake.name() if fake else f"Test User {i+1}"
-        user_address = random.choice(KENYAN_LOCATIONS)
+    # Test User
+    if not User.query.filter_by(email=TEST_USER_EMAIL).first():
+        test_user = User(email=TEST_USER_EMAIL, name="Test User", address="Nairobi", is_admin=False)
+        test_user.set_password(DEFAULT_PASSWORD)
+        users.append(test_user)
+        print(f"Test user created: {TEST_USER_EMAIL}")
+    else:
+        print("Test user already exists.")
 
-        if User.query.filter_by(email=user_email).first():
-            print(f"User with email {user_email} already exists, skipping.")
+    # 8 other users
+    for i in range(8):
+        email = fake.unique.email() if fake else f"user{i+1}@example.com"
+        if User.query.filter_by(email=email).first():
             continue
-
         user = User(
-            email=user_email,
-            name=user_name,
-            address=user_address,
+            email=email,
+            name=fake.name() if fake else f"User {i+1}",
+            address=random.choice(KENYAN_LOCATIONS),
             is_admin=False
         )
         user.set_password(DEFAULT_PASSWORD)
         users.append(user)
-        print(f"Created user: {user_email}, Address: {user_address}")
 
     if users:
         db.session.add_all(users)
         db.session.commit()
-        print(f"{len(users)} total users (including admin if new) seeded.")
-        print(f"Regular user default password: '{DEFAULT_PASSWORD}'")
+        print(f"{len(users)} users seeded. All passwords: '{DEFAULT_PASSWORD}'")
     else:
-        print("No new users were seeded.")
-    return users
+        print("No new users added.")
 
 def seed_delivery_options():
     print("Seeding delivery options...")
     options_data = [
-        {"name": "In Store Pick Up", "price": "0.00", "is_pickup": True, "active": True, "sort_order": 0, "description": "Collect your order from Dynamic Mall, Shop M90, CBD, Nairobi."},
-        {"name": "Diaspora (Kitengela Via Rembo)", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 10},
-        {"name": "Nairobi CBD", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 20},
-        {"name": "Zone 1 (Upper-Hill, Statehouse, etc. - 6km Proximity)", "price": "300.00", "is_pickup": False, "active": True, "sort_order": 30, "description": "Upper-Hill, Statehouse, Rhapta Road, Parklands, Pangani, City Stadium"},
-        {"name": "Zone 2 (N/West, Madaraka, South B/C, etc.)", "price": "400.00", "is_pickup": False, "active": True, "sort_order": 40, "description": "N/ West, Madaraka, South B/C, Mbagathi, Kilimani, Riara Road, Jamhuri, Yaya, Prestige, Kileleshwa, Westlands"},
-        {"name": "The Central Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 50},
-        {"name": "The Coastal Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 51},
-        {"name": "The Eastern Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 52},
-        {"name": "The North Eastern Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 53},
-        {"name": "The Nyanza Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 54},
-        {"name": "The Rift Valley Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 55},
-        {"name": "The Western Region", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 56},
-        {"name": "Zone 3 (Kikuyu, Kinoo, Kahawa, JKIA, etc.)", "price": "500.00", "is_pickup": False, "active": True, "sort_order": 60, "description": "Kikuyu, Kinoo, Muthiga, Kahawa Sukari, Kahawa West, KU, Nyayo Estate, Kayole, Nasra Garden, JKIA, Kerarapon-Karen"},
-        {"name": "Zone 4 (Kiambu Town, Ruiru, Utawala, etc.)", "price": "700.00", "is_pickup": False, "active": True, "sort_order": 70, "description": "Kiambu Town ,Ruiru,Kimbo,Utawala"},
-        {"name": "To Door Couriers (G4S/Fargo)", "price": "1000.00", "is_pickup": False, "active": True, "sort_order": 80},
-        {"name": "Zone 5 (Ngong Town, Rongai)", "price": "1000.00", "is_pickup": False, "active": True, "sort_order": 90},
+        {"name": "In Store Pick Up", "price": "0.00", "is_pickup": True, "active": True, "sort_order": 0},
+        {"name": "Nairobi CBD", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 10},
+        {"name": "Zone 1 (Upper-Hill)", "price": "300.00", "is_pickup": False, "active": True, "sort_order": 20},
     ]
 
-    options_to_add = []
-    for opt_data in options_data:
-        if not DeliveryOption.query.filter_by(name=opt_data["name"]).first():
-            option = DeliveryOption(
-                name=opt_data["name"],
-                price=Decimal(opt_data["price"]),
-                is_pickup=opt_data.get("is_pickup", False),
-                active=opt_data.get("active", True),
-                sort_order=opt_data.get("sort_order", 0),
-                description=opt_data.get("description")
-            )
-            options_to_add.append(option)
-    
-    if options_to_add:
-        db.session.add_all(options_to_add)
-        db.session.commit()
-        print(f"{len(options_to_add)} new delivery options seeded.")
-    else:
-        print("All delivery options already exist.")
+    new_options = []
+    for opt in options_data:
+        if not DeliveryOption.query.filter_by(name=opt["name"]).first():
+            new_options.append(DeliveryOption(
+                name=opt["name"],
+                price=Decimal(opt["price"]),
+                is_pickup=opt["is_pickup"],
+                active=opt["active"],
+                sort_order=opt["sort_order"],
+                description=opt.get("description", "")
+            ))
 
+    if new_options:
+        db.session.add_all(new_options)
+        db.session.commit()
+        print(f"{len(new_options)} delivery options seeded.")
+    else:
+        print("Delivery options already exist.")
 
 def run_seed():
     app = create_app()
     with app.app_context():
         media_folder = app.config.get('MEDIA_FOLDER')
         if not media_folder or not os.path.isdir(media_folder):
-            print(f"ERROR: MEDIA_FOLDER ('{media_folder}') is not configured correctly or does not exist.")
-            print("Ensure MEDIA_FOLDER is set in your Flask app config and the directory exists.")
+            print(f"ERROR: MEDIA_FOLDER '{media_folder}' is missing or invalid.")
             return
 
         clear_data()
         seed_delivery_options()
-        created_artists = seed_artists(NUM_ARTISTS)
-        seed_artworks(created_artists, NUM_IMAGES, media_folder)
-        seed_users(NUM_USERS) # This now includes admin user
+        artists = seed_artists(NUM_ARTISTS)
+        seed_artworks(artists, NUM_IMAGES, media_folder)
+        seed_users()
         print("-" * 20)
-        print("Seeding process completed!")
+        print("Seeding complete.")
         print("-" * 20)
 
 if __name__ == '__main__':

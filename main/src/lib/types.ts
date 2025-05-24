@@ -5,6 +5,7 @@ export interface Artist {
   created_at: string;
   updated_at: string;
   artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description' | 'is_active'>[];
+  artworks_count?: number;
   is_active?: boolean;
 }
 

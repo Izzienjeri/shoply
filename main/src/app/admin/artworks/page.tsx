@@ -1,9 +1,10 @@
+// === app/admin/artworks/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react'; // Added useCallback
 import Link from 'next/link';
 import Image from 'next/image';
-import { useForm, SubmitHandler } from 'react-hook-form';
+import { useForm, SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
@@ -76,31 +77,35 @@ import {
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud } from 'lucide-react';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 
 const artworkFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  artist_id: z.string().min(1, "Artist is required"),
+  artist_id: z.string().min(1, "Artist selection is required."),
   price: z.coerce.number().min(0, "Price must be non-negative"),
   stock_quantity: z.coerce.number().int().min(0, "Stock must be a non-negative integer"),
   description: z.string().optional().nullable(),
   is_active: z.boolean().default(true),
-  image_url: z.string().optional().nullable(),
+  image_file: z.instanceof(File)
+    .optional()
+    .nullable()
+    .refine(
+      (file) => !file || file.size <= MAX_FILE_SIZE,
+      `Max file size is 5MB.`
+    )
+    .refine(
+      (file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.type),
+      "Only .jpg, .jpeg, .png and .gif formats are supported."
+    ),
+  current_image_url: z.string().optional().nullable(),
 });
 
 type ArtworkFormValues = z.infer<typeof artworkFormSchema>;
 type ArtworkFormInput = z.input<typeof artworkFormSchema>;
 
-
-interface ArtworkApiPayload {
-  name: string;
-  artist_id: string;
-  price: string;
-  stock_quantity: number;
-  description?: string | null;
-  is_active: boolean;
-  image_url?: string | null;
-}
 
 const placeholderImage = "/placeholder-image.svg";
 
@@ -112,9 +117,13 @@ export default function AdminArtworksPage() {
   const [editingArtwork, setEditingArtwork] = useState<ArtworkType | null>(null);
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [artworkToDelete, setArtworkToDelete] = useState<ArtworkType | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+
 
   const form = useForm<ArtworkFormInput, any, ArtworkFormValues>({
     resolver: zodResolver(artworkFormSchema),
@@ -125,11 +134,13 @@ export default function AdminArtworksPage() {
       stock_quantity: 0,
       description: null,
       is_active: true,
-      image_url: null,
+      image_file: null,
+      current_image_url: null,
     },
   });
 
-  const fetchArtworksAndArtists = async () => {
+  // Define fetchArtworksAndArtists at the component scope
+  const fetchArtworksAndArtists = useCallback(async () => {
     setIsLoading(true);
     try {
       const [fetchedArtworks, fetchedArtists] = await Promise.all([
@@ -139,48 +150,79 @@ export default function AdminArtworksPage() {
       setArtworks(fetchedArtworks || []);
       setArtists(fetchedArtists || []);
 
-      if (fetchedArtists && fetchedArtists.length > 0 && !form.getValues('artist_id')) {
-        form.reset({ ...form.getValues(), artist_id: fetchedArtists[0].id });
+      // This logic will run after artists are fetched.
+      // Important: Check if the form is for a NEW artwork and artist_id is not already set
+      // (e.g., by opening an edit dialog which would have its own artist_id).
+      if (fetchedArtists && fetchedArtists.length > 0 && !editingArtwork && !form.getValues('artist_id')) {
+        form.setValue('artist_id', fetchedArtists[0].id, { shouldValidate: true });
       }
-
     } catch (error) {
       console.error("Failed to fetch artworks or artists:", error);
       toast.error("Could not load data. Ensure you are logged in as admin.");
     } finally {
       setIsLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, editingArtwork]); // Added form and editingArtwork to dependencies of useCallback
 
   useEffect(() => {
     fetchArtworksAndArtists();
-  }, []);
+  }, [fetchArtworksAndArtists]); // Call it on mount
+
 
   const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
     setIsSubmitting(true);
 
-    const apiPayload: ArtworkApiPayload = {
-      name: values.name,
-      artist_id: values.artist_id,
-      price: values.price.toString(),
-      stock_quantity: values.stock_quantity,
-      description: values.description || null,
-      is_active: values.is_active,
-      image_url: values.image_url || null,
-    };
+    if (!editingArtwork && !values.image_file) {
+      form.setError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
+      setIsSubmitting(false);
+      return;
+    }
+    if (editingArtwork && !values.image_file && !values.current_image_url) {
+        form.setError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
+        setIsSubmitting(false);
+        return;
+    }
+    if (!values.artist_id) {
+        form.setError("artist_id", {type: "manual", message: "Artist is required."});
+        setIsSubmitting(false);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('name', values.name);
+    formData.append('artist_id', values.artist_id); 
+    formData.append('price', values.price.toString());
+    formData.append('stock_quantity', values.stock_quantity.toString());
+    formData.append('is_active', String(values.is_active));
+    if (values.description) {
+      formData.append('description', values.description);
+    }
+
+    if (values.image_file) {
+      formData.append('image_file', values.image_file);
+    } else if (editingArtwork && values.current_image_url) {
+      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/media/`;
+      let relativePath = values.current_image_url;
+      if (values.current_image_url?.startsWith(mediaBase)) {
+        relativePath = values.current_image_url.substring(mediaBase.length);
+      }
+      formData.append('image_url', relativePath || '');
+    }
 
     try {
       if (editingArtwork) {
         await apiClient.patch<ArtworkType>(
           `/artworks/${editingArtwork.id}`,
-          apiPayload,
-          { needsAuth: true }
+          formData,
+          { needsAuth: true, isFormData: true }
         );
         toast.success("Artwork updated successfully!");
       } else {
         await apiClient.post<ArtworkType>(
           '/artworks/',
-          apiPayload,
-          { needsAuth: true }
+          formData,
+          { needsAuth: true, isFormData: true }
         );
         toast.success("Artwork created successfully!");
       }
@@ -188,21 +230,21 @@ export default function AdminArtworksPage() {
       setShowFormDialog(false);
       setEditingArtwork(null);
       form.reset({
-        name: "",
-        artist_id: artists.length > 0 ? artists[0].id : "",
-        price: 0,
-        stock_quantity: 0,
-        description: null,
-        is_active: true,
-        image_url: null,
+        name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
+        stock_quantity: 0, description: null, is_active: true,
+        image_file: null, current_image_url: null,
       });
-      fetchArtworksAndArtists();
+      setPreviewImage(null);
+      fetchArtworksAndArtists(); // Refresh list
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
       if (apiError.errors) {
         Object.entries(apiError.errors).forEach(([field, messages]) => {
-          form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
+          console.error(`Server error for ${field}: ${messages.join(", ")}`);
+           if (Object.keys(form.getValues()).includes(field)) {
+             form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
+           }
         });
       }
     } finally {
@@ -212,26 +254,23 @@ export default function AdminArtworksPage() {
 
   const openEditDialog = (artwork: ArtworkType) => {
     setEditingArtwork(artwork);
-    let imageUrlToPrefill = artwork.image_url;
-    const mediaBase = `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/media/`;
-    if (artwork.image_url?.startsWith(mediaBase)) {
-        imageUrlToPrefill = artwork.image_url.substring(mediaBase.length);
-    }
-
-    form.reset({
+    setPreviewImage(artwork.image_url || null);
+    form.reset({ 
       name: artwork.name,
-      artist_id: artwork.artist_id,
+      artist_id: artwork.artist?.id || "", // Use ID from the nested artist object, fallback to "" if artist/artist.id is missing
       price: parseFloat(artwork.price),
       stock_quantity: artwork.stock_quantity,
       description: artwork.description || null,
       is_active: artwork.is_active === undefined ? true : artwork.is_active,
-      image_url: imageUrlToPrefill || null,
+      image_file: null,
+      current_image_url: artwork.image_url || null,
     });
     setShowFormDialog(true);
   };
 
   const openNewDialog = () => {
     setEditingArtwork(null);
+    setPreviewImage(null);
     form.reset({
         name: "",
         artist_id: artists.length > 0 ? artists[0].id : "",
@@ -239,7 +278,8 @@ export default function AdminArtworksPage() {
         stock_quantity: 0,
         description: null,
         is_active: true,
-        image_url: null,
+        image_file: null,
+        current_image_url: null,
     });
     setShowFormDialog(true);
   };
@@ -296,7 +336,11 @@ export default function AdminArtworksPage() {
     },
     {
       accessorKey: "artist.name",
-      header: "Artist",
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Artist <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }: { row: Row<ArtworkType> }) => row.original.artist?.name || 'N/A',
     },
     {
@@ -325,11 +369,11 @@ export default function AdminArtworksPage() {
     },
     {
       id: "actions",
-      header: "Actions",
+      header: () => <div className="text-right">Actions</div>,
       cell: ({ row }: { row: Row<ArtworkType> }) => {
         const artwork = row.original;
         return (
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 justify-end">
             <Button variant="ghost" size="icon" onClick={() => openEditDialog(artwork)} title="Edit">
               <Edit3 className="h-4 w-4" />
             </Button>
@@ -340,7 +384,7 @@ export default function AdminArtworksPage() {
         );
       },
     },
-  ], [artists]);
+  ], [artists]); // artists dependency is important for the Select dropdown options
 
   const table = useReactTable({
     data: artworks,
@@ -351,9 +395,17 @@ export default function AdminArtworksPage() {
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, columnId, filterValue) => { 
+      const artworkName = row.getValue('name') as string;
+      const artistName = row.original.artist?.name || ''; 
+      return artworkName.toLowerCase().includes(filterValue.toLowerCase()) ||
+             artistName.toLowerCase().includes(filterValue.toLowerCase());
+    },
     state: {
       sorting,
       columnFilters,
+      globalFilter,
     },
   });
 
@@ -383,9 +435,9 @@ export default function AdminArtworksPage() {
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Filter by name..."
-            value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
+            placeholder="Search by artwork or artist name..."
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-10"
           />
         </div>
@@ -418,7 +470,7 @@ export default function AdminArtworksPage() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No artworks found.
+                  No artworks found {globalFilter && `for query "${globalFilter}"`}.
                 </TableCell>
               </TableRow>
             )}
@@ -436,9 +488,11 @@ export default function AdminArtworksPage() {
           if (!isOpen) {
               form.reset({
                 name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
-                stock_quantity: 0, description: null, is_active: true, image_url: null,
+                stock_quantity: 0, description: null, is_active: true,
+                image_file: null, current_image_url: null,
               });
               setEditingArtwork(null);
+              setPreviewImage(null);
           }
       }}>
         <DialogContent className="sm:max-w-lg">
@@ -461,19 +515,24 @@ export default function AdminArtworksPage() {
                   </FormItem>
                 )}
               />
-              <FormField
+              <Controller
                 control={form.control}
                 name="artist_id"
-                render={({ field }) => (
+                render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
                   <FormItem>
                     <FormLabel>Artist</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
+                    <Select
+                      onValueChange={onChange}
+                      value={value || ""} // Ensure value is a string, defaulting to "" if null/undefined
+                    >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger ref={ref} className={cn(error && "border-destructive")}>
                           <SelectValue placeholder="Select an artist" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        {artists.length === 0 && !isLoading && <SelectItem value="no-artists" disabled>No artists loaded</SelectItem>}
+                        {isLoading && artists.length === 0 && <SelectItem value="loading" disabled>Loading artists...</SelectItem>}
                         {artists.map((artist) => (
                           <SelectItem key={artist.id} value={artist.id}>
                             {artist.name} {artist.is_active === false && "(Inactive)"}
@@ -481,7 +540,7 @@ export default function AdminArtworksPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage /> {/* This will display Zod validation messages */}
                   </FormItem>
                 )}
               />
@@ -522,52 +581,76 @@ export default function AdminArtworksPage() {
               />
               <FormField
                 control={form.control}
-                name="image_url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Artwork Image Path</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="text"
-                        placeholder="e.g., artwork_images/my_art.jpg"
-                        {...field}
-                        value={field.value || ""}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Relative path from the 'media' folder (e.g., artwork_images/art1.jpg).
-                      Ensure image is uploaded to backend server's '{process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/media/' directory.
+                name="image_file"
+                render={({ field: { onChange, value: fileValue, ...restFieldProps } }) => {
+                  const currentImageDisplay = editingArtwork && form.getValues('current_image_url') && !fileValue;
+                  return (
+                    <FormItem>
+                      <FormLabel>Artwork Image</FormLabel>
+                      <FormControl>
+                        <div className="flex items-center space-x-3">
+                          <label htmlFor="image-upload" className={cn(
+                              "flex-grow cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
+                              "file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                              "disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent hover:text-accent-foreground",
+                              form.formState.errors.image_file && "border-destructive"
+                          )}>
+                            <div className="flex items-center">
+                              <UploadCloud className="mr-2 h-4 w-4" />
+                              <span>{fileValue ? fileValue.name : (currentImageDisplay ? 'Change image' : 'Upload image')}</span>
+                            </div>
+                            <Input
+                              id="image-upload"
+                              type="file"
+                              className="sr-only"
+                              accept={ACCEPTED_IMAGE_TYPES.join(",")}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                onChange(file);
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setPreviewImage(reader.result as string);
+                                  };
+                                  reader.readAsDataURL(file);
+                                } else {
+                                  setPreviewImage(form.getValues('current_image_url') || null);
+                                }
+                              }}
+                              {...restFieldProps}
+                            />
+                          </label>
+                        </div>
+                      </FormControl>
+                     <FormDescription>
+                        {editingArtwork && currentImageDisplay ? "Upload a new file to replace the current image." : 
+                         !editingArtwork ? "Image is required for new artworks. " : ""}
+                        Max 5MB. JPG, PNG, GIF.
                     </FormDescription>
-                    {editingArtwork && editingArtwork.image_url && !field.value && (
-                      <div className="mt-2">
-                        <p className="text-xs text-muted-foreground">Current image:</p>
-                        <Image
-                          src={editingArtwork.image_url}
-                          alt="Current artwork image"
-                          width={100}
-                          height={100}
-                          className="rounded border object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
-                        />
-                      </div>
-                    )}
-                     {field.value && (
-                      <div className="mt-2">
-                        <p className="text-xs text-muted-foreground">Image preview (from entered path):</p>
-                        <Image
-                          src={field.value.startsWith('http') ? field.value : `${(process.env.NEXT_PUBLIC_API_URL || '').replace('/api', '')}/media/${field.value.replace(/^\/?(media\/)?/, '')}`}
-                          alt="Preview from URL"
-                          width={100}
-                          height={100}
-                          className="rounded border object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; (e.target as HTMLImageElement).alt="Invalid path or image not found"; }}
-                        />
-                      </div>
-                    )}
                     <FormMessage />
                   </FormItem>
-                )}
+                  );
+                }}
               />
+
+            {(previewImage) && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {form.watch('image_file') ? "New image preview:" : (editingArtwork ? "Current image:" : "Image preview:")}
+                </p>
+                <Image
+                  src={previewImage || placeholderImage}
+                  alt="Artwork image preview"
+                  width={128}
+                  height={128}
+                  className="rounded border object-cover h-32 w-32"
+                  onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+                />
+              </div>
+            )}
+
+
                <FormField
                 control={form.control}
                 name="is_active"

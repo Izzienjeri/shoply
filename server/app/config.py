@@ -40,3 +40,8 @@ class Config:
 
     if not all([DARAJA_CONSUMER_KEY, DARAJA_CONSUMER_SECRET, DARAJA_SHORTCODE, DARAJA_PASSKEY, DARAJA_CALLBACK_URL_BASE]):
         print("WARNING: Essential Daraja configuration missing in environment variables!")
+
+    APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+    MEDIA_FOLDER = os.path.join(APP_ROOT, '..', 'media')
+    UPLOAD_FOLDER = os.path.join(MEDIA_FOLDER, 'artwork_images')
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}

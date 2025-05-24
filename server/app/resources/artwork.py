@@ -3,64 +3,105 @@ from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from werkzeug.utils import secure_filename
+import os
+import uuid
 
 from .. import db
 from ..models import Artwork, Artist, User
-from ..schemas import artwork_schema, artworks_schema, admin_artwork_schema
+from ..schemas import artwork_schema, artworks_schema
 from ..decorators import admin_required
 
 artwork_bp = Blueprint('artworks', __name__)
 artwork_api = Api(artwork_bp)
 
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+
+def save_artwork_image(image_file):
+    if image_file and allowed_file(image_file.filename):
+        filename = secure_filename(image_file.filename)
+        unique_id = uuid.uuid4().hex
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"art_{unique_id}.{file_ext}"
+        
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+            
+        file_path = os.path.join(upload_folder, unique_filename)
+        image_file.save(file_path)
+        relative_path = os.path.join(os.path.basename(upload_folder), unique_filename)
+        return relative_path.replace("\\", "/")
+    return None
+
 
 class ArtworkList(Resource):
     def get(self):
-        artworks = Artwork.query.options(joinedload(Artwork.artist)).filter(Artwork.is_active == True, Artist.is_active == True).order_by(Artwork.created_at.desc()).all()
+        is_admin_request = False
+        try:
+            jwt_payload = get_jwt() 
+            if jwt_payload:
+                user_id = get_jwt_identity()
+                user = User.query.get(user_id)
+                if user and user.is_admin:
+                    is_admin_request = True
+        except Exception:
+            pass
+
+        if is_admin_request:
+            current_app.logger.info("Admin request: Fetching all artworks for ArtworkList.")
+            artworks = Artwork.query.options(joinedload(Artwork.artist)).order_by(Artwork.created_at.desc()).all()
+        else:
+            artworks = Artwork.query.options(joinedload(Artwork.artist))\
+                .join(Artist, Artwork.artist_id == Artist.id)\
+                .filter(Artwork.is_active == True, Artist.is_active == True)\
+                .order_by(Artwork.created_at.desc()).all()
+        
         return artworks_schema.dump(artworks), 200
 
     @admin_required
     def post(self):
-        json_data = request.get_json()
-        if not json_data:
-            return {"message": "No input data provided"}, 400
+        form_data = request.form.to_dict()
+        image_file = request.files.get('image_file')
 
-        is_many = isinstance(json_data, list)
+        if 'is_active' not in form_data:
+            form_data['is_active'] = True
+        else:
+            form_data['is_active'] = form_data['is_active'].lower() in ['true', 'on', '1']
+
+
+        uploaded_image_path = None
+        if image_file:
+            uploaded_image_path = save_artwork_image(image_file)
+            if uploaded_image_path:
+                form_data['image_url'] = uploaded_image_path
+            else:
+                return {"message": "Invalid image file or error during upload."}, 400
+        elif 'image_url' in form_data and form_data['image_url']:
+            pass
+        else:
+            form_data['image_url'] = None
 
         try:
-            if is_many:
-                for item_data in json_data:
-                    artist_id = item_data.get('artist_id')
-                    if not artist_id or not Artist.query.get(artist_id):
-                        abort(400, message=f"Invalid or missing artist_id: {artist_id}")
-                for item in json_data:
-                    item.setdefault('is_active', True)
-                new_artworks = artworks_schema.load(json_data, session=db.session)
-            else:
-                artist_id = json_data.get('artist_id')
-                if not artist_id or not Artist.query.get(artist_id):
-                    abort(400, message=f"Invalid or missing artist_id: {artist_id}")
-                json_data.setdefault('is_active', True)
-                new_artworks = [artwork_schema.load(json_data, session=db.session)]
+            new_artwork_instance = artwork_schema.load(form_data, session=db.session)
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
         except Exception as e:
              current_app.logger.error(f"Unexpected error during artwork schema load: {e}", exc_info=True)
              abort(500, message="An internal error occurred during data processing.")
 
-        if not new_artworks:
-             return {"message": "No valid artwork data found after validation."}, 400
-
         try:
-            db.session.add_all(new_artworks)
+            db.session.add(new_artwork_instance)
             db.session.commit()
-            result = artworks_schema.dump(new_artworks) if is_many else artwork_schema.dump(new_artworks[0])
-            return result, 201
+            return artwork_schema.dump(new_artwork_instance), 201
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error creating artwork(s) in DB: {e}", exc_info=True)
+            current_app.logger.error(f"Error creating artwork in DB: {e}", exc_info=True)
             if 'foreign key constraint fails' in str(e).lower() and 'artist_id' in str(e).lower():
                  abort(400, message="Invalid artist_id provided.")
-            abort(500, message="An error occurred while saving the artwork(s) to the database.")
+            abort(500, message="An error occurred while saving the artwork to the database.")
 
 
 class ArtworkDetail(Resource):
@@ -77,12 +118,15 @@ class ArtworkDetail(Resource):
             pass
 
         query = Artwork.query.options(joinedload(Artwork.artist))
+        artwork = query.get(artwork_id)
+
+        if not artwork:
+            return {"message": f"Artwork with ID {artwork_id} not found."}, 404
+
         if not is_admin_request:
-            query = query.filter(Artwork.is_active == True, Artist.is_active == True)
+            if not artwork.is_active or (artwork.artist and not artwork.artist.is_active):
+                return {"message": f"Artwork with ID {artwork_id} not found or not active."}, 404
         
-        artwork = query.get_or_404(
-            artwork_id, description=f"Artwork with ID {artwork_id} not found or not active."
-        )
         return artwork_schema.dump(artwork), 200
 
     @admin_required
@@ -91,20 +135,48 @@ class ArtworkDetail(Resource):
             artwork_id, description=f"Artwork with ID {artwork_id} not found."
         )
 
-        json_data = request.get_json()
-        if not json_data:
-            return {"message": "No input data provided"}, 400
+        form_data = request.form.to_dict()
+        image_file = request.files.get('image_file')
+        
+        if 'is_active' in form_data:
+            form_data['is_active'] = form_data['is_active'].lower() in ['true', 'on', '1']
 
-        if 'artist_id' in json_data:
-             artist_id = json_data.get('artist_id')
-             if not artist_id or not Artist.query.get(artist_id):
-                 abort(400, message=f"Invalid artist_id provided for update: {artist_id}")
+
+        if image_file:
+            old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url) if artwork.image_url else None
+            
+            uploaded_image_path = save_artwork_image(image_file)
+            if uploaded_image_path:
+                form_data['image_url'] = uploaded_image_path
+                if old_image_path_abs and os.path.exists(old_image_path_abs) and artwork.image_url != uploaded_image_path:
+                    try:
+                        os.remove(old_image_path_abs)
+                        current_app.logger.info(f"Deleted old image: {old_image_path_abs}")
+                    except OSError as e:
+                        current_app.logger.error(f"Error deleting old image {old_image_path_abs}: {e}")
+            else:
+                return {"message": "Invalid image file or error during upload for update."}, 400
+        elif 'image_url' in form_data and form_data['image_url'] == "" : 
+            form_data['image_url'] = None
+            if artwork.image_url:
+                old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
+                if os.path.exists(old_image_path_abs):
+                    try: os.remove(old_image_path_abs)
+                    except: pass
+        elif 'image_url' in form_data :
+            pass 
+
+
+        if 'artist_id' in form_data:
+             artist_id_val = form_data.get('artist_id')
+             if not artist_id_val or not Artist.query.get(artist_id_val):
+                 abort(400, message=f"Invalid artist_id provided for update: {artist_id_val}")
 
         try:
             updated_artwork = artwork_schema.load(
-                json_data,
+                form_data,
                 instance=artwork,
-                partial=True,
+                partial=True, 
                 session=db.session
             )
         except ValidationError as err:
@@ -126,6 +198,16 @@ class ArtworkDetail(Resource):
         artwork = Artwork.query.get_or_404(
              artwork_id, description=f"Artwork with ID {artwork_id} not found."
         )
+        
+        if artwork.image_url:
+            image_full_path = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
+            if os.path.exists(image_full_path):
+                try:
+                    os.remove(image_full_path)
+                    current_app.logger.info(f"Deleted image file {image_full_path} for artwork {artwork_id}")
+                except OSError as e:
+                    current_app.logger.error(f"Error deleting image file {image_full_path}: {e}")
+
         try:
             db.session.delete(artwork)
             db.session.commit()

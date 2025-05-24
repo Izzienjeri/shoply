@@ -1,12 +1,12 @@
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from .. import db
 from ..models import Artist, Artwork, User
-from ..schemas import artist_schema, artists_schema, admin_artist_schema
+from ..schemas import artist_schema, artists_schema
 from ..decorators import admin_required
 
 artist_bp = Blueprint('artists', __name__)
@@ -26,8 +26,8 @@ class ArtistList(Resource):
             pass
 
         if is_admin_request:
-            current_app.logger.info("Admin request: Fetching all artists for ArtistList.")
-            artists = Artist.query.order_by(Artist.name).all()
+            current_app.logger.info("Admin request: Fetching all artists with artwork counts for ArtistList.")
+            artists = Artist.query.options(selectinload(Artist.artworks)).order_by(Artist.name).all()
         else:
             artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
         
@@ -64,14 +64,14 @@ class ArtistDetail(Resource):
             jwt_payload = get_jwt() 
             if jwt_payload:
                 user_id = get_jwt_identity()
-                user = User.query.get(user_id)
-                if user and user.is_admin:
+                user_obj = User.query.get(user_id)
+                if user_obj and user_obj.is_admin:
                     is_admin_request = True
         except Exception:
             pass
 
         query = Artist.query.options(
-            joinedload(Artist.artworks)
+            selectinload(Artist.artworks)
         )
         
         artist = query.get(artist_id)
@@ -82,9 +82,8 @@ class ArtistDetail(Resource):
         if not is_admin_request and not artist.is_active:
              return {"message": f"Artist with ID {artist_id} not found or not active."}, 404
 
-        if artist.artworks:
-            if not is_admin_request:
-                artist.artworks = [aw for aw in artist.artworks if aw.is_active]
+        if not is_admin_request and hasattr(artist, 'artworks_for_detail'):
+             artist.artworks_for_detail = [aw for aw in artist.artworks_for_detail if aw.is_active]
             
         return artist_schema.dump(artist), 200
 

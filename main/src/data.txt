@@ -1,6 +1,6 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-24 22:24:58
-# Files Included: 26
+# Date and Time: 2025-05-25 00:34:23
+# Files Included: 27
 
 # === lib/utils.ts ===
 import { clsx, type ClassValue } from "clsx"
@@ -107,6 +107,7 @@ export interface Artist {
   created_at: string;
   updated_at: string;
   artworks?: Pick<Artwork, 'id' | 'name' | 'image_url' | 'price' | 'artist' | 'stock_quantity' | 'description' | 'is_active'>[];
+  artworks_count?: number;
   is_active?: boolean;
 }
 
@@ -622,11 +623,10 @@ export default function AdminDashboardPage() {
 }
 
 # === app/admin/delivery-options/page.tsx ===
-// === app/admin/delivery-options/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useForm, SubmitHandler, FieldValues } from 'react-hook-form'; // Import FieldValues
+import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
@@ -680,7 +680,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Form,
@@ -704,15 +703,13 @@ const deliveryOptionFormSchema = z.object({
   sort_order: z.coerce.number().int().default(0),
 });
 
-// Output type (after Zod validation)
 type DeliveryOptionFormValues = z.infer<typeof deliveryOptionFormSchema>;
-// Input type (for form state and defaultValues)
 type DeliveryOptionFormInput = z.input<typeof deliveryOptionFormSchema>;
 
 
 interface DeliveryOptionApiPayload {
     name: string;
-    price: string; // API expects string for decimal
+    price: string;
     description?: string | null;
     is_pickup: boolean;
     active: boolean;
@@ -731,12 +728,12 @@ export default function AdminDeliveryOptionsPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'sort_order', desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
-  const form = useForm<DeliveryOptionFormInput, any, DeliveryOptionFormValues>({ // Typed useForm correctly
+  const form = useForm<DeliveryOptionFormInput, any, DeliveryOptionFormValues>({
     resolver: zodResolver(deliveryOptionFormSchema),
     defaultValues: {
       name: "",
       price: 0,
-      description: null, // Use null for optional nullable fields in defaultValues
+      description: null,
       is_pickup: false,
       active: true,
       sort_order: 0,
@@ -763,30 +760,19 @@ export default function AdminDeliveryOptionsPage() {
   const handleFormSubmit: SubmitHandler<DeliveryOptionFormValues> = async (values) => {
     setIsSubmitting(true);
     const payload: DeliveryOptionApiPayload = {
-        ...values, // values here are DeliveryOptionFormValues (output of Zod)
+        ...values,
         price: values.price.toString(),
         description: values.description || null,
     };
 
     try {
       if (editingOption) {
-        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
-        toast.success("Delivery option updated successfully!");
+        toast.info("Update functionality for delivery options requires backend changes.");
+        throw new Error("Backend for PATCH /delivery/options/:id not implemented.");
       } else {
-        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
-        toast.success("Delivery option created successfully!");
+        toast.info("Create functionality for delivery options requires backend changes.");
+        throw new Error("Backend for POST /delivery/options not implemented.");
       }
-      setShowFormDialog(false);
-      setEditingOption(null);
-      form.reset({ // form.reset expects DeliveryOptionFormInput
-        name: "",
-        price: 0,
-        description: null,
-        is_pickup: false,
-        active: true,
-        sort_order: 0,
-      });
-      fetchDeliveryOptions();
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
@@ -802,9 +788,9 @@ export default function AdminDeliveryOptionsPage() {
 
   const openEditDialog = (option: DeliveryOptionType) => {
     setEditingOption(option);
-    form.reset({ // form.reset expects DeliveryOptionFormInput
+    form.reset({
       name: option.name,
-      price: parseFloat(option.price), // Convert string from API to number for form
+      price: parseFloat(option.price),
       description: option.description || null,
       is_pickup: option.is_pickup,
       active: option.active,
@@ -815,7 +801,7 @@ export default function AdminDeliveryOptionsPage() {
 
   const openNewDialog = () => {
     setEditingOption(null);
-    form.reset({ // Reset to default DeliveryOptionFormInput values
+    form.reset({
         name: "",
         price: 0,
         description: null,
@@ -830,14 +816,13 @@ export default function AdminDeliveryOptionsPage() {
     if (!optionToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
-      toast.success("Delivery option deleted successfully!");
-      setOptionToDelete(null);
-      fetchDeliveryOptions();
+      toast.info("Delete functionality for delivery options requires backend changes.");
+      throw new Error("Backend for DELETE /delivery/options/:id not implemented.");
     } catch (error: any) {
       toast.error(error.message || "Failed to delete delivery option.");
     } finally {
       setIsSubmitting(false);
+      setOptionToDelete(null);
     }
   };
 
@@ -885,15 +870,13 @@ export default function AdminDeliveryOptionsPage() {
           <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
             <Edit3 className="h-4 w-4" />
           </Button>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete">
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
-          </AlertDialogTrigger>
+          <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete">
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
         </div>
       ),
     },
-  ], [form]); // Added form to dependency array as openEditDialog calls form.reset
+  ], []);
 
   const table = useReactTable({
     data: deliveryOptions,
@@ -910,7 +893,7 @@ export default function AdminDeliveryOptionsPage() {
     },
   });
 
-   if (isLoading) {
+   if (isLoading && deliveryOptions.length === 0) {
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -986,14 +969,17 @@ export default function AdminDeliveryOptionsPage() {
 
       <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
           setShowFormDialog(isOpen);
-          if (!isOpen) { form.reset(); setEditingOption(null); }
+          if (!isOpen) { form.reset({ name: "", price: 0, description: null, is_pickup: false, active: true, sort_order: 0 }); setEditingOption(null); }
       }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
+             <DialogDescription>
+                Note: Backend support for Create, Update, Delete of delivery options is pending.
+             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
               <FormField
                 control={form.control}
                 name="name"
@@ -1061,7 +1047,7 @@ export default function AdminDeliveryOptionsPage() {
                     )}
                 />
               </div>
-              <DialogFooter>
+              <DialogFooter className="pt-4">
                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1079,6 +1065,7 @@ export default function AdminDeliveryOptionsPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
+              Note: Backend support for Delete of delivery options is pending.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1556,14 +1543,437 @@ export default function AdminOrdersPage() {
   );
 }
 
+# === app/admin/artists/page.tsx ===
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useForm, SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  SortingState,
+  ColumnFiltersState,
+  Row,
+  Column,
+  HeaderGroup,
+  Cell,
+} from '@tanstack/react-table';
+
+import { Artist as ArtistType, ApiErrorResponse } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+import { cn } from '@/lib/utils';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2, Users, PackageIcon } from 'lucide-react';
+
+const artistFormSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  bio: z.string().optional().nullable(),
+  is_active: z.boolean().default(true),
+});
+
+type ArtistFormValues = z.infer<typeof artistFormSchema>;
+type ArtistFormInput = z.input<typeof artistFormSchema>;
+
+interface ArtistApiPayload {
+    name: string;
+    bio?: string | null;
+    is_active: boolean;
+}
+
+export default function AdminArtistsPage() {
+  const [artists, setArtists] = useState<ArtistType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingArtist, setEditingArtist] = useState<ArtistType | null>(null);
+  const [showFormDialog, setShowFormDialog] = useState(false);
+  const [artistToDelete, setArtistToDelete] = useState<ArtistType | null>(null);
+
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+
+
+  const form = useForm<ArtistFormInput, any, ArtistFormValues>({
+    resolver: zodResolver(artistFormSchema),
+    defaultValues: {
+      name: "",
+      bio: null,
+      is_active: true,
+    },
+  });
+
+  const fetchArtists = async () => {
+    setIsLoading(true);
+    try {
+      const fetchedArtists = await apiClient.get<ArtistType[]>('/artists/', { needsAuth: true });
+      setArtists(fetchedArtists || []);
+    } catch (error) {
+      console.error("Failed to fetch artists:", error);
+      toast.error("Could not load artists.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchArtists();
+  }, []);
+
+  const handleFormSubmit: SubmitHandler<ArtistFormValues> = async (values) => {
+    setIsSubmitting(true);
+    const payload: ArtistApiPayload = {
+        ...values,
+        bio: values.bio || null,
+    };
+
+    try {
+      if (editingArtist) {
+        await apiClient.patch<ArtistType>(`/artists/${editingArtist.id}`, payload, { needsAuth: true });
+        toast.success("Artist updated successfully!");
+      } else {
+        await apiClient.post<ArtistType>('/artists/', payload, { needsAuth: true });
+        toast.success("Artist created successfully!");
+      }
+      setShowFormDialog(false);
+      setEditingArtist(null);
+      form.reset({ name: "", bio: null, is_active: true });
+      fetchArtists();
+    } catch (error: any) {
+      const apiError = error as ApiErrorResponse;
+      toast.error(apiError.message || "An error occurred.");
+      if (apiError.errors) {
+        Object.entries(apiError.errors).forEach(([field, messages]) => {
+          form.setError(field as keyof ArtistFormInput, { type: "server", message: messages.join(", ") });
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (artist: ArtistType) => {
+    setEditingArtist(artist);
+    form.reset({
+      name: artist.name,
+      bio: artist.bio || null,
+      is_active: artist.is_active === undefined ? true : artist.is_active,
+    });
+    setShowFormDialog(true);
+  };
+
+  const openNewDialog = () => {
+    setEditingArtist(null);
+    form.reset({ name: "", bio: null, is_active: true });
+    setShowFormDialog(true);
+  };
+
+  const handleDeleteArtist = async () => {
+    if (!artistToDelete) return;
+    setIsSubmitting(true);
+    try {
+      await apiClient.delete(`/artists/${artistToDelete.id}`, { needsAuth: true });
+      toast.success("Artist deleted successfully! Associated artworks were also deleted.");
+      setArtistToDelete(null);
+      fetchArtists();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete artist.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const columns: ColumnDef<ArtistType>[] = useMemo(() => [
+    {
+      accessorKey: "name",
+      header: ({ column }: { column: Column<ArtistType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Name <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <div className="font-medium">{row.original.name}</div>
+      )
+    },
+    {
+      accessorKey: "bio",
+      header: "Bio",
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <p className="truncate max-w-xs text-sm text-muted-foreground">{row.original.bio || "N/A"}</p>
+      ),
+    },
+    {
+      accessorKey: "artworks_count",
+      header: ({ column }: { column: Column<ArtistType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Artworks <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <div className="flex items-center justify-center">
+            <PackageIcon className="h-4 w-4 mr-1.5 text-muted-foreground"/>
+            {row.original.artworks_count !== undefined ? row.original.artworks_count : (row.original.artworks?.length || 0)}
+        </div>
+      ),
+      sortingFn: 'alphanumeric',
+    },
+    {
+      accessorKey: "is_active",
+      header: "Status",
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <Badge variant={row.original.is_active ? "default" : "secondary"}>
+          {row.original.is_active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+       filterFn: (row, id, value) => value.includes(row.getValue(id)),
+    },
+    {
+      id: "actions",
+      header: () => <div className="text-right">Actions</div>,
+      cell: ({ row }: { row: Row<ArtistType> }) => (
+        <div className="flex space-x-2 justify-end">
+          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
+            <Edit3 className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setArtistToDelete(row.original)} title="Delete">
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      ),
+    },
+  ], []); 
+
+  const table = useReactTable({
+    data: artists,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    state: {
+      sorting,
+      columnFilters,
+      globalFilter,
+    },
+  });
+
+   if (isLoading && artists.length === 0) {
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                 <h1 className="text-2xl font-semibold">Manage Artists</h1>
+                <Skeleton className="h-10 w-36" />
+            </div>
+            <Skeleton className="h-10 w-full" />
+            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight flex items-center"><Users className="mr-3 h-6 w-6"/>Manage Artists</h1>
+        <Button onClick={openNewDialog}>
+          <PlusCircle className="mr-2 h-4 w-4" /> Add New Artist
+        </Button>
+      </div>
+
+      <div className="flex items-center py-4">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search artists by name or bio..."
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtistType>) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id} className="whitespace-nowrap">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row: Row<ArtistType>) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell: Cell<ArtistType, unknown>) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No artists found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+      </div>
+
+      <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
+          setShowFormDialog(isOpen);
+          if (!isOpen) { form.reset({ name: "", bio: null, is_active: true }); setEditingArtist(null); }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingArtist ? 'Edit Artist' : 'Add New Artist'}</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Artist Name</FormLabel>
+                    <FormControl><Input placeholder="e.g., Leonardo da Vinci" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="bio"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Biography (Optional)</FormLabel>
+                    <FormControl><Textarea placeholder="Brief bio of the artist..." {...field} value={field.value || ""} className="min-h-[100px]" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+                <FormField
+                  control={form.control}
+                  name="is_active"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                        <div className="space-y-1 leading-none">
+                            <FormLabel className="font-normal">Active</FormLabel>
+                            <FormDescription>Uncheck to hide this artist and their artworks from public view.</FormDescription>
+                        </div>
+                    </FormItem>
+                  )}
+                />
+              <DialogFooter className="pt-4">
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {editingArtist ? 'Save Changes' : 'Create Artist'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!artistToDelete} onOpenChange={(isOpen) => !isOpen && setArtistToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the artist "{artistToDelete?.name}".
+              Associated artworks will also be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setArtistToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteArtist}
+              disabled={isSubmitting}
+              className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 # === app/admin/artworks/page.tsx ===
 // === app/admin/artworks/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react'; // Added useCallback
 import Link from 'next/link';
 import Image from 'next/image';
-import { useForm, SubmitHandler, FieldValues } from 'react-hook-form';
+import { useForm, SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
@@ -1606,7 +2016,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogClose,
 } from '@/components/ui/dialog';
 import {
@@ -1618,7 +2027,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Form,
@@ -1638,585 +2046,636 @@ import {
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud } from 'lucide-react';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 
 const artworkFormSchema = z.object({
-    name: z.string().min(1, "Name is required"),
-    artist_id: z.string().min(1, "Artist is required"),
-    price: z.coerce.number().min(0, "Price must be non-negative"),
-    stock_quantity: z.coerce.number().int().min(0, "Stock must be a non-negative integer"),
-    description: z.string().optional().nullable(), // Made explicit
-    is_active: z.boolean().default(true),
-    image_file: z.instanceof(File).optional().nullable(),
+  name: z.string().min(1, "Name is required"),
+  artist_id: z.string().min(1, "Artist selection is required."),
+  price: z.coerce.number().min(0, "Price must be non-negative"),
+  stock_quantity: z.coerce.number().int().min(0, "Stock must be a non-negative integer"),
+  description: z.string().optional().nullable(),
+  is_active: z.boolean().default(true),
+  image_file: z.instanceof(File)
+    .optional()
+    .nullable()
+    .refine(
+      (file) => !file || file.size <= MAX_FILE_SIZE,
+      `Max file size is 5MB.`
+    )
+    .refine(
+      (file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.type),
+      "Only .jpg, .jpeg, .png and .gif formats are supported."
+    ),
+  current_image_url: z.string().optional().nullable(),
+});
+
+type ArtworkFormValues = z.infer<typeof artworkFormSchema>;
+type ArtworkFormInput = z.input<typeof artworkFormSchema>;
+
+
+const placeholderImage = "/placeholder-image.svg";
+
+export default function AdminArtworksPage() {
+  const [artworks, setArtworks] = useState<ArtworkType[]>([]);
+  const [artists, setArtists] = useState<ArtistType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingArtwork, setEditingArtwork] = useState<ArtworkType | null>(null);
+  const [showFormDialog, setShowFormDialog] = useState(false);
+  const [artworkToDelete, setArtworkToDelete] = useState<ArtworkType | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+
+
+  const form = useForm<ArtworkFormInput, any, ArtworkFormValues>({
+    resolver: zodResolver(artworkFormSchema),
+    defaultValues: {
+      name: "",
+      artist_id: "",
+      price: 0,
+      stock_quantity: 0,
+      description: null,
+      is_active: true,
+      image_file: null,
+      current_image_url: null,
+    },
   });
-  
-  // This is the output type, typically used for validated data
-  type ArtworkFormValues = z.infer<typeof artworkFormSchema>;
-  
-  // Add this line: This is the input type for the form, before Zod processing
-  type ArtworkFormInput = z.input<typeof artworkFormSchema>;
-  
-  
-  interface ArtworkApiPayload {
-    name: string;
-    artist_id: string;
-    price: string;
-    stock_quantity: number;
-    description?: string | null; // Match schema for consistency
-    is_active: boolean;
-  }
-  
-  const placeholderImage = "/placeholder-image.svg";
-  
-  export default function AdminArtworksPage() {
-    // ... rest of your component state
-    const [artworks, setArtworks] = useState<ArtworkType[]>([]);
-    const [artists, setArtists] = useState<ArtistType[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [editingArtwork, setEditingArtwork] = useState<ArtworkType | null>(null);
-    const [showFormDialog, setShowFormDialog] = useState(false);
-    const [artworkToDelete, setArtworkToDelete] = useState<ArtworkType | null>(null);
-  
-    const [sorting, setSorting] = useState<SortingState>([]);
-    const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  
-    const form = useForm<ArtworkFormInput, any, ArtworkFormValues>({ // Now ArtworkFormInput is defined
-      resolver: zodResolver(artworkFormSchema),
-      defaultValues: {
+
+  // Define fetchArtworksAndArtists at the component scope
+  const fetchArtworksAndArtists = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [fetchedArtworks, fetchedArtists] = await Promise.all([
+        apiClient.get<ArtworkType[]>('/artworks/', { needsAuth: true }),
+        apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
+      ]);
+      setArtworks(fetchedArtworks || []);
+      setArtists(fetchedArtists || []);
+
+      // This logic will run after artists are fetched.
+      // Important: Check if the form is for a NEW artwork and artist_id is not already set
+      // (e.g., by opening an edit dialog which would have its own artist_id).
+      if (fetchedArtists && fetchedArtists.length > 0 && !editingArtwork && !form.getValues('artist_id')) {
+        form.setValue('artist_id', fetchedArtists[0].id, { shouldValidate: true });
+      }
+    } catch (error) {
+      console.error("Failed to fetch artworks or artists:", error);
+      toast.error("Could not load data. Ensure you are logged in as admin.");
+    } finally {
+      setIsLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, editingArtwork]); // Added form and editingArtwork to dependencies of useCallback
+
+  useEffect(() => {
+    fetchArtworksAndArtists();
+  }, [fetchArtworksAndArtists]); // Call it on mount
+
+
+  const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
+    setIsSubmitting(true);
+
+    if (!editingArtwork && !values.image_file) {
+      form.setError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
+      setIsSubmitting(false);
+      return;
+    }
+    if (editingArtwork && !values.image_file && !values.current_image_url) {
+        form.setError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
+        setIsSubmitting(false);
+        return;
+    }
+    if (!values.artist_id) {
+        form.setError("artist_id", {type: "manual", message: "Artist is required."});
+        setIsSubmitting(false);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('name', values.name);
+    formData.append('artist_id', values.artist_id); 
+    formData.append('price', values.price.toString());
+    formData.append('stock_quantity', values.stock_quantity.toString());
+    formData.append('is_active', String(values.is_active));
+    if (values.description) {
+      formData.append('description', values.description);
+    }
+
+    if (values.image_file) {
+      formData.append('image_file', values.image_file);
+    } else if (editingArtwork && values.current_image_url) {
+      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/media/`;
+      let relativePath = values.current_image_url;
+      if (values.current_image_url?.startsWith(mediaBase)) {
+        relativePath = values.current_image_url.substring(mediaBase.length);
+      }
+      formData.append('image_url', relativePath || '');
+    }
+
+    try {
+      if (editingArtwork) {
+        await apiClient.patch<ArtworkType>(
+          `/artworks/${editingArtwork.id}`,
+          formData,
+          { needsAuth: true, isFormData: true }
+        );
+        toast.success("Artwork updated successfully!");
+      } else {
+        await apiClient.post<ArtworkType>(
+          '/artworks/',
+          formData,
+          { needsAuth: true, isFormData: true }
+        );
+        toast.success("Artwork created successfully!");
+      }
+
+      setShowFormDialog(false);
+      setEditingArtwork(null);
+      form.reset({
+        name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
+        stock_quantity: 0, description: null, is_active: true,
+        image_file: null, current_image_url: null,
+      });
+      setPreviewImage(null);
+      fetchArtworksAndArtists(); // Refresh list
+    } catch (error: any) {
+      const apiError = error as ApiErrorResponse;
+      toast.error(apiError.message || "An error occurred.");
+      if (apiError.errors) {
+        Object.entries(apiError.errors).forEach(([field, messages]) => {
+          console.error(`Server error for ${field}: ${messages.join(", ")}`);
+           if (Object.keys(form.getValues()).includes(field)) {
+             form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
+           }
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (artwork: ArtworkType) => {
+    setEditingArtwork(artwork);
+    setPreviewImage(artwork.image_url || null);
+    form.reset({ 
+      name: artwork.name,
+      artist_id: artwork.artist_id,
+      price: parseFloat(artwork.price),
+      stock_quantity: artwork.stock_quantity,
+      description: artwork.description || null,
+      is_active: artwork.is_active === undefined ? true : artwork.is_active,
+      image_file: null,
+      current_image_url: artwork.image_url || null,
+    });
+    setShowFormDialog(true);
+  };
+
+  const openNewDialog = () => {
+    setEditingArtwork(null);
+    setPreviewImage(null);
+    form.reset({
         name: "",
-        artist_id: "",
+        artist_id: artists.length > 0 ? artists[0].id : "",
         price: 0,
         stock_quantity: 0,
         description: null,
         is_active: true,
         image_file: null,
-      },
+        current_image_url: null,
     });
-  
-    // ... rest of your component code
-    // ... (fetchArtworksAndArtists, useEffect, handleFormSubmit, etc.) ...
-    // ... (openEditDialog, openNewDialog, handleDeleteArtwork, columns, table definition) ...
-    // ... (JSX for loading state, page layout, table, dialogs) ...
-  // Ensure the rest of your file remains the same as you provided.
-  // The key change is adding the `type ArtworkFormInput = z.input<typeof artworkFormSchema>;` line.
-  
-    const fetchArtworksAndArtists = async () => {
-      setIsLoading(true);
-      try {
-        const [fetchedArtworks, fetchedArtists] = await Promise.all([
-          apiClient.get<ArtworkType[]>('/artworks/', { needsAuth: true }),
-          apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
-        ]);
-        setArtworks(fetchedArtworks || []);
-        setArtists(fetchedArtists || []);
-      } catch (error) {
-        console.error("Failed to fetch artworks or artists:", error);
-        toast.error("Could not load data.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-  
-    useEffect(() => {
+    setShowFormDialog(true);
+  };
+
+  const handleDeleteArtwork = async () => {
+    if (!artworkToDelete) return;
+    setIsSubmitting(true);
+    try {
+      await apiClient.delete(`/artworks/${artworkToDelete.id}`, { needsAuth: true });
+      toast.success("Artwork deleted successfully!");
+      setArtworkToDelete(null);
       fetchArtworksAndArtists();
-    }, []);
-  
-    const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
-      setIsSubmitting(true);
-  
-      try {
-        if (editingArtwork) { // --- EDITING ---
-          if (values.image_file) {
-              const formData = new FormData();
-              (Object.keys(values) as Array<keyof ArtworkFormValues>).forEach(key => {
-                  const value = values[key];
-                  if (key === 'image_file' && value instanceof File) {
-                      formData.append(key, value);
-                  } else if (key === 'price' && typeof value === 'number') {
-                      formData.append(key, value.toString());
-                  } else if (value !== undefined && value !== null) { // Check for null explicitly for optional fields
-                      formData.append(key, String(value));
-                  }
-              });
-              await apiClient.patch<ArtworkType>(
-                  `/artworks/${editingArtwork.id}`,
-                  formData,
-                  { needsAuth: true, isFormData: true }
-              );
-          } else { // No new image file, send JSON
-              const { image_file, ...jsonPayloadData } = values;
-              const apiPayload: ArtworkApiPayload = {
-                  ...jsonPayloadData,
-                  description: jsonPayloadData.description ?? undefined, // Ensure undefined if null for JSON
-                  price: values.price.toString(),
-              };
-              await apiClient.patch<ArtworkType>(
-                  `/artworks/${editingArtwork.id}`,
-                  apiPayload,
-                  { needsAuth: true, isFormData: false }
-              );
-          }
-          toast.success("Artwork updated successfully!");
-  
-        } else { // --- CREATING NEW ---
-          if (values.image_file) {
-              const formData = new FormData();
-              (Object.keys(values) as Array<keyof ArtworkFormValues>).forEach(key => {
-                  const value = values[key];
-                   if (key === 'image_file' && value instanceof File) {
-                      formData.append(key, value);
-                  } else if (key === 'price' && typeof value === 'number') {
-                      formData.append(key, value.toString());
-                  } else if (value !== undefined && value !== null) {
-                      formData.append(key, String(value));
-                  }
-              });
-              await apiClient.post<ArtworkType>(
-                  '/artworks/',
-                  formData,
-                  { needsAuth: true, isFormData: true }
-              );
-          } else {
-              const { image_file, ...jsonPayloadData } = values;
-               const apiPayload: ArtworkApiPayload = {
-                  ...jsonPayloadData,
-                  description: jsonPayloadData.description ?? undefined,
-                  price: values.price.toString(),
-              };
-              await apiClient.post<ArtworkType>(
-                  '/artworks/',
-                  apiPayload,
-                  { needsAuth: true, isFormData: false }
-              );
-          }
-          toast.success("Artwork created successfully!");
-        }
-  
-        setShowFormDialog(false);
-        setEditingArtwork(null);
-        form.reset({ // form.reset takes ArtworkFormInput (or Partial<ArtworkFormInput>)
-          name: "",
-          artist_id: artists.length > 0 ? artists[0].id : "",
-          price: 0,
-          stock_quantity: 0,
-          description: null,
-          is_active: true,
-          image_file: null,
-        });
-        fetchArtworksAndArtists();
-      } catch (error: any) {
-        const apiError = error as ApiErrorResponse;
-        toast.error(apiError.message || "An error occurred.");
-        if (apiError.errors) {
-          Object.entries(apiError.errors).forEach(([field, messages]) => {
-            form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
-          });
-        }
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-  
-    const openEditDialog = (artwork: ArtworkType) => {
-      setEditingArtwork(artwork);
-      form.reset({ // form.reset takes ArtworkFormInput (or Partial<ArtworkFormInput>)
-        name: artwork.name,
-        artist_id: artwork.artist_id,
-        price: parseFloat(artwork.price),
-        stock_quantity: artwork.stock_quantity,
-        description: artwork.description || null,
-        is_active: artwork.is_active === undefined ? true : artwork.is_active,
-        image_file: null,
-      });
-      setShowFormDialog(true);
-    };
-  
-    const openNewDialog = () => {
-      setEditingArtwork(null);
-      form.reset({ // form.reset takes ArtworkFormInput (or Partial<ArtworkFormInput>)
-          name: "",
-          artist_id: artists.length > 0 ? artists[0].id : "",
-          price: 0,
-          stock_quantity: 0,
-          description: null,
-          is_active: true,
-          image_file: null,
-      });
-      setShowFormDialog(true);
-    };
-  
-    const handleDeleteArtwork = async () => {
-      if (!artworkToDelete) return;
-      setIsSubmitting(true);
-      try {
-        await apiClient.delete(`/artworks/${artworkToDelete.id}`, { needsAuth: true });
-        toast.success("Artwork deleted successfully!");
-        setArtworkToDelete(null);
-        fetchArtworksAndArtists();
-      } catch (error: any) {
-        toast.error(error.message || "Failed to delete artwork.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-  
-    const columns: ColumnDef<ArtworkType>[] = useMemo(() => [
-      {
-        accessorKey: "image_url",
-        header: "Image",
-        cell: ({ row }: { row: Row<ArtworkType> }) => {
-          const artwork = row.original;
-          return (
-            <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
-              <Image
-                src={artwork.image_url || placeholderImage}
-                alt={artwork.name}
-                fill
-                sizes="64px"
-                className="object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
-              />
-              {!artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
-            </div>
-          );
-        },
-        enableSorting: false,
-      },
-      {
-        accessorKey: "name",
-        header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-            Name <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: ({ row }: { row: Row<ArtworkType> }) => <Link href={`/artworks/${row.original.id}`} target="_blank" className="hover:underline font-medium">{row.original.name} <ExternalLink className="inline h-3 w-3 ml-1" /></Link>,
-      },
-      {
-        accessorKey: "artist.name",
-        header: "Artist",
-        cell: ({ row }: { row: Row<ArtworkType> }) => row.original.artist?.name || 'N/A',
-      },
-      {
-        accessorKey: "price",
-        header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-            Price <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: ({ row }: { row: Row<ArtworkType> }) => formatPrice(row.original.price),
-      },
-      {
-        accessorKey: "stock_quantity",
-        header: "Stock",
-        cell: ({ row }: { row: Row<ArtworkType> }) => row.original.stock_quantity,
-      },
-      {
-        accessorKey: "is_active",
-        header: "Status",
-        cell: ({ row }: { row: Row<ArtworkType> }) => (
-          <Badge variant={row.original.is_active ? "default" : "secondary"}>
-            {row.original.is_active ? "Active" : "Inactive"}
-          </Badge>
-        ),
-        filterFn: (row: Row<ArtworkType>, id: string, value: any) => value.includes(row.getValue(id))
-      },
-      {
-        id: "actions",
-        header: "Actions",
-        cell: ({ row }: { row: Row<ArtworkType> }) => {
-          const artwork = row.original;
-          return (
-            <div className="flex space-x-2">
-              <Button variant="ghost" size="icon" onClick={() => openEditDialog(artwork)} title="Edit">
-                <Edit3 className="h-4 w-4" />
-              </Button>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setArtworkToDelete(artwork)} title="Delete">
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </AlertDialogTrigger>
-            </div>
-          );
-        },
-      },
-    ], [artists, form]); // form is a dependency because openEditDialog and openNewDialog use form.reset
-  
-    const table = useReactTable({
-      data: artworks,
-      columns,
-      getCoreRowModel: getCoreRowModel(),
-      getPaginationRowModel: getPaginationRowModel(),
-      getSortedRowModel: getSortedRowModel(),
-      getFilteredRowModel: getFilteredRowModel(),
-      onSortingChange: setSorting,
-      onColumnFiltersChange: setColumnFilters,
-      state: {
-        sorting,
-        columnFilters,
-      },
-    });
-  
-  
-    if (isLoading && artworks.length === 0) {
-      return (
-          <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                  <h1 className="text-2xl font-semibold">Manage Artworks</h1>
-                  <Skeleton className="h-10 w-32" />
-              </div>
-              <Skeleton className="h-10 w-full" />
-              {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
-          </div>
-      );
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete artwork.");
+    } finally {
+      setIsSubmitting(false);
     }
-  
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Manage Artworks</h1>
-          <Button onClick={openNewDialog}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Artwork
-          </Button>
-        </div>
-  
-        <div className="flex items-center py-4">
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Filter by name..."
-              value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-              onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
-              className="pl-10"
+  };
+
+  const columns: ColumnDef<ArtworkType>[] = useMemo(() => [
+    {
+      accessorKey: "image_url",
+      header: "Image",
+      cell: ({ row }: { row: Row<ArtworkType> }) => {
+        const artwork = row.original;
+        return (
+          <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+            <Image
+              src={artwork.image_url || placeholderImage}
+              alt={artwork.name}
+              fill
+              sizes="64px"
+              className="object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
             />
+            {!artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
           </div>
+        );
+      },
+      enableSorting: false,
+    },
+    {
+      accessorKey: "name",
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Name <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtworkType> }) => (
+        <Link href={`/artworks/${row.original.id}`} target="_blank" className="hover:underline font-medium">
+          {row.original.name} <ExternalLink className="inline h-3 w-3 ml-1" />
+        </Link>
+      ),
+    },
+    {
+      accessorKey: "artist.name",
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Artist <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtworkType> }) => row.original.artist?.name || 'N/A',
+    },
+    {
+      accessorKey: "price",
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Price <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtworkType> }) => formatPrice(row.original.price),
+    },
+    {
+      accessorKey: "stock_quantity",
+      header: "Stock",
+      cell: ({ row }: { row: Row<ArtworkType> }) => row.original.stock_quantity,
+    },
+    {
+      accessorKey: "is_active",
+      header: "Status",
+      cell: ({ row }: { row: Row<ArtworkType> }) => (
+        <Badge variant={row.original.is_active ? "default" : "secondary"}>
+          {row.original.is_active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+      filterFn: (row: Row<ArtworkType>, id: string, value: any) => value.includes(row.getValue(id))
+    },
+    {
+      id: "actions",
+      header: () => <div className="text-right">Actions</div>,
+      cell: ({ row }: { row: Row<ArtworkType> }) => {
+        const artwork = row.original;
+        return (
+          <div className="flex space-x-2 justify-end">
+            <Button variant="ghost" size="icon" onClick={() => openEditDialog(artwork)} title="Edit">
+              <Edit3 className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => setArtworkToDelete(artwork)} title="Delete">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        );
+      },
+    },
+  ], [artists]); // artists dependency is important for the Select dropdown options
+
+  const table = useReactTable({
+    data: artworks,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, columnId, filterValue) => { 
+      const artworkName = row.getValue('name') as string;
+      const artistName = row.original.artist?.name || ''; 
+      return artworkName.toLowerCase().includes(filterValue.toLowerCase()) ||
+             artistName.toLowerCase().includes(filterValue.toLowerCase());
+    },
+    state: {
+      sorting,
+      columnFilters,
+      globalFilter,
+    },
+  });
+
+  if (isLoading && artworks.length === 0) {
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-semibold">Manage Artworks</h1>
+                <Skeleton className="h-10 w-32" />
+            </div>
+            <Skeleton className="h-10 w-full" />
+            {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
         </div>
-  
-        <div className="rounded-md border bg-card">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtworkType>) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Manage Artworks</h1>
+        <Button onClick={openNewDialog}>
+          <PlusCircle className="mr-2 h-4 w-4" /> Add New Artwork
+        </Button>
+      </div>
+
+      <div className="flex items-center py-4">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by artwork or artist name..."
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtworkType>) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id} className="whitespace-nowrap">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row: Row<ArtworkType>) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                  {row.getVisibleCells().map((cell: Cell<ArtworkType, unknown>) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
                   ))}
                 </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row: Row<ArtworkType>) => (
-                  <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
-                    {row.getVisibleCells().map((cell: Cell<ArtworkType, unknown>) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No artworks found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-  
-        <div className="flex items-center justify-end space-x-2 py-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-  
-        <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
-            setShowFormDialog(isOpen);
-            if (!isOpen) {
-                form.reset(); // Default reset uses defaultValues from useForm
-                setEditingArtwork(null);
-            }
-        }}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{editingArtwork ? 'Edit Artwork' : 'Add New Artwork'}</DialogTitle>
-              <DialogDescription>
-                {editingArtwork ? 'Update the details of the artwork.' : 'Fill in the details for the new artwork.'}
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No artworks found {globalFilter && `for query "${globalFilter}"`}.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+      </div>
+
+      <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
+          setShowFormDialog(isOpen);
+          if (!isOpen) {
+              form.reset({
+                name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
+                stock_quantity: 0, description: null, is_active: true,
+                image_file: null, current_image_url: null,
+              });
+              setEditingArtwork(null);
+              setPreviewImage(null);
+          }
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingArtwork ? 'Edit Artwork' : 'Add New Artwork'}</DialogTitle>
+            <DialogDescription>
+              {editingArtwork ? 'Update the details of the artwork.' : 'Fill in the details for the new artwork.'}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl><Input placeholder="Artwork Title" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="artist_id"
+                render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                  <FormItem>
+                    <FormLabel>Artist</FormLabel>
+                    <Select
+                      onValueChange={onChange}
+                      value={value || ""} // Ensure value is a string, defaulting to "" if null/undefined
+                    >
+                      <FormControl>
+                        <SelectTrigger ref={ref} className={cn(error && "border-destructive")}>
+                          <SelectValue placeholder="Select an artist" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {artists.length === 0 && !isLoading && <SelectItem value="no-artists" disabled>No artists loaded</SelectItem>}
+                        {isLoading && artists.length === 0 && <SelectItem value="loading" disabled>Loading artists...</SelectItem>}
+                        {artists.map((artist) => (
+                          <SelectItem key={artist.id} value={artist.id}>
+                            {artist.name} {artist.is_active === false && "(Inactive)"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage /> {/* This will display Zod validation messages */}
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
+                    control={form.control}
+                    name="price"
+                    render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl><Input placeholder="Artwork Title" {...field} /></FormControl>
-                      <FormMessage />
+                        <FormLabel>Price (Ksh)</FormLabel>
+                        <FormControl><Input type="number" step="0.01" placeholder="e.g., 1500.00" {...field} /></FormControl>
+                        <FormMessage />
                     </FormItem>
-                  )}
+                    )}
                 />
                 <FormField
-                  control={form.control}
-                  name="artist_id"
-                  render={({ field }) => (
+                    control={form.control}
+                    name="stock_quantity"
+                    render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Artist</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || ""}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select an artist" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {artists.map((artist) => (
-                            <SelectItem key={artist.id} value={artist.id} disabled={!artist.is_active && artist.id !== editingArtwork?.artist_id}>
-                              {artist.name} {!artist.is_active && "(Inactive)"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
+                        <FormLabel>Stock Quantity</FormLabel>
+                        <FormControl><Input type="number" placeholder="e.g., 10" {...field} /></FormControl>
+                        <FormMessage />
                     </FormItem>
-                  )}
+                    )}
                 />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                      control={form.control}
-                      name="price"
-                      render={({ field }) => (
-                      <FormItem>
-                          <FormLabel>Price (Ksh)</FormLabel>
-                          <FormControl><Input type="number" step="0.01" placeholder="e.g., 1500.00" {...field} /></FormControl>
-                          <FormMessage />
-                      </FormItem>
-                      )}
-                  />
-                  <FormField
-                      control={form.control}
-                      name="stock_quantity"
-                      render={({ field }) => (
-                      <FormItem>
-                          <FormLabel>Stock Quantity</FormLabel>
-                          <FormControl><Input type="number" placeholder="e.g., 10" {...field} /></FormControl>
-                          <FormMessage />
-                      </FormItem>
-                      )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl><Textarea placeholder="Describe the artwork..." {...field} value={field.value || ""} className="min-h-[100px]" /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="image_file"
-                  render={({ field: { onChange, value, ...rest } }) => (
+              </div>
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl><Textarea placeholder="Describe the artwork..." {...field} value={field.value || ""} className="min-h-[100px]" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="image_file"
+                render={({ field: { onChange, value: fileValue, ...restFieldProps } }) => {
+                  const currentImageDisplay = editingArtwork && form.getValues('current_image_url') && !fileValue;
+                  return (
                     <FormItem>
                       <FormLabel>Artwork Image</FormLabel>
                       <FormControl>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => onChange(e.target.files ? e.target.files[0] : null)}
-                          {...rest}
-                        />
+                        <div className="flex items-center space-x-3">
+                          <label htmlFor="image-upload" className={cn(
+                              "flex-grow cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
+                              "file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                              "disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent hover:text-accent-foreground",
+                              form.formState.errors.image_file && "border-destructive"
+                          )}>
+                            <div className="flex items-center">
+                              <UploadCloud className="mr-2 h-4 w-4" />
+                              <span>{fileValue ? fileValue.name : (currentImageDisplay ? 'Change image' : 'Upload image')}</span>
+                            </div>
+                            <Input
+                              id="image-upload"
+                              type="file"
+                              className="sr-only"
+                              accept={ACCEPTED_IMAGE_TYPES.join(",")}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                onChange(file);
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setPreviewImage(reader.result as string);
+                                  };
+                                  reader.readAsDataURL(file);
+                                } else {
+                                  setPreviewImage(form.getValues('current_image_url') || null);
+                                }
+                              }}
+                              {...restFieldProps}
+                            />
+                          </label>
+                        </div>
                       </FormControl>
+                     <FormDescription>
+                        {editingArtwork && currentImageDisplay ? "Upload a new file to replace the current image." : 
+                         !editingArtwork ? "Image is required for new artworks. " : ""}
+                        Max 5MB. JPG, PNG, GIF.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                  );
+                }}
+              />
+
+            {(previewImage) && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {form.watch('image_file') ? "New image preview:" : (editingArtwork ? "Current image:" : "Image preview:")}
+                </p>
+                <Image
+                  src={previewImage || placeholderImage}
+                  alt="Artwork image preview"
+                  width={128}
+                  height={128}
+                  className="rounded border object-cover h-32 w-32"
+                  onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+                />
+              </div>
+            )}
+
+
+               <FormField
+                control={form.control}
+                name="is_active"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                    <FormControl>
+                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Active</FormLabel>
                       <FormDescription>
-                          {editingArtwork && editingArtwork.image_url && !value && (
-                              <span>Current image: <a href={editingArtwork.image_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">View</a>. Upload a new file to replace it.</span>
-                          )}
-                           {!editingArtwork?.image_url && !value && "No image uploaded."}
-                           {value && value instanceof File && `New image selected: ${value.name}`}
-                           {value && typeof value === 'string' && `Image: ${value}`}
+                        Uncheck to hide this artwork from the public store.
                       </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="is_active"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
-                      <FormControl>
-                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Active</FormLabel>
-                        <FormDescription>
-                          Uncheck to hide this artwork from the public store.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                  <DialogClose asChild>
-                      <Button type="button" variant="outline" onClick={() => {
-                          form.reset(); // Resets to defaultValues
-                          setEditingArtwork(null);
-                      }}>Cancel</Button>
-                  </DialogClose>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {editingArtwork ? 'Save Changes' : 'Create Artwork'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-  
-        <AlertDialog open={!!artworkToDelete} onOpenChange={(isOpen) => !isOpen && setArtworkToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the artwork
-                "{artworkToDelete?.name}".
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setArtworkToDelete(null)}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteArtwork}
-                disabled={isSubmitting}
-                className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
-              >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-    );
-  }
+                    </div>
+                  </FormItem>
+                )}
+              />
+              <DialogFooter className="pt-4">
+                <DialogClose asChild>
+                    <Button type="button" variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {editingArtwork ? 'Save Changes' : 'Create Artwork'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!artworkToDelete} onOpenChange={(isOpen) => !isOpen && setArtworkToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the artwork
+              "{artworkToDelete?.name}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setArtworkToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteArtwork}
+              disabled={isSubmitting}
+              className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
 
 # === app/cart/page.tsx ===
 // === app/cart/page.tsx ===
@@ -4730,64 +5189,98 @@ export function Footer() {
 }
 
 # === components/layout/Navbar.tsx ===
-// === components/layout/Navbar.tsx ===
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, UserCog } from 'lucide-react'; // Added UserCog for admin link
+import { ShoppingCart, UserCog, LogOutIcon, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetClose,
+} from "@/components/ui/sheet";
+import { Separator } from '../ui/separator';
 
 
 export function Navbar() {
-   const { isAuthenticated, isLoading, logout, user, isAdmin } = useAuth(); // Added isAdmin
+   const { isAuthenticated, isLoading, logout, isAdmin } = useAuth();
    const { itemCount } = useCart();
+   const pathname = usePathname();
+
+   const isInAdminSection = pathname.startsWith('/admin');
+
+   const publicNavLinks = [
+     { href: "/artworks", label: "Artwork" },
+     { href: "/artists", label: "Artists" },
+   ];
 
   return (
     <nav className="bg-card border-b border-border sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold font-serif text-primary">
-          Artistry Haven
+        <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-xl font-bold font-serif text-primary">
+          Artistry Haven {isInAdminSection && isAdmin && <span className="text-sm font-normal text-muted-foreground">- Admin</span>}
         </Link>
 
-        <div className="hidden md:flex items-center space-x-6">
-          <Link href="/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-            Artwork
-          </Link>
-          <Link href="/artists" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-            Artists
-          </Link>
-        </div>
+        {!isInAdminSection && (
+          <div className="hidden md:flex items-center space-x-6">
+            {publicNavLinks.map(link => (
+                <Link key={link.href} href={link.href} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                    {link.label}
+                </Link>
+            ))}
+          </div>
+        )}
+        {isInAdminSection && isAdmin && (
+             <div className="hidden md:flex items-center space-x-6">
+                <Link href="/admin/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                    Artworks
+                </Link>
+                <Link href="/admin/artists" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                    Artists
+                </Link>
+                 <Link href="/admin/orders" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                    Orders
+                </Link>
+             </div>
+        )}
+
 
         <div className="flex items-center space-x-2 sm:space-x-4">
-          <Link href="/cart" aria-label="View Cart">
-             <Button variant="ghost" size="icon" className="relative">
-                <ShoppingCart className="h-5 w-5" />
-                {isAuthenticated && itemCount > 0 && (
-                   <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
-                      {itemCount > 9 ? '9+' : itemCount}
-                   </Badge>
-                )}
-             </Button>
-          </Link>
+          {!isInAdminSection && (
+            <Link href="/cart" aria-label="View Cart">
+               <Button variant="ghost" size="icon" className="relative">
+                  <ShoppingCart className="h-5 w-5" />
+                  {isAuthenticated && itemCount > 0 && (
+                     <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
+                        {itemCount > 9 ? '9+' : itemCount}
+                     </Badge>
+                  )}
+               </Button>
+            </Link>
+          )}
 
           {isLoading ? (
              <Button variant="ghost" size="sm" disabled>Loading...</Button>
           ) : isAuthenticated ? (
              <>
-              {isAdmin && ( // Show Admin link if user is admin
-                <Link href="/admin">
-                  <Button variant="ghost" size="icon" title="Admin Dashboard">
-                    <UserCog className="h-5 w-5" />
+              {isAdmin && (
+                <Link href={isInAdminSection ? "/" : "/admin"} title={isInAdminSection ? "Back to Site" : "Admin Dashboard"}>
+                  <Button variant="ghost" size="icon">
+                    {isInAdminSection ? <LogOutIcon className="h-5 w-5 transform rotate-180" /> : <UserCog className="h-5 w-5" />}
                   </Button>
                 </Link>
               )}
-              <Link href="/orders">
-                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">My Orders</Button>
-              </Link>
-              <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
+              {!isInAdminSection && (
+                <Link href="/orders">
+                  <Button variant="ghost" size="sm" className="hidden sm:inline-flex">My Orders</Button>
+                </Link>
+              )}
+              <Button variant="outline" size="sm" onClick={logout} className="hidden sm:inline-flex">Logout</Button>
              </>
           ) : (
              <>
@@ -4799,6 +5292,53 @@ export function Navbar() {
              </Link>
              </>
           )}
+
+          <div className="md:hidden">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon"><Menu className="h-5 w-5" /></Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px] sm:w-[320px]">
+                <div className="p-4">
+                    <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-lg font-bold font-serif text-primary mb-4 block">
+                      Artistry Haven
+                    </Link>
+                    <Separator className="my-3"/>
+                    
+                    {isInAdminSection && isAdmin ? (
+                        <>
+                            <SheetClose asChild><Link href="/admin" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Dashboard</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/artworks" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Manage Artworks</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/artists" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Manage Artists</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/orders" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Manage Orders</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/delivery-options" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Delivery Options</Link></SheetClose>
+                            <Separator className="my-3"/>
+                            <SheetClose asChild><Link href="/" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Back to Site</Link></SheetClose>
+                        </>
+                    ) : (
+                        <>
+                            {publicNavLinks.map(link => (
+                                <SheetClose asChild key={link.href}><Link href={link.href} className="flex items-center py-2 text-sm text-foreground hover:text-primary">{link.label}</Link></SheetClose>
+                            ))}
+                            {isAuthenticated && (
+                                <SheetClose asChild><Link href="/orders" className="flex items-center py-2 text-sm text-foreground hover:text-primary">My Orders</Link></SheetClose>
+                            )}
+                        </>
+                    )}
+                    <Separator className="my-3"/>
+                    {isAuthenticated ? (
+                        <Button variant="outline" size="sm" onClick={() => {logout();}} className="w-full">Logout</Button>
+                    ) : (
+                        <div className="space-y-2">
+                           <SheetClose asChild><Link href="/login" className="w-full"><Button variant="ghost" className="w-full">Login</Button></Link></SheetClose>
+                           <SheetClose asChild><Link href="/signup" className="w-full"><Button className="w-full">Sign Up</Button></Link></SheetClose>
+                        </div>
+                    )}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
         </div>
       </div>
     </nav>
