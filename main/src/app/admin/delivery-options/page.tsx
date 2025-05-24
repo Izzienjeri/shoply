@@ -1,8 +1,7 @@
-// === app/admin/delivery-options/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useForm, SubmitHandler, FieldValues } from 'react-hook-form'; // Import FieldValues
+import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
@@ -56,7 +55,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Form,
@@ -80,15 +78,13 @@ const deliveryOptionFormSchema = z.object({
   sort_order: z.coerce.number().int().default(0),
 });
 
-// Output type (after Zod validation)
 type DeliveryOptionFormValues = z.infer<typeof deliveryOptionFormSchema>;
-// Input type (for form state and defaultValues)
 type DeliveryOptionFormInput = z.input<typeof deliveryOptionFormSchema>;
 
 
 interface DeliveryOptionApiPayload {
     name: string;
-    price: string; // API expects string for decimal
+    price: string;
     description?: string | null;
     is_pickup: boolean;
     active: boolean;
@@ -107,12 +103,12 @@ export default function AdminDeliveryOptionsPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'sort_order', desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
-  const form = useForm<DeliveryOptionFormInput, any, DeliveryOptionFormValues>({ // Typed useForm correctly
+  const form = useForm<DeliveryOptionFormInput, any, DeliveryOptionFormValues>({
     resolver: zodResolver(deliveryOptionFormSchema),
     defaultValues: {
       name: "",
       price: 0,
-      description: null, // Use null for optional nullable fields in defaultValues
+      description: null,
       is_pickup: false,
       active: true,
       sort_order: 0,
@@ -139,30 +135,19 @@ export default function AdminDeliveryOptionsPage() {
   const handleFormSubmit: SubmitHandler<DeliveryOptionFormValues> = async (values) => {
     setIsSubmitting(true);
     const payload: DeliveryOptionApiPayload = {
-        ...values, // values here are DeliveryOptionFormValues (output of Zod)
+        ...values,
         price: values.price.toString(),
         description: values.description || null,
     };
 
     try {
       if (editingOption) {
-        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
-        toast.success("Delivery option updated successfully!");
+        toast.info("Update functionality for delivery options requires backend changes.");
+        throw new Error("Backend for PATCH /delivery/options/:id not implemented.");
       } else {
-        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
-        toast.success("Delivery option created successfully!");
+        toast.info("Create functionality for delivery options requires backend changes.");
+        throw new Error("Backend for POST /delivery/options not implemented.");
       }
-      setShowFormDialog(false);
-      setEditingOption(null);
-      form.reset({ // form.reset expects DeliveryOptionFormInput
-        name: "",
-        price: 0,
-        description: null,
-        is_pickup: false,
-        active: true,
-        sort_order: 0,
-      });
-      fetchDeliveryOptions();
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
@@ -178,9 +163,9 @@ export default function AdminDeliveryOptionsPage() {
 
   const openEditDialog = (option: DeliveryOptionType) => {
     setEditingOption(option);
-    form.reset({ // form.reset expects DeliveryOptionFormInput
+    form.reset({
       name: option.name,
-      price: parseFloat(option.price), // Convert string from API to number for form
+      price: parseFloat(option.price),
       description: option.description || null,
       is_pickup: option.is_pickup,
       active: option.active,
@@ -191,7 +176,7 @@ export default function AdminDeliveryOptionsPage() {
 
   const openNewDialog = () => {
     setEditingOption(null);
-    form.reset({ // Reset to default DeliveryOptionFormInput values
+    form.reset({
         name: "",
         price: 0,
         description: null,
@@ -206,14 +191,13 @@ export default function AdminDeliveryOptionsPage() {
     if (!optionToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
-      toast.success("Delivery option deleted successfully!");
-      setOptionToDelete(null);
-      fetchDeliveryOptions();
+      toast.info("Delete functionality for delivery options requires backend changes.");
+      throw new Error("Backend for DELETE /delivery/options/:id not implemented.");
     } catch (error: any) {
       toast.error(error.message || "Failed to delete delivery option.");
     } finally {
       setIsSubmitting(false);
+      setOptionToDelete(null);
     }
   };
 
@@ -261,15 +245,13 @@ export default function AdminDeliveryOptionsPage() {
           <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
             <Edit3 className="h-4 w-4" />
           </Button>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete">
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
-          </AlertDialogTrigger>
+          <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete">
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
         </div>
       ),
     },
-  ], [form]); // Added form to dependency array as openEditDialog calls form.reset
+  ], []);
 
   const table = useReactTable({
     data: deliveryOptions,
@@ -286,7 +268,7 @@ export default function AdminDeliveryOptionsPage() {
     },
   });
 
-   if (isLoading) {
+   if (isLoading && deliveryOptions.length === 0) {
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -362,14 +344,17 @@ export default function AdminDeliveryOptionsPage() {
 
       <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
           setShowFormDialog(isOpen);
-          if (!isOpen) { form.reset(); setEditingOption(null); }
+          if (!isOpen) { form.reset({ name: "", price: 0, description: null, is_pickup: false, active: true, sort_order: 0 }); setEditingOption(null); }
       }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
+             <DialogDescription>
+                Note: Backend support for Create, Update, Delete of delivery options is pending.
+             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
               <FormField
                 control={form.control}
                 name="name"
@@ -437,7 +422,7 @@ export default function AdminDeliveryOptionsPage() {
                     )}
                 />
               </div>
-              <DialogFooter>
+              <DialogFooter className="pt-4">
                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -455,6 +440,7 @@ export default function AdminDeliveryOptionsPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
+              Note: Backend support for Delete of delivery options is pending.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

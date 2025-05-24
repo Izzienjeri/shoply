@@ -14,7 +14,23 @@ artist_api = Api(artist_bp)
 
 class ArtistList(Resource):
     def get(self):
-        artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
+        is_admin_request = False
+        try:
+            jwt_payload = get_jwt()
+            if jwt_payload:
+                user_id_from_token = get_jwt_identity()
+                user = User.query.get(user_id_from_token)
+                if user and user.is_admin:
+                    is_admin_request = True
+        except Exception:
+            pass
+
+        if is_admin_request:
+            current_app.logger.info("Admin request: Fetching all artists for ArtistList.")
+            artists = Artist.query.order_by(Artist.name).all()
+        else:
+            artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
+        
         return artists_schema.dump(artists), 200
 
     @admin_required
@@ -45,7 +61,7 @@ class ArtistDetail(Resource):
     def get(self, artist_id):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
+            jwt_payload = get_jwt() 
             if jwt_payload:
                 user_id = get_jwt_identity()
                 user = User.query.get(user_id)
@@ -58,13 +74,17 @@ class ArtistDetail(Resource):
             joinedload(Artist.artworks)
         )
         
-        if not is_admin_request:
-            query = query.filter(Artist.is_active == True)
-        
-        artist = query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found or not active.")
+        artist = query.get(artist_id)
 
-        if not is_admin_request and artist.artworks:
-            artist.artworks = [aw for aw in artist.artworks if aw.is_active]
+        if not artist:
+            return {"message": f"Artist with ID {artist_id} not found."}, 404
+        
+        if not is_admin_request and not artist.is_active:
+             return {"message": f"Artist with ID {artist_id} not found or not active."}, 404
+
+        if artist.artworks:
+            if not is_admin_request:
+                artist.artworks = [aw for aw in artist.artworks if aw.is_active]
             
         return artist_schema.dump(artist), 200
 

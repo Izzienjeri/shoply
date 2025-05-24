@@ -34,7 +34,7 @@ class ArtistSchema(ma.SQLAlchemyAutoSchema):
 class ArtworkSchema(ma.SQLAlchemyAutoSchema):
     price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0))
     stock_quantity = fields.Int(validate=validate.Range(min=0))
-    image_url = fields.String(dump_only=True, required=False, allow_none=True)
+    image_url = fields.String(required=False, allow_none=True) # MODIFIED: Make loadable (removed dump_only=True)
     artist = fields.Nested(ArtistSchema, only=('id', 'name'), dump_only=True)
     artist_id = fields.Str(required=True, load_only=True)
     is_active = fields.Bool() # For admin to load and dump
