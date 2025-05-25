@@ -1,12 +1,15 @@
-from flask import Blueprint, jsonify, current_app
-from flask_restful import Resource, Api
+from flask import Blueprint, jsonify, current_app, request
+from flask_restful import Resource, Api, abort
 from sqlalchemy import func, extract
-from datetime import datetime, timedelta
+from sqlalchemy.orm import joinedload
+from datetime import datetime, timedelta 
 from decimal import Decimal
 
-from .. import db
-from ..models import Artwork, Artist, Order, OrderItem
+from .. import db, ma
+from ..models import Artwork, Artist, Order, OrderItem, User, DeliveryOption
+from ..schemas import orders_schema, order_schema
 from ..decorators import admin_required
+from marshmallow import fields, validate as marshmallow_validate, ValidationError
 
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__)
 admin_dashboard_api = Api(admin_dashboard_bp)
@@ -52,9 +55,6 @@ class AdminDashboardStats(Resource):
                     "month": month_date.strftime("%b %Y"),
                     "revenue": float(monthly_revenue)
                 })
-
-
-            from ..schemas import orders_schema
             
             stats = {
                 "total_artworks": total_artworks,
@@ -74,3 +74,106 @@ class AdminDashboardStats(Resource):
             return {"message": "Error fetching dashboard statistics"}, 500
 
 admin_dashboard_api.add_resource(AdminDashboardStats, '/stats')
+
+
+class AdminOrderList(Resource):
+    @admin_required
+    def get(self):
+        try:
+            query = Order.query.options(
+                joinedload(Order.user), 
+                joinedload(Order.items).options(
+                    joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+                ),
+                joinedload(Order.delivery_option_details)
+            ).order_by(Order.created_at.desc())
+            
+            status_filter = request.args.get('status')
+            if status_filter:
+                query = query.filter(Order.status == status_filter)
+
+            all_orders = query.all()
+            return orders_schema.dump(all_orders), 200
+        except Exception as e:
+            current_app.logger.error(f"Error fetching all orders for admin: {e}", exc_info=True)
+            abort(500, message="Error fetching orders")
+
+admin_dashboard_api.add_resource(AdminOrderList, '/orders')
+
+class AdminOrderUpdateSchema(ma.Schema):
+    status = fields.Str(
+        validate=marshmallow_validate.OneOf(['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'picked_up']),
+        required=False
+    )
+    picked_up_by_name = fields.Str(allow_none=True, required=False)
+    picked_up_by_id_no = fields.Str(allow_none=True, required=False)
+
+admin_order_update_schema = AdminOrderUpdateSchema()
+
+class AdminOrderDetail(Resource):
+    @admin_required
+    def get(self, order_id):
+        order = Order.query.options(
+            joinedload(Order.user),
+            joinedload(Order.items).options(
+                joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+            ),
+            joinedload(Order.delivery_option_details)
+        ).get(order_id)
+        if not order:
+            abort(404, message=f"Order with ID {order_id} not found.")
+        return order_schema.dump(order), 200
+
+    @admin_required
+    def patch(self, order_id):
+        order = Order.query.get(order_id)
+        if not order:
+            abort(404, message=f"Order with ID {order_id} not found.")
+
+        json_data = request.get_json()
+        if not json_data:
+            abort(400, message="No input data provided.")
+
+        try:
+            data = admin_order_update_schema.load(json_data, partial=True)
+        except ValidationError as err:
+            abort(400, errors=err.messages)
+        
+        updated_fields_count = 0
+        if 'status' in data:
+            new_status = data['status']
+            if order.status != new_status:
+                order.status = new_status
+                if new_status == 'shipped' and not order.shipped_at:
+                    order.shipped_at = datetime.utcnow()
+                elif new_status == 'picked_up' and not order.picked_up_at:
+                    order.picked_up_at = datetime.utcnow()
+                updated_fields_count += 1
+        
+        if 'picked_up_by_name' in data:
+            order.picked_up_by_name = data['picked_up_by_name']
+            updated_fields_count += 1
+        
+        if 'picked_up_by_id_no' in data:
+            order.picked_up_by_id_no = data['picked_up_by_id_no']
+            updated_fields_count += 1
+
+        if updated_fields_count > 0:
+            try:
+                db.session.commit()
+                refreshed_order = Order.query.options(
+                    joinedload(Order.user),
+                    joinedload(Order.items).options(
+                        joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+                    ),
+                    joinedload(Order.delivery_option_details)
+                ).get(order.id)
+                return order_schema.dump(refreshed_order), 200
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error updating order {order_id} by admin: {e}", exc_info=True)
+                abort(500, message="An error occurred while updating the order.")
+        else:
+            return {"message": "No valid fields provided for update or no changes made."}, 200
+
+admin_dashboard_api.add_resource(AdminOrderDetail, '/orders/<string:order_id>')

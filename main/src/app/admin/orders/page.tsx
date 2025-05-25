@@ -124,7 +124,7 @@ export default function AdminOrdersPage() {
   const fetchOrders = async () => {
     setIsLoading(true);
     try {
-      const fetchedOrders = await apiClient.get<OrderType[]>('/orders/', { needsAuth: true });
+      const fetchedOrders = await apiClient.get<OrderType[]>('/admin/dashboard/orders', { needsAuth: true });
       setOrders(fetchedOrders || []);
     } catch (error) {
       console.error("Failed to fetch orders:", error);
@@ -158,7 +158,7 @@ export default function AdminOrdersPage() {
 
 
     try {
-      await apiClient.patch<OrderType>(`/orders/${editingOrder.id}`, payload, { needsAuth: true });
+      await apiClient.patch<OrderType>(`/admin/dashboard/orders/${editingOrder.id}`, payload, { needsAuth: true });
       toast.success("Order status updated successfully!");
       setShowEditDialog(false);
       setEditingOrder(null);
@@ -166,7 +166,7 @@ export default function AdminOrdersPage() {
       fetchOrders();
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
-      toast.error(apiError.message || "An error occurred.");
+      toast.error(apiError.message || "An error occurred while updating the order.");
     } finally {
       setIsSubmitting(false);
     }
@@ -292,8 +292,11 @@ export default function AdminOrdersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Filter by Order ID or Customer..."
-            value={(table.getColumn("id")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("id")?.setFilterValue(event.target.value)}
+            value={(table.getColumn("id")?.getFilterValue() as string) ?? (table.getColumn("user.email")?.getFilterValue() as string) ?? ""}
+            onChange={(event) => {
+                const value = event.target.value;
+                table.getColumn("id")?.setFilterValue(value);
+            }}
             className="pl-10"
           />
         </div>
