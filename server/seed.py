@@ -140,6 +140,11 @@ def seed_delivery_options():
         {"name": "In Store Pick Up", "price": "0.00", "is_pickup": True, "active": True, "sort_order": 0},
         {"name": "Nairobi CBD", "price": "200.00", "is_pickup": False, "active": True, "sort_order": 10},
         {"name": "Zone 1 (Upper-Hill)", "price": "300.00", "is_pickup": False, "active": True, "sort_order": 20},
+        {"name": "Zone 2 (Kilimani, Lavington)", "price": "350.00", "is_pickup": False, "active": True, "sort_order": 30},
+        {"name": "Zone 3 (Westlands, Parklands)", "price": "400.00", "is_pickup": False, "active": True, "sort_order": 40},
+        {"name": "Zone 4 (Thika Road, Kasarani, Roysambu)", "price": "450.00", "is_pickup": False, "active": True, "sort_order": 50},
+        {"name": "Zone 5 (Lang'ata, Rongai, Karen)", "price": "500.00", "is_pickup": False, "active": True, "sort_order": 60},
+        {"name": "Outside Nairobi (Other towns)", "price": "1000.00", "is_pickup": False, "active": True, "sort_order": 70},
     ]
 
     new_options = []

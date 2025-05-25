@@ -1,4 +1,3 @@
-// === app/cart/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -17,7 +16,7 @@ import {
     ApiErrorResponse,
     CartItem as CartItemType,
     StkPushInitiationResponse,
-    DeliveryOption as DeliveryOptionType, // Import DeliveryOptionType
+    DeliveryOption as DeliveryOptionType, 
     PaymentTransactionStatusResponse
 } from '@/lib/types';
 import { apiClient } from '@/lib/api';
@@ -32,7 +31,7 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel, // <--- MAKE SURE FormLabel IS HERE if you use it for the Mpesa phone field
+  FormLabel, 
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -40,7 +39,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label"
 
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle, Truck, Package } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle, Truck, Package, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 
 const checkoutSchema = z.object({
@@ -49,7 +49,6 @@ const checkoutSchema = z.object({
     .length(12, "Phone number must be 12 digits (e.g. 2547XXXXXXXX)")
     .startsWith("254", "Phone number must start with 254")
     .regex(/^[0-9]+$/, "Phone number must contain only digits"),
-  // deliveryOptionId is now handled by state, not directly in this form schema for Mpesa part
 });
 type CheckoutFormValues = z.infer<typeof checkoutSchema>;
 
@@ -64,7 +63,14 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
   const [isQuantityUpdating, setIsQuantityUpdating] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
 
+  const isItemAvailable = item.artwork.is_active && item.artwork.artist.is_active;
+  const isItemOutOfStock = item.artwork.stock_quantity === 0;
+
   const handleQuantityChange = async (newQuantity: number) => {
+    if (!isItemAvailable || isItemOutOfStock) {
+        toast.error(`"${item.artwork.name}" is currently unavailable or out of stock.`);
+        return;
+    }
     if (newQuantity < 1 || isQuantityUpdating || isUpdating) return;
     if (newQuantity > item.artwork.stock_quantity) {
         toast.error(`Only ${item.artwork.stock_quantity} items available for "${item.artwork.name}".`);
@@ -98,21 +104,39 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
           alt={item.artwork.name}
           fill
           sizes="(max-width: 640px) 20vw, 96px"
-          className="object-cover"
+          className={cn("object-cover", (!isItemAvailable || isItemOutOfStock) && "opacity-50")}
           onError={(e) => {
             (e.target as HTMLImageElement).srcset = placeholderImage;
             (e.target as HTMLImageElement).src = placeholderImage;
           }}
         />
          {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-8 w-8 text-muted-foreground" />}
+         {(!isItemAvailable || isItemOutOfStock) && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                <Badge variant="destructive" className="text-xs">
+                    {!isItemAvailable ? "Unavailable" : "Out of Stock"}
+                </Badge>
+            </div>
+         )}
       </div>
 
       <div className="flex-1 space-y-1 min-w-0">
-        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2">
+        <Link 
+            href={`/artworks/${item.artwork.id}`} 
+            className={cn(
+                "font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2",
+                (!isItemAvailable || isItemOutOfStock) && "text-muted-foreground line-through"
+            )}
+        >
           {item.artwork.name}
         </Link>
         <p className="text-xs sm:text-sm text-muted-foreground">By: {item.artwork.artist.name}</p>
         <p className="text-xs sm:text-sm font-medium">{formatPrice(item.artwork.price)}</p>
+         {(!isItemAvailable || isItemOutOfStock) && (
+            <p className="text-xs text-red-600 mt-1">
+                {!isItemAvailable ? "This item is no longer available." : "This item is out of stock."}
+            </p>
+         )}
       </div>
 
       <div className="flex flex-row sm:flex-col items-center sm:items-end space-x-2 sm:space-x-0 sm:space-y-1 mt-2 sm:mt-0">
@@ -122,7 +146,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
               size="icon"
               className="h-7 w-7 sm:h-8 sm:w-8"
               onClick={() => handleQuantityChange(item.quantity - 1)}
-              disabled={item.quantity <= 1 || isQuantityUpdating || isUpdating}
+              disabled={!isItemAvailable || isItemOutOfStock || item.quantity <= 1 || isQuantityUpdating || isUpdating}
               aria-label="Decrease quantity"
             >
               <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -135,21 +159,18 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
               size="icon"
               className="h-7 w-7 sm:h-8 sm:w-8"
               onClick={() => handleQuantityChange(item.quantity + 1)}
-              disabled={isQuantityUpdating || isUpdating || item.quantity >= item.artwork.stock_quantity}
+              disabled={!isItemAvailable || isItemOutOfStock || isQuantityUpdating || isUpdating || item.quantity >= item.artwork.stock_quantity}
               aria-label="Increase quantity"
             >
               <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
             </Button>
          </div>
-        {item.artwork.stock_quantity > 0 && item.artwork.stock_quantity < 5 && (
+        {isItemAvailable && !isItemOutOfStock && item.artwork.stock_quantity < 5 && (
             <p className="text-xs text-orange-600 mt-1">Only {item.artwork.stock_quantity} left</p>
-        )}
-        {item.artwork.stock_quantity === 0 && !isQuantityUpdating && (
-             <p className="text-xs text-red-600 mt-1">Out of stock</p>
         )}
       </div>
 
-      <div className="font-medium text-sm sm:text-base w-full sm:w-auto text-right sm:text-left mt-2 sm:mt-0">
+      <div className={cn("font-medium text-sm sm:text-base w-full sm:w-auto text-right sm:text-left mt-2 sm:mt-0", (!isItemAvailable || isItemOutOfStock) && "text-muted-foreground line-through")}>
         {formatPrice(parseFloat(item.artwork.price) * item.quantity)}
       </div>
 
@@ -172,11 +193,10 @@ export default function CartPage() {
     cart,
     isLoading: cartIsLoading,
     itemCount,
-    totalPrice: cartSubtotal, // Renamed for clarity
     updateCartItem,
     removeFromCart,
     fetchCart,
-    clearCart, // If user logs out while checkout polling active
+    clearCart,
   } = useCart();
   const { isAuthenticated, isLoading: authIsLoading, user } = useAuth();
   const router = useRouter();
@@ -186,12 +206,10 @@ export default function CartPage() {
   const [pollingMessage, setPollingMessage] = useState<string>("Please complete the M-Pesa payment on your phone.");
   const [paymentStatus, setPaymentStatus] = useState<PaymentTransactionStatusResponse['status'] | null>(null);
 
-  // --- NEW STATES FOR DELIVERY ---
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionType[]>([]);
   const [isLoadingDeliveryOptions, setIsLoadingDeliveryOptions] = useState(false);
   const [selectedDeliveryOptionId, setSelectedDeliveryOptionId] = useState<string | null>(null);
-  const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('pickup'); // Default to pickup
-  // --- END NEW STATES ---
+  const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('pickup');
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingAttemptsRef = useRef<number>(0);
@@ -206,7 +224,32 @@ export default function CartPage() {
     },
   });
 
-  // Fetch delivery options on mount if authenticated
+  const availableCartItems = useMemo(() => {
+    return cart?.items.filter(item => 
+        item.artwork.is_active && 
+        item.artwork.artist.is_active &&
+        item.artwork.stock_quantity > 0 &&
+        item.artwork.stock_quantity >= item.quantity
+    ) || [];
+  }, [cart]);
+
+  const unavailableCartItems = useMemo(() => {
+    return cart?.items.filter(item => 
+        !item.artwork.is_active || 
+        !item.artwork.artist.is_active ||
+        item.artwork.stock_quantity === 0 ||
+        item.artwork.stock_quantity < item.quantity
+    ) || [];
+  }, [cart]);
+
+  const cartSubtotal = useMemo(() => {
+    return availableCartItems.reduce((sum, item) => {
+      const price = parseFloat(item.artwork.price) || 0;
+      return sum + (price * item.quantity);
+    }, 0);
+  }, [availableCartItems]);
+
+
   useEffect(() => {
     if (isAuthenticated && !isStkFlowActive) {
       const fetchDeliveryOpts = async () => {
@@ -214,15 +257,19 @@ export default function CartPage() {
         try {
           const opts = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
           setDeliveryOptions(opts || []);
-          // Auto-select "In Store Pick Up" if available
-          const pickupOption = opts?.find(opt => opt.is_pickup);
-          if (pickupOption) {
-            setSelectedDeliveryOptionId(pickupOption.id);
-            setDeliveryType('pickup');
+          const activePickupOption = opts?.find(opt => opt.is_pickup && opt.active);
+          const firstActiveDelivery = opts?.find(opt => !opt.is_pickup && opt.active);
+
+          if (deliveryType === 'pickup' && activePickupOption) {
+            setSelectedDeliveryOptionId(activePickupOption.id);
+          } else if (deliveryType === 'delivery' && firstActiveDelivery) {
+            setSelectedDeliveryOptionId(firstActiveDelivery.id);
           } else if (opts && opts.length > 0) {
-            // If no pickup, select first available delivery option
-            setSelectedDeliveryOptionId(opts[0].id);
-            setDeliveryType('delivery');
+             const firstActive = opts.find(opt => opt.active);
+             if(firstActive) {
+                setSelectedDeliveryOptionId(firstActive.id);
+                setDeliveryType(firstActive.is_pickup ? 'pickup' : 'delivery');
+             }
           }
         } catch (error) {
           console.error("Failed to fetch delivery options:", error);
@@ -233,21 +280,19 @@ export default function CartPage() {
       };
       fetchDeliveryOpts();
     }
-  }, [isAuthenticated, isStkFlowActive]);
+  }, [isAuthenticated, isStkFlowActive, deliveryType]);
 
-  // Pre-fill phone number from user profile
   useEffect(() => {
     if (user?.address && !isStkFlowActive) {
-      const potentialPhone = user.address.replace(/\D/g, ''); // Simplistic extraction
+      const potentialPhone = user.address.replace(/\D/g, ''); 
       if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
         checkoutForm.setValue("phoneNumber", potentialPhone);
       }
     }
   }, [user, checkoutForm, isStkFlowActive]);
 
-  // Calculate delivery cost and grand total
   const selectedDeliveryOption = useMemo(() => {
-    return deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId);
+    return deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId && opt.active);
   }, [deliveryOptions, selectedDeliveryOptionId]);
 
   const deliveryCost = useMemo(() => {
@@ -273,19 +318,19 @@ export default function CartPage() {
     setPaymentStatus('successful');
     let successMessage = "Payment successful! Your order has been placed.";
     if (selectedDeliveryOption?.is_pickup) {
-        successMessage += ` You can pick up your order at: ${selectedDeliveryOption.description || 'Dynamic Mall, Shop M90, CBD, Nairobi.'}`;
+        successMessage += ` You can pick up your order at: ${selectedDeliveryOption.description || 'our store.'}`;
     } else if (selectedDeliveryOption) {
         successMessage += ` It will be delivered via ${selectedDeliveryOption.name}.`;
     }
 
     setPollingMessage(successMessage);
     toast.success("Order Placed Successfully!", {
-        description: successMessage.replace("Payment successful! Your order has been placed.", ""), // Shorter description
+        description: successMessage.replace("Payment successful! Your order has been placed.", ""), 
         duration: 15000,
         action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } :
                          { label: "My Orders", onClick: () => router.push(`/orders`) },
     });
-    fetchCart(); // To clear cart items from UI as backend clears them
+    fetchCart(); 
   }, [stopPolling, router, fetchCart, selectedDeliveryOption]);
 
   const handlePaymentFailure = useCallback((message: string, finalStatus?: PaymentTransactionStatusResponse['status']) => {
@@ -328,11 +373,9 @@ export default function CartPage() {
       }
     } catch (error: any) {
       console.error("Polling error:", error);
-      if (error.message?.includes('401')) { // Handle potential token expiry during long polling
+      if (error.message?.includes('401')) {
          toast.error("Session expired. Please log in and try again.");
          handlePaymentFailure("Authentication error during polling. Please log in again.", "failed_processing_error");
-         clearCart(); // Clear local cart state
-         router.push('/login?redirect=/cart');
       } else if (error.message?.includes('404') || error.message?.toLowerCase().includes('not found')) {
         handlePaymentFailure("Could not find this transaction to check its status. If you paid, contact support.", 'not_found');
       } else {
@@ -356,9 +399,9 @@ export default function CartPage() {
       if (paymentStatus === null || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') {
          setPollingMessage("Waiting for M-Pesa confirmation...");
       }
-      pollPaymentStatus(stkCheckoutId); // Initial poll
+      pollPaymentStatus(stkCheckoutId); 
 
-      if (!pollingIntervalRef.current && stkCheckoutId) { // Ensure it wasn't stopped by initial poll
+      if (!pollingIntervalRef.current && stkCheckoutId) { 
         pollingIntervalRef.current = setInterval(() => {
             if (stkCheckoutId) {
                  pollPaymentStatus(stkCheckoutId);
@@ -377,6 +420,10 @@ export default function CartPage() {
 
 
   const handleInitiateCheckout = async (data: CheckoutFormValues) => {
+    if (availableCartItems.length === 0) {
+        toast.error("Your cart contains no items available for purchase. Please review your cart.");
+        return;
+    }
     if (!selectedDeliveryOptionId) {
         toast.error("Please select a delivery or pickup option.");
         return;
@@ -416,23 +463,16 @@ export default function CartPage() {
 
   const handleDeliveryTypeChange = (type: 'pickup' | 'delivery') => {
     setDeliveryType(type);
-    if (type === 'pickup') {
-        const pickupOpt = deliveryOptions.find(opt => opt.is_pickup);
-        if (pickupOpt) setSelectedDeliveryOptionId(pickupOpt.id);
-    } else {
-        // If switching to delivery, and a delivery option is already selected, keep it.
-        // Otherwise, select the first non-pickup option if available.
-        const currentIsPickup = deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId)?.is_pickup;
-        if (selectedDeliveryOptionId === null || currentIsPickup) {
-            const firstDeliveryOpt = deliveryOptions.find(opt => !opt.is_pickup);
-            if (firstDeliveryOpt) setSelectedDeliveryOptionId(firstDeliveryOpt.id);
-            else setSelectedDeliveryOptionId(null); // No delivery options available
-        }
+    setSelectedDeliveryOptionId(null);
+    const relevantOptions = type === 'pickup' 
+        ? deliveryOptions.filter(opt => opt.is_pickup && opt.active)
+        : deliveryOptions.filter(opt => !opt.is_pickup && opt.active);
+    
+    if (relevantOptions.length > 0) {
+        setSelectedDeliveryOptionId(relevantOptions[0].id);
     }
   };
 
-
-  // --- Render logic ---
 
   if (authIsLoading) {
     return <div className="flex justify-center items-center p-10 min-h-[300px]"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
@@ -493,7 +533,7 @@ export default function CartPage() {
                             </p>
                             <p className="text-sm">
                                 {selectedDeliveryOption.is_pickup
-                                    ? selectedDeliveryOption.description || "Dynamic Mall, Shop M90, CBD, Nairobi."
+                                    ? selectedDeliveryOption.description || 'our store.'
                                     : `Your order will be delivered via ${selectedDeliveryOption.name} to your registered address: ${user?.address || 'Not specified'}.`}
                             </p>
                         </div>
@@ -506,7 +546,6 @@ export default function CartPage() {
                     onClick={() => {
                         stopPolling(); setIsStkFlowActive(false); setPaymentStatus(null); setStkCheckoutId(null);
                         checkoutForm.reset();
-                        // Re-fetch cart in case of partial failures or to reset context if needed
                         fetchCart();
                     }}
                     variant="outline"
@@ -523,7 +562,7 @@ export default function CartPage() {
   }
 
   if ((cartIsLoading || isLoadingDeliveryOptions) && !cart && !isStkFlowActive) {
-    return (
+        return (
         <div>
              <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart</h1>
              <div className="space-y-4">
@@ -551,12 +590,25 @@ export default function CartPage() {
     );
   }
 
-  const pickupOptions = deliveryOptions.filter(opt => opt.is_pickup);
-  const actualDeliveryOptions = deliveryOptions.filter(opt => !opt.is_pickup);
+  const pickupOptions = deliveryOptions.filter(opt => opt.is_pickup && opt.active);
+  const actualDeliveryOptions = deliveryOptions.filter(opt => !opt.is_pickup && opt.active);
+  const canProceedToCheckout = availableCartItems.length > 0 && selectedDeliveryOptionId !== null;
+
 
   return (
     <div>
       <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})</h1>
+      {unavailableCartItems.length > 0 && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Some items are unavailable!</AlertTitle>
+          <AlertDescription>
+            One or more items in your cart are currently out of stock or no longer available. 
+            They have been excluded from the total and cannot be purchased. 
+            Please review the items below. You can remove them or update quantities if partial stock is available for other items.
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="lg:grid lg:grid-cols-3 lg:gap-8">
         <div className="lg:col-span-2">
           <Card>
@@ -587,11 +639,10 @@ export default function CartPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between">
-                <span>Subtotal</span>
+                <span>Subtotal (available items)</span>
                 <span>{formatPrice(cartSubtotal)}</span>
               </div>
 
-              {/* Delivery/Pickup Options */}
               <Separator />
               <div>
                 <Label className="text-base font-semibold mb-2 block">Shipping Options</Label>
@@ -622,46 +673,44 @@ export default function CartPage() {
 
                 {isLoadingDeliveryOptions && <Loader2 className="h-5 w-5 animate-spin my-2" />}
 
-                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && pickupOptions.length > 0 && (
-                    <Select
-                        value={selectedDeliveryOptionId || ""}
-                        onValueChange={(value) => setSelectedDeliveryOptionId(value)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select pickup location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {pickupOptions.map(opt => (
-                                <SelectItem key={opt.id} value={opt.id}>
-                                    {opt.name} - ({formatPrice(opt.price)})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                )}
-                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && pickupOptions.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No pickup options available.</p>
+                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && (
+                    pickupOptions.length > 0 ? (
+                        <Select
+                            value={selectedDeliveryOptionId || ""}
+                            onValueChange={(value) => setSelectedDeliveryOptionId(value)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select pickup location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {pickupOptions.map(opt => (
+                                    <SelectItem key={opt.id} value={opt.id}>
+                                        {opt.name} - ({formatPrice(opt.price)})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : <p className="text-sm text-muted-foreground">No active pickup options available.</p>
                 )}
 
-                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && actualDeliveryOptions.length > 0 && (
-                     <Select
-                        value={selectedDeliveryOptionId || ""}
-                        onValueChange={(value) => setSelectedDeliveryOptionId(value)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select delivery zone" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {actualDeliveryOptions.map(opt => (
-                                <SelectItem key={opt.id} value={opt.id}>
-                                    {opt.name} - ({formatPrice(opt.price)})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                )}
-                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && actualDeliveryOptions.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No delivery options available.</p>
+                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && (
+                     actualDeliveryOptions.length > 0 ? (
+                        <Select
+                            value={selectedDeliveryOptionId || ""}
+                            onValueChange={(value) => setSelectedDeliveryOptionId(value)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select delivery zone" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {actualDeliveryOptions.map(opt => (
+                                    <SelectItem key={opt.id} value={opt.id}>
+                                        {opt.name} - ({formatPrice(opt.price)})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                     ) : <p className="text-sm text-muted-foreground">No active delivery options available.</p>
                 )}
                 {selectedDeliveryOption && (
                     <p className="text-xs text-muted-foreground mt-1">{selectedDeliveryOption.description}</p>
@@ -696,7 +745,7 @@ export default function CartPage() {
                             )}
                           />
                          <Button type="submit" className="w-full"
-                                 disabled={isStkFlowActive || itemCount === 0 || cartIsLoading || authIsLoading || !selectedDeliveryOptionId || grandTotal <=0}>
+                                 disabled={isStkFlowActive || !canProceedToCheckout || cartIsLoading || authIsLoading || grandTotal <=0}>
                             {isStkFlowActive ? (
                                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
                             ) : (
@@ -715,6 +764,12 @@ export default function CartPage() {
                         Selected Delivery: {selectedDeliveryOption.name} <br/>
                         {user?.address ? `To: ${user.address}` : "Please ensure your address is updated in your profile."}
                      </p>
+                 )}
+                 {!canProceedToCheckout && availableCartItems.length > 0 && (
+                     <p className="text-xs text-destructive text-center">Please select a delivery/pickup option.</p>
+                 )}
+                  {availableCartItems.length === 0 && itemCount > 0 && (
+                     <p className="text-xs text-destructive text-center">No items available for checkout. Review cart.</p>
                  )}
             </CardFooter>
           </Card>

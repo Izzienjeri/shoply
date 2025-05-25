@@ -55,7 +55,7 @@ export interface OrderItem {
   artwork_id: string;
   quantity: number;
   price_at_purchase: string;
-  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>; 
+  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>;
 }
 
 export interface Order {

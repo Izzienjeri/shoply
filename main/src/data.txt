@@ -1,5 +1,5 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-26 01:36:01
+# Date and Time: 2025-05-26 02:34:32
 # Files Included: 28
 
 # === lib/utils.ts ===
@@ -157,7 +157,7 @@ export interface OrderItem {
   artwork_id: string;
   quantity: number;
   price_at_purchase: string;
-  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>; 
+  artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>;
 }
 
 export interface Order {
@@ -912,12 +912,16 @@ export default function AdminDeliveryOptionsPage() {
 
     try {
       if (editingOption) {
-        toast.info("Update functionality for delivery options requires backend changes.");
-        throw new Error("Backend for PATCH /delivery/options/:id not implemented.");
+        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
+        toast.success("Delivery option updated successfully!");
       } else {
-        toast.info("Create functionality for delivery options requires backend changes.");
-        throw new Error("Backend for POST /delivery/options not implemented.");
+        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
+        toast.success("Delivery option created successfully!");
       }
+      setShowFormDialog(false);
+      setEditingOption(null);
+      form.reset({ name: "", price: 0, description: null, is_pickup: false, active: true, sort_order: 0 });
+      fetchDeliveryOptions();
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
@@ -961,8 +965,9 @@ export default function AdminDeliveryOptionsPage() {
     if (!optionToDelete) return;
     setIsSubmitting(true);
     try {
-      toast.info("Delete functionality for delivery options requires backend changes.");
-      throw new Error("Backend for DELETE /delivery/options/:id not implemented.");
+      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
+      toast.success("Delivery option deleted successfully!");
+      fetchDeliveryOptions();
     } catch (error: any) {
       toast.error(error.message || "Failed to delete delivery option.");
     } finally {
@@ -1119,9 +1124,6 @@ export default function AdminDeliveryOptionsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
-             <DialogDescription>
-                Note: Backend support for Create, Update, Delete of delivery options is pending.
-             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
@@ -1210,7 +1212,6 @@ export default function AdminDeliveryOptionsPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
-              Note: Backend support for Delete of delivery options is pending.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2118,7 +2119,7 @@ export default function AdminArtistsPage() {
 // === app/admin/artworks/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useForm, SubmitHandler, Controller } from 'react-hook-form';
@@ -2196,7 +2197,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud } from 'lucide-react';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 
 const artworkFormSchema = z.object({
@@ -2250,13 +2251,28 @@ export default function AdminArtworksPage() {
       price: 0,
       stock_quantity: 0,
       description: null,
-      is_active: true,
+      is_active: true, 
       image_file: null,
       current_image_url: null,
     },
   });
+  const { control, handleSubmit, watch, setValue, reset, setError: setFormError, clearErrors, formState: { errors } } = form;
 
-  // Define fetchArtworksAndArtists at the component scope
+  const stockQuantityValue = watch('stock_quantity');
+  const isActiveValue = watch('is_active'); // This is the current value in the form, controlled by RHF
+
+  useEffect(() => {
+    const stock = Number(stockQuantityValue);
+    // This effect automatically sets 'is_active' to true if stock becomes > 0
+    // AND the form's current 'is_active' value is false.
+    if (stock > 0 && !isActiveValue) {
+      setValue('is_active', true, { shouldValidate: true, shouldDirty: true });
+      toast.info("Artwork automatically set to active due to positive stock quantity.", { duration: 4000 });
+      clearErrors(["is_active", "stock_quantity"]); 
+    }
+  }, [stockQuantityValue, isActiveValue, setValue, clearErrors]);
+
+
   const fetchArtworksAndArtists = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -2265,13 +2281,12 @@ export default function AdminArtworksPage() {
         apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
       ]);
       setArtworks(fetchedArtworks || []);
-      setArtists(fetchedArtists || []);
+      
+      setArtists(fetchedArtists || []); 
 
-      // This logic will run after artists are fetched.
-      // Important: Check if the form is for a NEW artwork and artist_id is not already set
-      // (e.g., by opening an edit dialog which would have its own artist_id).
       if (fetchedArtists && fetchedArtists.length > 0 && !editingArtwork && !form.getValues('artist_id')) {
-        form.setValue('artist_id', fetchedArtists[0].id, { shouldValidate: true });
+        const firstActiveArtist = fetchedArtists.find(a => a.is_active);
+        setValue('artist_id', firstActiveArtist ? firstActiveArtist.id : fetchedArtists[0].id, { shouldValidate: true });
       }
     } catch (error) {
       console.error("Failed to fetch artworks or artists:", error);
@@ -2279,29 +2294,75 @@ export default function AdminArtworksPage() {
     } finally {
       setIsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, editingArtwork]); // Added form and editingArtwork to dependencies of useCallback
+  }, [form, editingArtwork, setValue]); 
 
   useEffect(() => {
     fetchArtworksAndArtists();
-  }, [fetchArtworksAndArtists]); // Call it on mount
+  }, [fetchArtworksAndArtists]);
 
 
   const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
     setIsSubmitting(true);
+    clearErrors();
+
+    const currentStock = Number(values.stock_quantity);
+    // payload_is_active_val captures the user's *intent* for is_active from the form submission
+    const payload_is_active_val = values.is_active; 
+    
+    let finalIsActive = payload_is_active_val; // Start with user's intent
+
+    // Rule: Non-zero stock forces active state, overriding user's intent if they tried to make it inactive with stock
+    if (currentStock > 0) {
+        finalIsActive = true;
+    }
+
+    // Rule: Cannot make an item inactive if it has stock.
+    // This checks if user *intended* to make it inactive (payload_is_active_val is false)
+    // while the stock (currentStock) is positive.
+    if (payload_is_active_val === false && currentStock > 0) {
+       toast.error("Cannot set artwork as inactive if stock is greater than 0. Please set stock to 0 first. Artwork will be saved as active due to positive stock.");
+       // No need to setFormError here if we are proceeding with finalIsActive = true,
+       // but it's good to inform the user. The backend will ultimately enforce this.
+       // If we wanted to block submission:
+       // setFormError("is_active", { type: "manual", message: "Must be active if stock > 0." });
+       // setFormError("stock_quantity", { type: "manual", message: "Must be 0 if inactive." });
+       // setIsSubmitting(false);
+       // return;
+    }
+    
+    // Rule: An item that is ultimately going to be inactive *must* have zero stock.
+    // This is a final sanity check. If finalIsActive is false, currentStock must be 0.
+    if (finalIsActive === false && currentStock > 0) {
+        // This state should ideally not be reached if previous logic is correct,
+        // or if backend is primary enforcer. This acts as a safeguard.
+        toast.error("Internal validation error: An inactive artwork cannot have stock. Please correct and try again.");
+        setFormError("is_active", { type: "manual", message: "Inactive artwork must have 0 stock." });
+        setFormError("stock_quantity", { type: "manual", message: "Must be 0 if inactive." });
+        setIsSubmitting(false);
+        return;
+    }
+
 
     if (!editingArtwork && !values.image_file) {
-      form.setError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
+      setFormError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
       setIsSubmitting(false);
       return;
     }
     if (editingArtwork && !values.image_file && !values.current_image_url) {
-        form.setError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
+        setFormError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
         setIsSubmitting(false);
         return;
     }
     if (!values.artist_id) {
-        form.setError("artist_id", {type: "manual", message: "Artist is required."});
+        setFormError("artist_id", {type: "manual", message: "Artist is required."});
+        setIsSubmitting(false);
+        return;
+    }
+    
+    const selectedArtist = artists.find(a => a.id === values.artist_id);
+    if (selectedArtist && !selectedArtist.is_active && finalIsActive) { 
+        toast.error(`Artist "${selectedArtist.name}" is inactive. Cannot assign an active artwork to an inactive artist. Activate the artist first or make the artwork inactive (with 0 stock).`);
+        setFormError("artist_id", {type: "manual", message: "Selected artist is inactive, cannot assign active artwork."});
         setIsSubmitting(false);
         return;
     }
@@ -2310,8 +2371,8 @@ export default function AdminArtworksPage() {
     formData.append('name', values.name);
     formData.append('artist_id', values.artist_id); 
     formData.append('price', values.price.toString());
-    formData.append('stock_quantity', values.stock_quantity.toString());
-    formData.append('is_active', String(values.is_active));
+    formData.append('stock_quantity', String(currentStock)); 
+    formData.append('is_active', String(finalIsActive)); // Send the resolved active state
     if (values.description) {
       formData.append('description', values.description);
     }
@@ -2328,15 +2389,16 @@ export default function AdminArtworksPage() {
     }
 
     try {
+      let responseArtwork: ArtworkType | null;
       if (editingArtwork) {
-        await apiClient.patch<ArtworkType>(
+        responseArtwork = await apiClient.patch<ArtworkType>(
           `/artworks/${editingArtwork.id}`,
           formData,
           { needsAuth: true, isFormData: true }
         );
         toast.success("Artwork updated successfully!");
       } else {
-        await apiClient.post<ArtworkType>(
+        responseArtwork = await apiClient.post<ArtworkType>(
           '/artworks/',
           formData,
           { needsAuth: true, isFormData: true }
@@ -2344,23 +2406,27 @@ export default function AdminArtworksPage() {
         toast.success("Artwork created successfully!");
       }
 
+      // If backend forced active (finalIsActive became true due to stock, but user's intent was false)
+      if (responseArtwork && responseArtwork.is_active && !payload_is_active_val && Number(responseArtwork.stock_quantity) > 0) {
+          toast.info("Artwork was set to active by the server because stock is greater than 0.", { duration: 5000 });
+      }
+
       setShowFormDialog(false);
       setEditingArtwork(null);
-      form.reset({
+      reset({ 
         name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
         stock_quantity: 0, description: null, is_active: true,
         image_file: null, current_image_url: null,
       });
       setPreviewImage(null);
-      fetchArtworksAndArtists(); // Refresh list
+      fetchArtworksAndArtists(); 
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
       if (apiError.errors) {
         Object.entries(apiError.errors).forEach(([field, messages]) => {
-          console.error(`Server error for ${field}: ${messages.join(", ")}`);
            if (Object.keys(form.getValues()).includes(field)) {
-             form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
+             setFormError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
            }
         });
       }
@@ -2372,13 +2438,13 @@ export default function AdminArtworksPage() {
   const openEditDialog = (artwork: ArtworkType) => {
     setEditingArtwork(artwork);
     setPreviewImage(artwork.image_url || null);
-    form.reset({ 
+    reset({ 
       name: artwork.name,
-      artist_id: artwork.artist?.id || "", // Use ID from the nested artist object, fallback to "" if artist/artist.id is missing
+      artist_id: artwork.artist?.id || "", 
       price: parseFloat(artwork.price),
       stock_quantity: artwork.stock_quantity,
       description: artwork.description || null,
-      is_active: artwork.is_active === undefined ? true : artwork.is_active,
+      is_active: artwork.is_active === undefined ? true : artwork.is_active, 
       image_file: null,
       current_image_url: artwork.image_url || null,
     });
@@ -2388,13 +2454,13 @@ export default function AdminArtworksPage() {
   const openNewDialog = () => {
     setEditingArtwork(null);
     setPreviewImage(null);
-    form.reset({
+    reset({ 
         name: "",
-        artist_id: artists.length > 0 ? artists[0].id : "",
+        artist_id: artists.length > 0 ? (artists.find(a => a.is_active)?.id || artists[0].id) : "",
         price: 0,
         stock_quantity: 0,
         description: null,
-        is_active: true,
+        is_active: true, 
         image_file: null,
         current_image_url: null,
     });
@@ -2409,7 +2475,8 @@ export default function AdminArtworksPage() {
       toast.success("Artwork deleted successfully!");
       setArtworkToDelete(null);
       fetchArtworksAndArtists();
-    } catch (error: any) {
+    } catch (error: any)
+       {
       toast.error(error.message || "Failed to delete artwork.");
     } finally {
       setIsSubmitting(false);
@@ -2458,7 +2525,15 @@ export default function AdminArtworksPage() {
           Artist <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<ArtworkType> }) => row.original.artist?.name || 'N/A',
+      cell: ({ row }: { row: Row<ArtworkType> }) => {
+        const artistIsActive = row.original.artist?.is_active;
+        return (
+            <>
+              {row.original.artist?.name || 'N/A'}
+              {artistIsActive === false && <Badge variant="outline" className="ml-1 text-xs">Artist Inactive</Badge>}
+            </>
+        );
+      }
     },
     {
       accessorKey: "price",
@@ -2472,7 +2547,14 @@ export default function AdminArtworksPage() {
     {
       accessorKey: "stock_quantity",
       header: "Stock",
-      cell: ({ row }: { row: Row<ArtworkType> }) => row.original.stock_quantity,
+      cell: ({ row }: { row: Row<ArtworkType> }) => (
+        <div className="flex flex-col items-center">
+            <span>{row.original.stock_quantity}</span>
+            {row.original.stock_quantity === 0 && row.original.is_active && (
+                <Badge variant="outline" className="mt-1 text-xs border-orange-500 text-orange-600">Out of Stock</Badge>
+            )}
+        </div>
+      )
     },
     {
       accessorKey: "is_active",
@@ -2501,7 +2583,7 @@ export default function AdminArtworksPage() {
         );
       },
     },
-  ], [artists]); // artists dependency is important for the Select dropdown options
+  ], [artists]); 
 
   const table = useReactTable({
     data: artworks,
@@ -2603,8 +2685,8 @@ export default function AdminArtworksPage() {
       <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
           setShowFormDialog(isOpen);
           if (!isOpen) {
-              form.reset({
-                name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
+              reset({
+                name: "", artist_id: artists.length > 0 ? (artists.find(a => a.is_active)?.id || artists[0].id) : "", price: 0,
                 stock_quantity: 0, description: null, is_active: true,
                 image_file: null, current_image_url: null,
               });
@@ -2620,9 +2702,9 @@ export default function AdminArtworksPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+            <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
               <FormField
-                control={form.control}
+                control={control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -2633,14 +2715,14 @@ export default function AdminArtworksPage() {
                 )}
               />
               <Controller
-                control={form.control}
+                control={control}
                 name="artist_id"
                 render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
                   <FormItem>
                     <FormLabel>Artist</FormLabel>
                     <Select
                       onValueChange={onChange}
-                      value={value || ""} // Ensure value is a string, defaulting to "" if null/undefined
+                      value={value || ""} 
                     >
                       <FormControl>
                         <SelectTrigger ref={ref} className={cn(error && "border-destructive")}>
@@ -2657,13 +2739,14 @@ export default function AdminArtworksPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage /> {/* This will display Zod validation messages */}
+                    <FormDescription>Only active artists can be assigned to active artworks.</FormDescription>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                    control={form.control}
+                    control={control}
                     name="price"
                     render={({ field }) => (
                     <FormItem>
@@ -2674,19 +2757,20 @@ export default function AdminArtworksPage() {
                     )}
                 />
                 <FormField
-                    control={form.control}
+                    control={control}
                     name="stock_quantity"
                     render={({ field }) => (
                     <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl><Input type="number" placeholder="e.g., 10" {...field} /></FormControl>
+                        <FormDescription>{'Setting stock > 0 will auto-activate artwork.'}</FormDescription>
                         <FormMessage />
                     </FormItem>
                     )}
                 />
               </div>
               <FormField
-                control={form.control}
+                control={control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
@@ -2697,9 +2781,9 @@ export default function AdminArtworksPage() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={control}
                 name="image_file"
-                render={({ field: { onChange, value: fileValue, ...restFieldProps } }) => {
+                render={({ field: { onChange: onFileChange, value: fileValue, ...restFieldProps } }) => {
                   const currentImageDisplay = editingArtwork && form.getValues('current_image_url') && !fileValue;
                   return (
                     <FormItem>
@@ -2711,7 +2795,7 @@ export default function AdminArtworksPage() {
                               "file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                               "disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent hover:text-accent-foreground",
-                              form.formState.errors.image_file && "border-destructive"
+                              errors.image_file && "border-destructive"
                           )}>
                             <div className="flex items-center">
                               <UploadCloud className="mr-2 h-4 w-4" />
@@ -2724,7 +2808,7 @@ export default function AdminArtworksPage() {
                               accept={ACCEPTED_IMAGE_TYPES.join(",")}
                               onChange={(e) => {
                                 const file = e.target.files?.[0] || null;
-                                onChange(file);
+                                onFileChange(file);
                                 if (file) {
                                   const reader = new FileReader();
                                   reader.onloadend = () => {
@@ -2769,18 +2853,22 @@ export default function AdminArtworksPage() {
 
 
                <FormField
-                control={form.control}
+                control={control}
                 name="is_active"
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                     <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      <Checkbox 
+                        checked={field.value} 
+                        onCheckedChange={field.onChange}
+                      />
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel>Active</FormLabel>
                       <FormDescription>
-                        Uncheck to hide this artwork from the public store.
+                       {'Artwork with stock > 0 will be active. To make inactive, stock must be 0.'}
                       </FormDescription>
+                       <FormMessage />
                     </div>
                   </FormItem>
                 )}
@@ -2826,7 +2914,6 @@ export default function AdminArtworksPage() {
 }
 
 # === app/cart/page.tsx ===
-// === app/cart/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -2845,7 +2932,7 @@ import {
     ApiErrorResponse,
     CartItem as CartItemType,
     StkPushInitiationResponse,
-    DeliveryOption as DeliveryOptionType, // Import DeliveryOptionType
+    DeliveryOption as DeliveryOptionType, 
     PaymentTransactionStatusResponse
 } from '@/lib/types';
 import { apiClient } from '@/lib/api';
@@ -2860,7 +2947,7 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel, // <--- MAKE SURE FormLabel IS HERE if you use it for the Mpesa phone field
+  FormLabel, 
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -2868,7 +2955,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label"
 
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle, Truck, Package } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, ImageOff, Info, CheckCircle, XCircle, Truck, Package, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 
 const checkoutSchema = z.object({
@@ -2877,7 +2965,6 @@ const checkoutSchema = z.object({
     .length(12, "Phone number must be 12 digits (e.g. 2547XXXXXXXX)")
     .startsWith("254", "Phone number must start with 254")
     .regex(/^[0-9]+$/, "Phone number must contain only digits"),
-  // deliveryOptionId is now handled by state, not directly in this form schema for Mpesa part
 });
 type CheckoutFormValues = z.infer<typeof checkoutSchema>;
 
@@ -2892,7 +2979,14 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
   const [isQuantityUpdating, setIsQuantityUpdating] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
 
+  const isItemAvailable = item.artwork.is_active && item.artwork.artist.is_active;
+  const isItemOutOfStock = item.artwork.stock_quantity === 0;
+
   const handleQuantityChange = async (newQuantity: number) => {
+    if (!isItemAvailable || isItemOutOfStock) {
+        toast.error(`"${item.artwork.name}" is currently unavailable or out of stock.`);
+        return;
+    }
     if (newQuantity < 1 || isQuantityUpdating || isUpdating) return;
     if (newQuantity > item.artwork.stock_quantity) {
         toast.error(`Only ${item.artwork.stock_quantity} items available for "${item.artwork.name}".`);
@@ -2926,21 +3020,39 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
           alt={item.artwork.name}
           fill
           sizes="(max-width: 640px) 20vw, 96px"
-          className="object-cover"
+          className={cn("object-cover", (!isItemAvailable || isItemOutOfStock) && "opacity-50")}
           onError={(e) => {
             (e.target as HTMLImageElement).srcset = placeholderImage;
             (e.target as HTMLImageElement).src = placeholderImage;
           }}
         />
          {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-8 w-8 text-muted-foreground" />}
+         {(!isItemAvailable || isItemOutOfStock) && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                <Badge variant="destructive" className="text-xs">
+                    {!isItemAvailable ? "Unavailable" : "Out of Stock"}
+                </Badge>
+            </div>
+         )}
       </div>
 
       <div className="flex-1 space-y-1 min-w-0">
-        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2">
+        <Link 
+            href={`/artworks/${item.artwork.id}`} 
+            className={cn(
+                "font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2",
+                (!isItemAvailable || isItemOutOfStock) && "text-muted-foreground line-through"
+            )}
+        >
           {item.artwork.name}
         </Link>
         <p className="text-xs sm:text-sm text-muted-foreground">By: {item.artwork.artist.name}</p>
         <p className="text-xs sm:text-sm font-medium">{formatPrice(item.artwork.price)}</p>
+         {(!isItemAvailable || isItemOutOfStock) && (
+            <p className="text-xs text-red-600 mt-1">
+                {!isItemAvailable ? "This item is no longer available." : "This item is out of stock."}
+            </p>
+         )}
       </div>
 
       <div className="flex flex-row sm:flex-col items-center sm:items-end space-x-2 sm:space-x-0 sm:space-y-1 mt-2 sm:mt-0">
@@ -2950,7 +3062,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
               size="icon"
               className="h-7 w-7 sm:h-8 sm:w-8"
               onClick={() => handleQuantityChange(item.quantity - 1)}
-              disabled={item.quantity <= 1 || isQuantityUpdating || isUpdating}
+              disabled={!isItemAvailable || isItemOutOfStock || item.quantity <= 1 || isQuantityUpdating || isUpdating}
               aria-label="Decrease quantity"
             >
               <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -2963,21 +3075,18 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
               size="icon"
               className="h-7 w-7 sm:h-8 sm:w-8"
               onClick={() => handleQuantityChange(item.quantity + 1)}
-              disabled={isQuantityUpdating || isUpdating || item.quantity >= item.artwork.stock_quantity}
+              disabled={!isItemAvailable || isItemOutOfStock || isQuantityUpdating || isUpdating || item.quantity >= item.artwork.stock_quantity}
               aria-label="Increase quantity"
             >
               <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
             </Button>
          </div>
-        {item.artwork.stock_quantity > 0 && item.artwork.stock_quantity < 5 && (
+        {isItemAvailable && !isItemOutOfStock && item.artwork.stock_quantity < 5 && (
             <p className="text-xs text-orange-600 mt-1">Only {item.artwork.stock_quantity} left</p>
-        )}
-        {item.artwork.stock_quantity === 0 && !isQuantityUpdating && (
-             <p className="text-xs text-red-600 mt-1">Out of stock</p>
         )}
       </div>
 
-      <div className="font-medium text-sm sm:text-base w-full sm:w-auto text-right sm:text-left mt-2 sm:mt-0">
+      <div className={cn("font-medium text-sm sm:text-base w-full sm:w-auto text-right sm:text-left mt-2 sm:mt-0", (!isItemAvailable || isItemOutOfStock) && "text-muted-foreground line-through")}>
         {formatPrice(parseFloat(item.artwork.price) * item.quantity)}
       </div>
 
@@ -3000,11 +3109,10 @@ export default function CartPage() {
     cart,
     isLoading: cartIsLoading,
     itemCount,
-    totalPrice: cartSubtotal, // Renamed for clarity
     updateCartItem,
     removeFromCart,
     fetchCart,
-    clearCart, // If user logs out while checkout polling active
+    clearCart,
   } = useCart();
   const { isAuthenticated, isLoading: authIsLoading, user } = useAuth();
   const router = useRouter();
@@ -3014,12 +3122,10 @@ export default function CartPage() {
   const [pollingMessage, setPollingMessage] = useState<string>("Please complete the M-Pesa payment on your phone.");
   const [paymentStatus, setPaymentStatus] = useState<PaymentTransactionStatusResponse['status'] | null>(null);
 
-  // --- NEW STATES FOR DELIVERY ---
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionType[]>([]);
   const [isLoadingDeliveryOptions, setIsLoadingDeliveryOptions] = useState(false);
   const [selectedDeliveryOptionId, setSelectedDeliveryOptionId] = useState<string | null>(null);
-  const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('pickup'); // Default to pickup
-  // --- END NEW STATES ---
+  const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('pickup');
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingAttemptsRef = useRef<number>(0);
@@ -3034,7 +3140,32 @@ export default function CartPage() {
     },
   });
 
-  // Fetch delivery options on mount if authenticated
+  const availableCartItems = useMemo(() => {
+    return cart?.items.filter(item => 
+        item.artwork.is_active && 
+        item.artwork.artist.is_active &&
+        item.artwork.stock_quantity > 0 &&
+        item.artwork.stock_quantity >= item.quantity
+    ) || [];
+  }, [cart]);
+
+  const unavailableCartItems = useMemo(() => {
+    return cart?.items.filter(item => 
+        !item.artwork.is_active || 
+        !item.artwork.artist.is_active ||
+        item.artwork.stock_quantity === 0 ||
+        item.artwork.stock_quantity < item.quantity
+    ) || [];
+  }, [cart]);
+
+  const cartSubtotal = useMemo(() => {
+    return availableCartItems.reduce((sum, item) => {
+      const price = parseFloat(item.artwork.price) || 0;
+      return sum + (price * item.quantity);
+    }, 0);
+  }, [availableCartItems]);
+
+
   useEffect(() => {
     if (isAuthenticated && !isStkFlowActive) {
       const fetchDeliveryOpts = async () => {
@@ -3042,15 +3173,19 @@ export default function CartPage() {
         try {
           const opts = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
           setDeliveryOptions(opts || []);
-          // Auto-select "In Store Pick Up" if available
-          const pickupOption = opts?.find(opt => opt.is_pickup);
-          if (pickupOption) {
-            setSelectedDeliveryOptionId(pickupOption.id);
-            setDeliveryType('pickup');
+          const activePickupOption = opts?.find(opt => opt.is_pickup && opt.active);
+          const firstActiveDelivery = opts?.find(opt => !opt.is_pickup && opt.active);
+
+          if (deliveryType === 'pickup' && activePickupOption) {
+            setSelectedDeliveryOptionId(activePickupOption.id);
+          } else if (deliveryType === 'delivery' && firstActiveDelivery) {
+            setSelectedDeliveryOptionId(firstActiveDelivery.id);
           } else if (opts && opts.length > 0) {
-            // If no pickup, select first available delivery option
-            setSelectedDeliveryOptionId(opts[0].id);
-            setDeliveryType('delivery');
+             const firstActive = opts.find(opt => opt.active);
+             if(firstActive) {
+                setSelectedDeliveryOptionId(firstActive.id);
+                setDeliveryType(firstActive.is_pickup ? 'pickup' : 'delivery');
+             }
           }
         } catch (error) {
           console.error("Failed to fetch delivery options:", error);
@@ -3061,21 +3196,19 @@ export default function CartPage() {
       };
       fetchDeliveryOpts();
     }
-  }, [isAuthenticated, isStkFlowActive]);
+  }, [isAuthenticated, isStkFlowActive, deliveryType]);
 
-  // Pre-fill phone number from user profile
   useEffect(() => {
     if (user?.address && !isStkFlowActive) {
-      const potentialPhone = user.address.replace(/\D/g, ''); // Simplistic extraction
+      const potentialPhone = user.address.replace(/\D/g, ''); 
       if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
         checkoutForm.setValue("phoneNumber", potentialPhone);
       }
     }
   }, [user, checkoutForm, isStkFlowActive]);
 
-  // Calculate delivery cost and grand total
   const selectedDeliveryOption = useMemo(() => {
-    return deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId);
+    return deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId && opt.active);
   }, [deliveryOptions, selectedDeliveryOptionId]);
 
   const deliveryCost = useMemo(() => {
@@ -3101,19 +3234,19 @@ export default function CartPage() {
     setPaymentStatus('successful');
     let successMessage = "Payment successful! Your order has been placed.";
     if (selectedDeliveryOption?.is_pickup) {
-        successMessage += ` You can pick up your order at: ${selectedDeliveryOption.description || 'Dynamic Mall, Shop M90, CBD, Nairobi.'}`;
+        successMessage += ` You can pick up your order at: ${selectedDeliveryOption.description || 'our store.'}`;
     } else if (selectedDeliveryOption) {
         successMessage += ` It will be delivered via ${selectedDeliveryOption.name}.`;
     }
 
     setPollingMessage(successMessage);
     toast.success("Order Placed Successfully!", {
-        description: successMessage.replace("Payment successful! Your order has been placed.", ""), // Shorter description
+        description: successMessage.replace("Payment successful! Your order has been placed.", ""), 
         duration: 15000,
         action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } :
                          { label: "My Orders", onClick: () => router.push(`/orders`) },
     });
-    fetchCart(); // To clear cart items from UI as backend clears them
+    fetchCart(); 
   }, [stopPolling, router, fetchCart, selectedDeliveryOption]);
 
   const handlePaymentFailure = useCallback((message: string, finalStatus?: PaymentTransactionStatusResponse['status']) => {
@@ -3156,11 +3289,9 @@ export default function CartPage() {
       }
     } catch (error: any) {
       console.error("Polling error:", error);
-      if (error.message?.includes('401')) { // Handle potential token expiry during long polling
+      if (error.message?.includes('401')) {
          toast.error("Session expired. Please log in and try again.");
          handlePaymentFailure("Authentication error during polling. Please log in again.", "failed_processing_error");
-         clearCart(); // Clear local cart state
-         router.push('/login?redirect=/cart');
       } else if (error.message?.includes('404') || error.message?.toLowerCase().includes('not found')) {
         handlePaymentFailure("Could not find this transaction to check its status. If you paid, contact support.", 'not_found');
       } else {
@@ -3184,9 +3315,9 @@ export default function CartPage() {
       if (paymentStatus === null || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') {
          setPollingMessage("Waiting for M-Pesa confirmation...");
       }
-      pollPaymentStatus(stkCheckoutId); // Initial poll
+      pollPaymentStatus(stkCheckoutId); 
 
-      if (!pollingIntervalRef.current && stkCheckoutId) { // Ensure it wasn't stopped by initial poll
+      if (!pollingIntervalRef.current && stkCheckoutId) { 
         pollingIntervalRef.current = setInterval(() => {
             if (stkCheckoutId) {
                  pollPaymentStatus(stkCheckoutId);
@@ -3205,6 +3336,10 @@ export default function CartPage() {
 
 
   const handleInitiateCheckout = async (data: CheckoutFormValues) => {
+    if (availableCartItems.length === 0) {
+        toast.error("Your cart contains no items available for purchase. Please review your cart.");
+        return;
+    }
     if (!selectedDeliveryOptionId) {
         toast.error("Please select a delivery or pickup option.");
         return;
@@ -3244,23 +3379,16 @@ export default function CartPage() {
 
   const handleDeliveryTypeChange = (type: 'pickup' | 'delivery') => {
     setDeliveryType(type);
-    if (type === 'pickup') {
-        const pickupOpt = deliveryOptions.find(opt => opt.is_pickup);
-        if (pickupOpt) setSelectedDeliveryOptionId(pickupOpt.id);
-    } else {
-        // If switching to delivery, and a delivery option is already selected, keep it.
-        // Otherwise, select the first non-pickup option if available.
-        const currentIsPickup = deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId)?.is_pickup;
-        if (selectedDeliveryOptionId === null || currentIsPickup) {
-            const firstDeliveryOpt = deliveryOptions.find(opt => !opt.is_pickup);
-            if (firstDeliveryOpt) setSelectedDeliveryOptionId(firstDeliveryOpt.id);
-            else setSelectedDeliveryOptionId(null); // No delivery options available
-        }
+    setSelectedDeliveryOptionId(null);
+    const relevantOptions = type === 'pickup' 
+        ? deliveryOptions.filter(opt => opt.is_pickup && opt.active)
+        : deliveryOptions.filter(opt => !opt.is_pickup && opt.active);
+    
+    if (relevantOptions.length > 0) {
+        setSelectedDeliveryOptionId(relevantOptions[0].id);
     }
   };
 
-
-  // --- Render logic ---
 
   if (authIsLoading) {
     return <div className="flex justify-center items-center p-10 min-h-[300px]"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
@@ -3321,7 +3449,7 @@ export default function CartPage() {
                             </p>
                             <p className="text-sm">
                                 {selectedDeliveryOption.is_pickup
-                                    ? selectedDeliveryOption.description || "Dynamic Mall, Shop M90, CBD, Nairobi."
+                                    ? selectedDeliveryOption.description || 'our store.'
                                     : `Your order will be delivered via ${selectedDeliveryOption.name} to your registered address: ${user?.address || 'Not specified'}.`}
                             </p>
                         </div>
@@ -3334,7 +3462,6 @@ export default function CartPage() {
                     onClick={() => {
                         stopPolling(); setIsStkFlowActive(false); setPaymentStatus(null); setStkCheckoutId(null);
                         checkoutForm.reset();
-                        // Re-fetch cart in case of partial failures or to reset context if needed
                         fetchCart();
                     }}
                     variant="outline"
@@ -3351,7 +3478,7 @@ export default function CartPage() {
   }
 
   if ((cartIsLoading || isLoadingDeliveryOptions) && !cart && !isStkFlowActive) {
-    return (
+        return (
         <div>
              <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart</h1>
              <div className="space-y-4">
@@ -3379,12 +3506,25 @@ export default function CartPage() {
     );
   }
 
-  const pickupOptions = deliveryOptions.filter(opt => opt.is_pickup);
-  const actualDeliveryOptions = deliveryOptions.filter(opt => !opt.is_pickup);
+  const pickupOptions = deliveryOptions.filter(opt => opt.is_pickup && opt.active);
+  const actualDeliveryOptions = deliveryOptions.filter(opt => !opt.is_pickup && opt.active);
+  const canProceedToCheckout = availableCartItems.length > 0 && selectedDeliveryOptionId !== null;
+
 
   return (
     <div>
       <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})</h1>
+      {unavailableCartItems.length > 0 && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Some items are unavailable!</AlertTitle>
+          <AlertDescription>
+            One or more items in your cart are currently out of stock or no longer available. 
+            They have been excluded from the total and cannot be purchased. 
+            Please review the items below. You can remove them or update quantities if partial stock is available for other items.
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="lg:grid lg:grid-cols-3 lg:gap-8">
         <div className="lg:col-span-2">
           <Card>
@@ -3415,11 +3555,10 @@ export default function CartPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between">
-                <span>Subtotal</span>
+                <span>Subtotal (available items)</span>
                 <span>{formatPrice(cartSubtotal)}</span>
               </div>
 
-              {/* Delivery/Pickup Options */}
               <Separator />
               <div>
                 <Label className="text-base font-semibold mb-2 block">Shipping Options</Label>
@@ -3450,46 +3589,44 @@ export default function CartPage() {
 
                 {isLoadingDeliveryOptions && <Loader2 className="h-5 w-5 animate-spin my-2" />}
 
-                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && pickupOptions.length > 0 && (
-                    <Select
-                        value={selectedDeliveryOptionId || ""}
-                        onValueChange={(value) => setSelectedDeliveryOptionId(value)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select pickup location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {pickupOptions.map(opt => (
-                                <SelectItem key={opt.id} value={opt.id}>
-                                    {opt.name} - ({formatPrice(opt.price)})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                )}
-                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && pickupOptions.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No pickup options available.</p>
+                {!isLoadingDeliveryOptions && deliveryType === 'pickup' && (
+                    pickupOptions.length > 0 ? (
+                        <Select
+                            value={selectedDeliveryOptionId || ""}
+                            onValueChange={(value) => setSelectedDeliveryOptionId(value)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select pickup location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {pickupOptions.map(opt => (
+                                    <SelectItem key={opt.id} value={opt.id}>
+                                        {opt.name} - ({formatPrice(opt.price)})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : <p className="text-sm text-muted-foreground">No active pickup options available.</p>
                 )}
 
-                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && actualDeliveryOptions.length > 0 && (
-                     <Select
-                        value={selectedDeliveryOptionId || ""}
-                        onValueChange={(value) => setSelectedDeliveryOptionId(value)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select delivery zone" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {actualDeliveryOptions.map(opt => (
-                                <SelectItem key={opt.id} value={opt.id}>
-                                    {opt.name} - ({formatPrice(opt.price)})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                )}
-                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && actualDeliveryOptions.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No delivery options available.</p>
+                {!isLoadingDeliveryOptions && deliveryType === 'delivery' && (
+                     actualDeliveryOptions.length > 0 ? (
+                        <Select
+                            value={selectedDeliveryOptionId || ""}
+                            onValueChange={(value) => setSelectedDeliveryOptionId(value)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select delivery zone" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {actualDeliveryOptions.map(opt => (
+                                    <SelectItem key={opt.id} value={opt.id}>
+                                        {opt.name} - ({formatPrice(opt.price)})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                     ) : <p className="text-sm text-muted-foreground">No active delivery options available.</p>
                 )}
                 {selectedDeliveryOption && (
                     <p className="text-xs text-muted-foreground mt-1">{selectedDeliveryOption.description}</p>
@@ -3524,7 +3661,7 @@ export default function CartPage() {
                             )}
                           />
                          <Button type="submit" className="w-full"
-                                 disabled={isStkFlowActive || itemCount === 0 || cartIsLoading || authIsLoading || !selectedDeliveryOptionId || grandTotal <=0}>
+                                 disabled={isStkFlowActive || !canProceedToCheckout || cartIsLoading || authIsLoading || grandTotal <=0}>
                             {isStkFlowActive ? (
                                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
                             ) : (
@@ -3543,6 +3680,12 @@ export default function CartPage() {
                         Selected Delivery: {selectedDeliveryOption.name} <br/>
                         {user?.address ? `To: ${user.address}` : "Please ensure your address is updated in your profile."}
                      </p>
+                 )}
+                 {!canProceedToCheckout && availableCartItems.length > 0 && (
+                     <p className="text-xs text-destructive text-center">Please select a delivery/pickup option.</p>
+                 )}
+                  {availableCartItems.length === 0 && itemCount > 0 && (
+                     <p className="text-xs text-destructive text-center">No items available for checkout. Review cart.</p>
                  )}
             </CardFooter>
           </Card>
@@ -4298,7 +4441,7 @@ export default function ArtistDetailPage() {
     );
   }
   
-  if (!artist.is_active && !isAdmin) {
+  if (!isAdmin && artist.is_active === false) {
      return (
         <div className="text-center py-10">
             <UserCircle2 className="h-16 w-16 mx-auto mb-4 text-gray-400" />
@@ -4311,7 +4454,9 @@ export default function ArtistDetailPage() {
     );
   }
   
-  const artworksToDisplay = artist.artworks || [];
+  const artworksToDisplay = isAdmin 
+    ? (artist.artworks || [])
+    : (artist.artworks || []).filter(aw => aw.is_active === true);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -4320,22 +4465,22 @@ export default function ArtistDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
-          <Link href={`/admin/artists?edit=${artist.id}`} passHref legacyBehavior>
+          <Link href={`/admin/artists/`} passHref legacyBehavior> 
             <Button variant="default" size="sm">
-              <Edit className="mr-2 h-4 w-4" /> Edit Artist in Admin
+              <Edit className="mr-2 h-4 w-4" /> Manage Artists
             </Button>
           </Link>
         )}
       </div>
 
-      {isAdmin && !artist.is_active && (
+      {isAdmin && artist.is_active === false && (
         <Alert variant="warning" className="mb-6">
             <EyeOff className="h-4 w-4" />
             <AlertTitle>Admin View: Inactive Artist</AlertTitle>
             <AlertDescription>This artist is currently marked as inactive and is hidden from public view. Their artworks will also be hidden from public view, regardless of individual artwork status.</AlertDescription>
         </Alert>
       )}
-       {isAdmin && artist.is_active && (
+       {isAdmin && artist.is_active === true && (
         <Alert 
             variant="default" 
             className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400"
@@ -4354,7 +4499,7 @@ export default function ArtistDetailPage() {
             <div>
                 <h1 className="text-4xl lg:text-5xl font-bold font-serif text-primary tracking-tight mb-2">
                     {artist.name}
-                    {!artist.is_active && <Badge variant="outline" className="ml-3 text-base align-middle">Inactive</Badge>}
+                    {artist.is_active === false && <Badge variant="outline" className="ml-3 text-base align-middle">Inactive</Badge>}
                 </h1>
                 <p className="text-muted-foreground leading-relaxed max-w-2xl">
                     {artist.bio || "This artist has not provided a biography yet."}
@@ -4369,7 +4514,7 @@ export default function ArtistDetailPage() {
         <h2 className="text-3xl font-semibold font-serif mb-8 flex items-center">
             <Palette className="mr-3 h-7 w-7 text-primary" />
             Artworks by {artist.name}
-            {isAdmin && <Badge variant="outline" className="ml-3">Admin View: Showing {artworksToDisplay.length} artworks ({artist.artworks?.filter(aw => aw.is_active).length} active)</Badge>}
+            {isAdmin && <Badge variant="outline" className="ml-3">Admin View: Showing {artworksToDisplay.length} artworks ({artist.artworks?.filter(aw => aw.is_active).length} active for public)</Badge>}
         </h2>
         {artworksToDisplay.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8">
@@ -4382,7 +4527,7 @@ export default function ArtistDetailPage() {
              <Palette className="h-16 w-16 mx-auto mb-4 text-gray-400" />
             <p className="text-xl">
                 {isAdmin && (artist.artworks || []).length > 0 
-                    ? `This artist has artworks, but ${artworksToDisplay.length === 0 ? 'none match current filter (e.g. public active ones).' : 'all their artworks are shown above.'}` 
+                    ? `This artist has artworks, but none are currently active for public view.`
                     : "No artworks found for this artist at the moment."}
                 {!isAdmin && "No active artworks found for this artist at the moment."}
             </p>
@@ -4547,12 +4692,11 @@ export default function ArtworkDetailPage() {
   }, [artworkId, isAuthenticated]);
 
   const handleAddToCart = async () => {
-    if (!artwork || isAdmin || !artwork.is_active || (artwork.artist && !artwork.artist.is_active)) return;
+    if (!artwork || isAdmin) return; 
     setIsAddingToCart(true);
     try {
       await addToCart(artwork.id, 1);
     } catch (err) {
-      console.error("Add to cart failed from ArtworkDetail page:", err);
     } finally {
       setIsAddingToCart(false);
     }
@@ -4579,24 +4723,15 @@ export default function ArtworkDetailPage() {
     );
   }
   
-  if (!artwork.is_active && !isAdmin) {
+  const isPubliclyVisibleAndPurchaseable = artwork.is_active === true && artwork.artist?.is_active === true;
+  const isOutOfStock = artwork.stock_quantity === 0;
+
+  if (!isPubliclyVisibleAndPurchaseable && !isAdmin) {
     return (
       <div className="text-center py-10">
         <ImageOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
         <p className="text-xl text-muted-foreground">Artwork Not Available</p>
-        <p className="text-sm text-muted-foreground">This artwork is not currently active.</p>
-         <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
-           Explore Other Artworks
-        </Button>
-      </div>
-    );
-  }
-  if (artwork.artist && !artwork.artist.is_active && !isAdmin) {
-     return (
-      <div className="text-center py-10">
-        <ImageOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-        <p className="text-xl text-muted-foreground">Artwork Not Available</p>
-        <p className="text-sm text-muted-foreground">The artist of this artwork is not currently active.</p>
+        <p className="text-sm text-muted-foreground">This artwork is currently not available for viewing or purchase.</p>
          <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
            Explore Other Artworks
         </Button>
@@ -4604,7 +4739,6 @@ export default function ArtworkDetailPage() {
     );
   }
 
-  const canBePurchased = artwork.is_active && artwork.artist?.is_active && artwork.stock_quantity > 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -4621,22 +4755,24 @@ export default function ArtworkDetailPage() {
         )}
       </div>
       
-      {isAdmin && (!artwork.is_active || (artwork.artist && !artwork.artist.is_active)) && (
+      {isAdmin && (artwork.is_active === false || artwork.artist?.is_active === false || isOutOfStock) && (
         <Alert variant="warning" className="mb-6">
             <EyeOff className="h-4 w-4" />
-            <AlertTitle>Admin View: Potentially Hidden Artwork</AlertTitle>
+            <AlertTitle>Admin View: Artwork Status Notes</AlertTitle>
             <AlertDescription>
-              This artwork is currently {!artwork.is_active ? 'marked as INACTIVE' : 'marked as ACTIVE'}.
-              Its artist is currently {artwork.artist && !artwork.artist.is_active ? 'marked as INACTIVE' : 'marked as ACTIVE'}.
-              If either the artwork or its artist is inactive, it will be hidden from public users.
+              {artwork.is_active === false && <>Artwork status: <Badge variant="destructive">INACTIVE</Badge>. </>}
+              {artwork.artist?.is_active === false && <>Artist status: <Badge variant="destructive">INACTIVE</Badge>. </>}
+              {isOutOfStock && artwork.is_active && <>Stock status: <Badge variant="outline" className="border-orange-500 text-orange-600">OUT OF STOCK</Badge>. </>}
+              <br/>
+              If artwork or artist is inactive, it's hidden from public. Inactive artworks must have 0 stock.
             </AlertDescription>
         </Alert>
       )}
-       {isAdmin && artwork.is_active && artwork.artist?.is_active && (
+       {isAdmin && artwork.is_active === true && artwork.artist?.is_active === true && !isOutOfStock && (
         <Alert variant="default" className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400">
             <InfoIcon className="h-4 w-4" />
             <AlertTitle>Admin View: Active & Visible Artwork</AlertTitle>
-            <AlertDescription>This artwork and its artist are active. It is visible to public users.</AlertDescription>
+            <AlertDescription>This artwork and its artist are active, and it is in stock. It is visible and purchaseable by public users.</AlertDescription>
         </Alert>
       )}
 
@@ -4669,11 +4805,9 @@ export default function ArtworkDetailPage() {
           <div>
             <h1 className="text-3xl lg:text-4xl font-bold font-serif text-primary tracking-tight">
               {artwork.name}
-              {!artwork.is_active && <Badge variant="outline" className="ml-2 text-base align-middle">Inactive Artwork</Badge>}
             </h1>
             <Link href={`/artists/${artwork.artist.id}`} className="text-lg text-muted-foreground hover:text-primary transition-colors">
               By {artwork.artist.name}
-              {artwork.artist && !artwork.artist.is_active && <Badge variant="outline" className="ml-2 text-sm align-middle">Inactive Artist</Badge>}
             </Link>
           </div>
 
@@ -4684,14 +4818,16 @@ export default function ArtworkDetailPage() {
             </p>
           </div>
           
-          {(isAdmin || artwork.stock_quantity > 0) && (
-            <div className="flex items-center space-x-2">
-                 {artwork.stock_quantity > 0 ? <PackageCheck className="h-5 w-5 text-green-600" /> : <PackageX className="h-5 w-5 text-red-600" />}
-                <p className={cn("text-sm", artwork.stock_quantity > 0 ? "text-muted-foreground" : "text-red-600 font-semibold")}>
-                    Stock: {artwork.stock_quantity} {artwork.stock_quantity === 0 && "(Out of Stock)"}
-                </p>
-            </div>
+          <div className="flex items-center space-x-2">
+              {isOutOfStock ? <PackageX className="h-5 w-5 text-orange-600" /> : <PackageCheck className="h-5 w-5 text-green-600" />}
+              <p className={cn("text-sm font-medium", isOutOfStock ? "text-orange-600" : "text-green-700")}>
+                  {isOutOfStock ? "Out of Stock" : `In Stock (${artwork.stock_quantity} available)`}
+              </p>
+          </div>
+          {!artwork.is_active && ( // Public user sees this if somehow landed on an inactive item page (should be rare)
+              <Badge variant="destructive">Currently Unavailable</Badge>
           )}
+
 
           <Separator />
 
@@ -4704,9 +4840,9 @@ export default function ArtworkDetailPage() {
 
           <Separator />
           
-          {!isAdmin && (
+          {!isAdmin && isPubliclyVisibleAndPurchaseable && ( 
             <div className="space-y-4">
-              {canBePurchased ? (
+              {!isOutOfStock ? (
                 <Button
                   size="lg"
                   className="w-full md:w-auto"
@@ -4724,31 +4860,21 @@ export default function ArtworkDetailPage() {
                 </Button>
               ) : (
                 <Button size="lg" className="w-full md:w-auto" disabled>
-                  {artwork.stock_quantity === 0 ? 'Out of Stock' : 'Unavailable'}
+                   Out of Stock
                 </Button>
               )}
-              {canBePurchased && artwork.stock_quantity < 5 && artwork.stock_quantity > 0 && (
+              {!isOutOfStock && artwork.stock_quantity < 5 && (
                 <p className="text-sm text-orange-600">
                   Only {artwork.stock_quantity} left in stock!
                 </p>
               )}
-               {artwork.stock_quantity === 0 && (
-                <p className="text-sm text-red-600 font-semibold">
-                  This item is currently out of stock.
-                </p>
-              )}
-               {!artwork.is_active && (
-                 <p className="text-sm text-yellow-600 font-semibold">
-                     This artwork is not currently active.
-                 </p>
-               )}
-               {artwork.artist && !artwork.artist.is_active && (
-                 <p className="text-sm text-yellow-600 font-semibold">
-                     The artist of this artwork is not currently active.
-                 </p>
-               )}
             </div>
           )}
+           {!isAdmin && !isPubliclyVisibleAndPurchaseable && ( 
+             <p className="text-sm text-yellow-600 font-semibold">
+                 This artwork is currently not available for purchase.
+             </p>
+           )}
         </div>
       </div>
     </div>
@@ -5215,13 +5341,14 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
   };
 
   const isInCart = !isAdmin && cart?.items.some(item => item.artwork_id === artwork.id);
-  const isActuallyAvailable = artwork.is_active && artwork.artist?.is_active;
+  const isPubliclyAvailableForPurchase = artwork.is_active === true && artwork.artist?.is_active === true;
+  const isOutOfStock = artwork.stock_quantity === 0;
 
   return (
     <Card className="overflow-hidden flex flex-col h-full group border shadow-sm hover:shadow-lg transition-shadow duration-300">
        <CardHeader className="p-0 border-b relative">
          <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn(!isActuallyAvailable && "opacity-60 group-hover:opacity-80 transition-opacity")}>
+           <a className={cn(!isPubliclyAvailableForPurchase && "opacity-60 group-hover:opacity-80 transition-opacity")}>
            <AspectRatio ratio={1 / 1} className="bg-muted overflow-hidden">
              <Image
                src={artwork.image_url || placeholderImage}
@@ -5241,25 +5368,31 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                   <ImageOff className="h-12 w-12 text-gray-400" />
                 </div>
               )}
-              {!isAdmin && !isActuallyAvailable && (
+              {!isAdmin && !isPubliclyAvailableForPurchase && (
                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                      <Badge variant="destructive">Unavailable</Badge>
+                 </div>
+              )}
+               {!isAdmin && isPubliclyAvailableForPurchase && isOutOfStock && (
+                 <div className="absolute bottom-2 right-2 z-10">
+                     <Badge variant="outline" className="bg-background/80 border-orange-500 text-orange-600">Out of Stock</Badge>
                  </div>
               )}
            </AspectRatio>
            </a>
          </Link>
          {isAdmin && (
-            <div className="absolute top-2 right-2 z-10 space-y-1">
-             {!artwork.is_active && <Badge variant={'destructive'} className="block">Artwork Inactive</Badge>}
-             {artwork.artist && !artwork.artist.is_active && <Badge variant={'destructive'} className="block opacity-80">Artist Inactive</Badge>}
+            <div className="absolute top-2 right-2 z-10 flex flex-col items-end space-y-1">
+             {artwork.is_active === false && <Badge variant={'destructive'} className="text-xs">Artwork Inactive</Badge>}
+             {artwork.artist?.is_active === false && <Badge variant={'destructive'} className="text-xs opacity-80">Artist Inactive</Badge>}
+             {isOutOfStock && artwork.is_active === true && <Badge variant={'outline'} className="text-xs border-orange-500 text-orange-600">Out of Stock</Badge>}
             </div>
          )}
        </CardHeader>
        <CardContent className="p-4 flex-grow">
          <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn("block", !isActuallyAvailable && "pointer-events-none")}>
-           <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isActuallyAvailable && "text-muted-foreground")}>
+           <a className={cn("block", !isPubliclyAvailableForPurchase && "pointer-events-none")}>
+           <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isPubliclyAvailableForPurchase && "text-muted-foreground")}>
              {artwork.name}
            </CardTitle>
            </a>
@@ -5271,10 +5404,6 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
             <div className="mt-2 text-xs space-y-1">
                 <div className="flex items-center text-muted-foreground">
                     <DollarSign className="h-3.5 w-3.5 mr-1.5" /> Price: {formatPrice(artwork.price)}
-                </div>
-                <div className="flex items-center text-muted-foreground">
-                    {artwork.stock_quantity > 0 ? <PackageCheck className="h-3.5 w-3.5 mr-1.5 text-green-600" /> : <PackageX className="h-3.5 w-3.5 mr-1.5 text-red-600" />}
-                     Stock: {artwork.stock_quantity}
                 </div>
             </div>
          ) : (
@@ -5298,14 +5427,14 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
          ) : (
            <Button
               size="sm"
-              variant={(artwork.stock_quantity === 0 || !isActuallyAvailable) ? "outline" : "default"}
+              variant={(!isPubliclyAvailableForPurchase || isOutOfStock) ? "outline" : "default"}
               onClick={handleAddToCart}
-              disabled={authIsLoading || isCartLoading || artwork.stock_quantity === 0 || isInCart || !isActuallyAvailable}
-              aria-label={!isActuallyAvailable ? 'Unavailable' : artwork.stock_quantity === 0 ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}
+              disabled={authIsLoading || isCartLoading || !isPubliclyAvailableForPurchase || isOutOfStock || !!isInCart}
+              aria-label={!isPubliclyAvailableForPurchase ? 'Unavailable' : isOutOfStock ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}
            >
-              {!isActuallyAvailable ? (
+              {!isPubliclyAvailableForPurchase ? (
                  <> <EyeOff className="mr-2 h-4 w-4" /> Unavailable</>
-              ) : artwork.stock_quantity === 0 ? (
+              ) : isOutOfStock ? (
                   'Out of Stock'
               ) : isInCart ? (
                   'In Cart'

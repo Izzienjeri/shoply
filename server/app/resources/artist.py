@@ -2,7 +2,7 @@ from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload, selectinload
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 
 from .. import db
 from ..models import Artist, Artwork, User
@@ -16,9 +16,9 @@ class ArtistList(Resource):
     def get(self):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
-            if jwt_payload:
-                user_id_from_token = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id_from_token = get_jwt_identity()
+            if user_id_from_token:
                 user = User.query.get(user_id_from_token)
                 if user and user.is_admin:
                     is_admin_request = True
@@ -27,9 +27,10 @@ class ArtistList(Resource):
 
         if is_admin_request:
             current_app.logger.info("Admin request: Fetching all artists with artwork counts for ArtistList.")
-            artists = Artist.query.options(selectinload(Artist.artworks)).order_by(Artist.name).all()
-            for artist in artists:
-                 artist._artworks_count_val = len(artist.artworks)
+            artists_query = Artist.query.options(selectinload(Artist.artworks)).order_by(Artist.name)
+            artists = artists_query.all()
+            for artist_obj in artists:
+                 artist_obj._artworks_count_val = len(artist_obj.artworks) if artist_obj.artworks else 0
         else:
             artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
 
@@ -53,7 +54,8 @@ class ArtistList(Resource):
         try:
             db.session.add(new_artist)
             db.session.commit()
-            return artist_schema.dump(new_artist), 201
+            created_artist = Artist.query.options(selectinload(Artist.artworks)).get(new_artist.id)
+            return artist_schema.dump(created_artist), 201
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artist in DB: {e}", exc_info=True)
@@ -63,9 +65,9 @@ class ArtistDetail(Resource):
     def get(self, artist_id):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
-            if jwt_payload:
-                user_id_from_token = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id_from_token = get_jwt_identity()
+            if user_id_from_token:
                 user = User.query.get(user_id_from_token)
                 if user and user.is_admin:
                     is_admin_request = True
@@ -88,12 +90,12 @@ class ArtistDetail(Resource):
             artist_dump_data = artist_schema.dump(artist)
         else:
             active_artworks = [aw for aw in artist.artworks if aw.is_active]
-            artist.artworks_for_display = active_artworks
-
+            artist.artworks_for_display = active_artworks 
+            
             artist_dump_data = artist_schema.dump(artist)
-
             artist_dump_data['artworks'] = ArtworkSchema(many=True, exclude=("artist",)).dump(active_artworks)
             artist_dump_data['artworks_count'] = len(active_artworks)
+
 
         return artist_dump_data, 200
 
@@ -106,10 +108,10 @@ class ArtistDetail(Resource):
         if not json_data:
             return {"message": "No input data provided"}, 400
         
-        is_active_in_payload = json_data.get('is_active')
+        original_is_active_state = artist.is_active 
 
         try:
-            updated_artist = artist_schema.load(
+            updated_artist_instance = artist_schema.load(
                 json_data,
                 instance=artist,
                 partial=True,
@@ -119,14 +121,25 @@ class ArtistDetail(Resource):
             return {"message": "Validation errors", "errors": err.messages}, 400
 
         try:
-            if is_active_in_payload is False and artist.is_active is True:
-                current_app.logger.info(f"Artist {artist.id} is being deactivated. Deactivating associated artworks.")
-                for artwork_item in artist.artworks:
-                    artwork_item.is_active = False
-                    current_app.logger.info(f"Deactivated artwork {artwork_item.id} for artist {artist.id}")
+            db.session.commit() 
             
-
-            db.session.commit()
+            if original_is_active_state is True and updated_artist_instance.is_active is False:
+                current_app.logger.info(f"Artist {artist.id} ('{artist.name}') is being deactivated. Processing associated artworks.")
+                
+                artworks_to_update = Artwork.query.filter_by(artist_id=updated_artist_instance.id).all()
+                
+                updated_artworks_count = 0
+                for artwork_item in artworks_to_update:
+                    if artwork_item.is_active or artwork_item.stock_quantity > 0:
+                        artwork_item.is_active = False
+                        artwork_item.stock_quantity = 0 
+                        updated_artworks_count += 1
+                        current_app.logger.info(f"Artwork {artwork_item.id} for artist {artist.id}: set inactive and stock to 0.")
+                
+                if updated_artworks_count > 0:
+                    db.session.commit()
+                    current_app.logger.info(f"Committed changes for {updated_artworks_count} artworks of deactivated artist {artist.id}.")
+            
             refreshed_artist = Artist.query.options(selectinload(Artist.artworks)).get(artist_id)
             return artist_schema.dump(refreshed_artist), 200
         except Exception as e:

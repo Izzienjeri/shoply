@@ -80,12 +80,11 @@ export default function ArtworkDetailPage() {
   }, [artworkId, isAuthenticated]);
 
   const handleAddToCart = async () => {
-    if (!artwork || isAdmin || !artwork.is_active || (artwork.artist && !artwork.artist.is_active)) return;
+    if (!artwork || isAdmin) return; 
     setIsAddingToCart(true);
     try {
       await addToCart(artwork.id, 1);
     } catch (err) {
-      console.error("Add to cart failed from ArtworkDetail page:", err);
     } finally {
       setIsAddingToCart(false);
     }
@@ -112,24 +111,15 @@ export default function ArtworkDetailPage() {
     );
   }
   
-  if (!artwork.is_active && !isAdmin) {
+  const isPubliclyVisibleAndPurchaseable = artwork.is_active === true && artwork.artist?.is_active === true;
+  const isOutOfStock = artwork.stock_quantity === 0;
+
+  if (!isPubliclyVisibleAndPurchaseable && !isAdmin) {
     return (
       <div className="text-center py-10">
         <ImageOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
         <p className="text-xl text-muted-foreground">Artwork Not Available</p>
-        <p className="text-sm text-muted-foreground">This artwork is not currently active.</p>
-         <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
-           Explore Other Artworks
-        </Button>
-      </div>
-    );
-  }
-  if (artwork.artist && !artwork.artist.is_active && !isAdmin) {
-     return (
-      <div className="text-center py-10">
-        <ImageOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-        <p className="text-xl text-muted-foreground">Artwork Not Available</p>
-        <p className="text-sm text-muted-foreground">The artist of this artwork is not currently active.</p>
+        <p className="text-sm text-muted-foreground">This artwork is currently not available for viewing or purchase.</p>
          <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
            Explore Other Artworks
         </Button>
@@ -137,7 +127,6 @@ export default function ArtworkDetailPage() {
     );
   }
 
-  const canBePurchased = artwork.is_active && artwork.artist?.is_active && artwork.stock_quantity > 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -154,22 +143,24 @@ export default function ArtworkDetailPage() {
         )}
       </div>
       
-      {isAdmin && (!artwork.is_active || (artwork.artist && !artwork.artist.is_active)) && (
+      {isAdmin && (artwork.is_active === false || artwork.artist?.is_active === false || isOutOfStock) && (
         <Alert variant="warning" className="mb-6">
             <EyeOff className="h-4 w-4" />
-            <AlertTitle>Admin View: Potentially Hidden Artwork</AlertTitle>
+            <AlertTitle>Admin View: Artwork Status Notes</AlertTitle>
             <AlertDescription>
-              This artwork is currently {!artwork.is_active ? 'marked as INACTIVE' : 'marked as ACTIVE'}.
-              Its artist is currently {artwork.artist && !artwork.artist.is_active ? 'marked as INACTIVE' : 'marked as ACTIVE'}.
-              If either the artwork or its artist is inactive, it will be hidden from public users.
+              {artwork.is_active === false && <>Artwork status: <Badge variant="destructive">INACTIVE</Badge>. </>}
+              {artwork.artist?.is_active === false && <>Artist status: <Badge variant="destructive">INACTIVE</Badge>. </>}
+              {isOutOfStock && artwork.is_active && <>Stock status: <Badge variant="outline" className="border-orange-500 text-orange-600">OUT OF STOCK</Badge>. </>}
+              <br/>
+              If artwork or artist is inactive, it's hidden from public. Inactive artworks must have 0 stock.
             </AlertDescription>
         </Alert>
       )}
-       {isAdmin && artwork.is_active && artwork.artist?.is_active && (
+       {isAdmin && artwork.is_active === true && artwork.artist?.is_active === true && !isOutOfStock && (
         <Alert variant="default" className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400">
             <InfoIcon className="h-4 w-4" />
             <AlertTitle>Admin View: Active & Visible Artwork</AlertTitle>
-            <AlertDescription>This artwork and its artist are active. It is visible to public users.</AlertDescription>
+            <AlertDescription>This artwork and its artist are active, and it is in stock. It is visible and purchaseable by public users.</AlertDescription>
         </Alert>
       )}
 
@@ -202,11 +193,9 @@ export default function ArtworkDetailPage() {
           <div>
             <h1 className="text-3xl lg:text-4xl font-bold font-serif text-primary tracking-tight">
               {artwork.name}
-              {!artwork.is_active && <Badge variant="outline" className="ml-2 text-base align-middle">Inactive Artwork</Badge>}
             </h1>
             <Link href={`/artists/${artwork.artist.id}`} className="text-lg text-muted-foreground hover:text-primary transition-colors">
               By {artwork.artist.name}
-              {artwork.artist && !artwork.artist.is_active && <Badge variant="outline" className="ml-2 text-sm align-middle">Inactive Artist</Badge>}
             </Link>
           </div>
 
@@ -217,14 +206,22 @@ export default function ArtworkDetailPage() {
             </p>
           </div>
           
-          {(isAdmin || artwork.stock_quantity > 0) && (
-            <div className="flex items-center space-x-2">
-                 {artwork.stock_quantity > 0 ? <PackageCheck className="h-5 w-5 text-green-600" /> : <PackageX className="h-5 w-5 text-red-600" />}
-                <p className={cn("text-sm", artwork.stock_quantity > 0 ? "text-muted-foreground" : "text-red-600 font-semibold")}>
-                    Stock: {artwork.stock_quantity} {artwork.stock_quantity === 0 && "(Out of Stock)"}
-                </p>
-            </div>
+          <div className="flex items-center space-x-2">
+              {isOutOfStock ? <PackageX className="h-5 w-5 text-orange-600" /> : <PackageCheck className="h-5 w-5 text-green-600" />}
+              <p className={cn("text-sm font-medium", isOutOfStock ? "text-orange-600" : "text-green-700")}>
+                  {isOutOfStock ? "Out of Stock" : 
+                   (artwork.stock_quantity < 5 ? `Only ${artwork.stock_quantity} left in stock!` : `In Stock (${artwork.stock_quantity} available)`)
+                  }
+              </p>
+          </div>
+          
+          {!artwork.is_active && !isAdmin && (
+              <Badge variant="destructive">Currently Unavailable</Badge>
           )}
+          {artwork.artist && !artwork.artist.is_active && !isAdmin && (
+              <Badge variant="destructive">Artist Unavailable</Badge>
+          )}
+
 
           <Separator />
 
@@ -237,9 +234,9 @@ export default function ArtworkDetailPage() {
 
           <Separator />
           
-          {!isAdmin && (
+          {!isAdmin && isPubliclyVisibleAndPurchaseable && ( 
             <div className="space-y-4">
-              {canBePurchased ? (
+              {!isOutOfStock ? (
                 <Button
                   size="lg"
                   className="w-full md:w-auto"
@@ -257,31 +254,17 @@ export default function ArtworkDetailPage() {
                 </Button>
               ) : (
                 <Button size="lg" className="w-full md:w-auto" disabled>
-                  {artwork.stock_quantity === 0 ? 'Out of Stock' : 'Unavailable'}
+                   Out of Stock
                 </Button>
               )}
-              {canBePurchased && artwork.stock_quantity < 5 && artwork.stock_quantity > 0 && (
-                <p className="text-sm text-orange-600">
-                  Only {artwork.stock_quantity} left in stock!
-                </p>
-              )}
-               {artwork.stock_quantity === 0 && (
-                <p className="text-sm text-red-600 font-semibold">
-                  This item is currently out of stock.
-                </p>
-              )}
-               {!artwork.is_active && (
-                 <p className="text-sm text-yellow-600 font-semibold">
-                     This artwork is not currently active.
-                 </p>
-               )}
-               {artwork.artist && !artwork.artist.is_active && (
-                 <p className="text-sm text-yellow-600 font-semibold">
-                     The artist of this artwork is not currently active.
-                 </p>
-               )}
+              {/* Removed the redundant stock message here, it's covered by the one above now */}
             </div>
           )}
+           {!isAdmin && !isPubliclyVisibleAndPurchaseable && ( 
+             <p className="text-sm text-yellow-600 font-semibold">
+                 This artwork is currently not available for purchase.
+             </p>
+           )}
         </div>
       </div>
     </div>

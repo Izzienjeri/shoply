@@ -142,12 +142,16 @@ export default function AdminDeliveryOptionsPage() {
 
     try {
       if (editingOption) {
-        toast.info("Update functionality for delivery options requires backend changes.");
-        throw new Error("Backend for PATCH /delivery/options/:id not implemented.");
+        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
+        toast.success("Delivery option updated successfully!");
       } else {
-        toast.info("Create functionality for delivery options requires backend changes.");
-        throw new Error("Backend for POST /delivery/options not implemented.");
+        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
+        toast.success("Delivery option created successfully!");
       }
+      setShowFormDialog(false);
+      setEditingOption(null);
+      form.reset({ name: "", price: 0, description: null, is_pickup: false, active: true, sort_order: 0 });
+      fetchDeliveryOptions();
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
@@ -191,8 +195,9 @@ export default function AdminDeliveryOptionsPage() {
     if (!optionToDelete) return;
     setIsSubmitting(true);
     try {
-      toast.info("Delete functionality for delivery options requires backend changes.");
-      throw new Error("Backend for DELETE /delivery/options/:id not implemented.");
+      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
+      toast.success("Delivery option deleted successfully!");
+      fetchDeliveryOptions();
     } catch (error: any) {
       toast.error(error.message || "Failed to delete delivery option.");
     } finally {
@@ -349,9 +354,6 @@ export default function AdminDeliveryOptionsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
-             <DialogDescription>
-                Note: Backend support for Create, Update, Delete of delivery options is pending.
-             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
@@ -440,7 +442,6 @@ export default function AdminDeliveryOptionsPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
-              Note: Backend support for Delete of delivery options is pending.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

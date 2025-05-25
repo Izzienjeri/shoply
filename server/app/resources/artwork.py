@@ -1,27 +1,19 @@
-# === ./app/resources/artwork.py ===
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from werkzeug.utils import secure_filename
 import os
 import uuid
 
 from .. import db
 from ..models import Artwork, Artist, User
-# from ..schemas import artwork_schema, artworks_schema, ArtworkSchema # OLD WAY
-from .. import schemas  # NEW WAY: Import the module itself
+from .. import schemas
 from ..decorators import admin_required
 
 artwork_bp = Blueprint('artworks', __name__)
 artwork_api = Api(artwork_bp)
-
-# Access schemas via the module:
-# artwork_schema_instance = schemas.artwork_schema
-# artworks_schema_instance = schemas.artworks_schema
-# ArtworkSchema_class = schemas.ArtworkSchema 
-# It's better to use the instances directly if they are defined in schemas.py
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -49,14 +41,15 @@ class ArtworkList(Resource):
     def get(self):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt() 
-            if jwt_payload:
-                user_id = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id = get_jwt_identity()
+            if user_id:
                 user = User.query.get(user_id)
                 if user and user.is_admin:
                     is_admin_request = True
         except Exception:
             pass
+
 
         if is_admin_request:
             current_app.logger.info("Admin request: Fetching all artworks for ArtworkList.")
@@ -67,26 +60,44 @@ class ArtworkList(Resource):
                 .filter(Artwork.is_active == True, Artist.is_active == True)\
                 .order_by(Artwork.created_at.desc()).all()
         
-        return schemas.artworks_schema.dump(artworks), 200 # Use schemas.artworks_schema
+        return schemas.artworks_schema.dump(artworks), 200
 
     @admin_required
     def post(self):
         form_data = request.form.to_dict()
         image_file = request.files.get('image_file')
 
-        if 'is_active' not in form_data:
-            form_data['is_active'] = True
-        else:
-            form_data['is_active'] = str(form_data['is_active']).lower() in ['true', 'on', '1', 'yes']
-
         artist_id_val = form_data.get('artist_id')
-        if artist_id_val:
-            artist = Artist.query.get(artist_id_val)
-            if not artist:
-                abort(400, message=f"Artist with ID {artist_id_val} not found.")
-        else:
-             abort(400, message="artist_id is required.")
+        if not artist_id_val:
+            abort(400, message="artist_id is required.")
+        artist = Artist.query.get(artist_id_val)
+        if not artist:
+            abort(400, message=f"Artist with ID {artist_id_val} not found.")
+        if not artist.is_active:
+             abort(400, message=f"Cannot assign artwork to an inactive artist ('{artist.name}'). Activate the artist first.")
 
+        try:
+            target_stock_quantity = int(form_data.get('stock_quantity', 0))
+            if target_stock_quantity < 0:
+                abort(400, message="Stock quantity cannot be negative.")
+        except ValueError:
+            abort(400, message="Invalid stock_quantity format.")
+        
+        payload_is_active_val = form_data.get('is_active')
+        if payload_is_active_val is None: 
+            target_is_active = True 
+        else:
+            target_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+
+        if target_stock_quantity > 0:
+            target_is_active = True 
+
+        if not target_is_active and target_stock_quantity > 0: 
+            abort(400, message="Cannot create an inactive artwork with stock. Set stock to 0 or create as active.")
+        
+        form_data['is_active'] = target_is_active
+        form_data['stock_quantity'] = target_stock_quantity
+        
         uploaded_image_path = None
         if image_file:
             uploaded_image_path = save_artwork_image(image_file)
@@ -97,12 +108,11 @@ class ArtworkList(Resource):
         elif 'image_url' in form_data and form_data['image_url']:
             pass
         else:
-            if not image_file:
+            if not image_file: 
                  return {"message": "image_file is required for new artworks."}, 400
             form_data['image_url'] = None 
 
         try:
-            # Use schemas.artwork_schema here
             new_artwork_instance = schemas.artwork_schema.load(form_data, session=db.session)
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
@@ -113,7 +123,8 @@ class ArtworkList(Resource):
         try:
             db.session.add(new_artwork_instance)
             db.session.commit()
-            return schemas.artwork_schema.dump(new_artwork_instance), 201 # Use schemas.artwork_schema
+            created_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(new_artwork_instance.id)
+            return schemas.artwork_schema.dump(created_artwork), 201
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artwork in DB: {e}", exc_info=True)
@@ -126,14 +137,15 @@ class ArtworkDetail(Resource):
     def get(self, artwork_id):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
-            if jwt_payload:
-                user_id = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id = get_jwt_identity()
+            if user_id:
                 user = User.query.get(user_id)
                 if user and user.is_admin:
                     is_admin_request = True
         except Exception:
             pass
+
 
         query = Artwork.query.options(joinedload(Artwork.artist))
         artwork = query.get(artwork_id)
@@ -145,33 +157,65 @@ class ArtworkDetail(Resource):
             if not artwork.is_active or (artwork.artist and not artwork.artist.is_active):
                 return {"message": f"Artwork with ID {artwork_id} not found or not active."}, 404
         
-        return schemas.artwork_schema.dump(artwork), 200 # Use schemas.artwork_schema
+        return schemas.artwork_schema.dump(artwork), 200
 
     @admin_required
     def patch(self, artwork_id):
-        artwork = Artwork.query.get_or_404(
-            artwork_id, description=f"Artwork with ID {artwork_id} not found."
-        )
+        current_artwork_from_db = Artwork.query.options(joinedload(Artwork.artist)).get(artwork_id)
+        if not current_artwork_from_db:
+            abort(404, message=f"Artwork with ID {artwork_id} not found.")
 
         form_data = request.form.to_dict()
         image_file = request.files.get('image_file')
         
-        if 'is_active' in form_data:
-            form_data['is_active'] = str(form_data['is_active']).lower() in ['true', 'on', '1', 'yes']
-
         new_artist_id = form_data.get('artist_id')
-        if new_artist_id and new_artist_id != artwork.artist_id:
+        if new_artist_id and new_artist_id != current_artwork_from_db.artist_id:
             artist = Artist.query.get(new_artist_id)
             if not artist:
                 abort(400, message=f"New artist with ID {new_artist_id} not found.")
+            if not artist.is_active:
+                payload_is_active_val = form_data.get('is_active', current_artwork_from_db.is_active)
+                target_artwork_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+                if target_artwork_is_active:
+                    abort(400, message=f"Cannot assign active artwork to an inactive artist ('{artist.name}'). Activate the artist first or deactivate the artwork.")
 
+
+        target_stock_quantity_str = form_data.get('stock_quantity')
+        if target_stock_quantity_str is not None:
+            try:
+                target_stock_quantity = int(target_stock_quantity_str)
+                if target_stock_quantity < 0:
+                    abort(400, message="Stock quantity cannot be negative.")
+            except ValueError:
+                abort(400, message="Invalid stock_quantity format.")
+        else:
+            target_stock_quantity = current_artwork_from_db.stock_quantity
+
+        payload_is_active_val = form_data.get('is_active')
+        if payload_is_active_val is not None:
+            target_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+        else:
+            target_is_active = current_artwork_from_db.is_active
+        
+        if target_is_active is False:
+            if target_stock_quantity > 0:
+                abort(400, message="Cannot deactivate artwork with stock. Please set stock to 0 first or in the same request.")
+        
+        if target_stock_quantity > 0:
+            target_is_active = True
+
+        if not target_is_active and target_stock_quantity > 0:
+            abort(400, message="Internal logic error: Inactive artwork cannot have stock. Please review request or contact support.")
+
+        form_data['is_active'] = target_is_active 
+        form_data['stock_quantity'] = target_stock_quantity
+        
         if image_file:
-            old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url) if artwork.image_url else None
-            
+            old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], current_artwork_from_db.image_url) if current_artwork_from_db.image_url else None
             uploaded_image_path = save_artwork_image(image_file)
             if uploaded_image_path:
                 form_data['image_url'] = uploaded_image_path
-                if old_image_path_abs and os.path.exists(old_image_path_abs) and artwork.image_url != uploaded_image_path:
+                if old_image_path_abs and os.path.exists(old_image_path_abs) and current_artwork_from_db.image_url != uploaded_image_path:
                     try:
                         os.remove(old_image_path_abs)
                         current_app.logger.info(f"Deleted old image: {old_image_path_abs}")
@@ -179,9 +223,9 @@ class ArtworkDetail(Resource):
                         current_app.logger.error(f"Error deleting old image {old_image_path_abs}: {e}")
             else:
                 return {"message": "Invalid image file or error during upload for update."}, 400
-        elif 'image_url' in form_data and form_data['image_url'] == "" : 
-            if artwork.image_url:
-                old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
+        elif 'image_url' in form_data and form_data['image_url'] == "" :
+            if current_artwork_from_db.image_url:
+                old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], current_artwork_from_db.image_url)
                 if os.path.exists(old_image_path_abs):
                     try: 
                         os.remove(old_image_path_abs)
@@ -189,15 +233,12 @@ class ArtworkDetail(Resource):
                     except OSError as e:
                         current_app.logger.error(f"Error deleting image {old_image_path_abs}: {e}")
             form_data['image_url'] = None
-        elif 'image_url' in form_data :
-            pass
-
+        
         try:
-            # Use schemas.artwork_schema
-            updated_artwork = schemas.artwork_schema.load(
-                form_data,
-                instance=artwork,
-                partial=True, 
+            updated_artwork_instance = schemas.artwork_schema.load(
+                form_data, 
+                instance=current_artwork_from_db,
+                partial=True,
                 session=db.session
             )
         except ValidationError as err:
@@ -205,8 +246,8 @@ class ArtworkDetail(Resource):
 
         try:
             db.session.commit()
-            refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(artwork.id)
-            return schemas.artwork_schema.dump(refreshed_artwork), 200 # Use schemas.artwork_schema
+            refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(current_artwork_from_db.id)
+            return schemas.artwork_schema.dump(refreshed_artwork), 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating artwork {artwork_id}: {e}", exc_info=True)

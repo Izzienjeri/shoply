@@ -40,12 +40,6 @@ function AdminSidebar() {
                 ))}
             </nav>
             <div className="mt-auto pt-4 border-t border-gray-300 dark:border-gray-600 space-y-2">
-                 <Link href="/"
-                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
-                 >
-                    <Home className="mr-3 h-5 w-5" />
-                    Back to Site
-                 </Link>
                  <Button
                     onClick={async () => {
                         await logout();

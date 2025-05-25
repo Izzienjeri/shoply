@@ -30,13 +30,14 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
   };
 
   const isInCart = !isAdmin && cart?.items.some(item => item.artwork_id === artwork.id);
-  const isActuallyAvailable = artwork.is_active && artwork.artist?.is_active;
+  const isPubliclyAvailableForPurchase = artwork.is_active === true && artwork.artist?.is_active === true;
+  const isOutOfStock = artwork.stock_quantity === 0;
 
   return (
     <Card className="overflow-hidden flex flex-col h-full group border shadow-sm hover:shadow-lg transition-shadow duration-300">
        <CardHeader className="p-0 border-b relative">
          <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn(!isActuallyAvailable && "opacity-60 group-hover:opacity-80 transition-opacity")}>
+           <a className={cn(!isPubliclyAvailableForPurchase && "opacity-60 group-hover:opacity-80 transition-opacity")}>
            <AspectRatio ratio={1 / 1} className="bg-muted overflow-hidden">
              <Image
                src={artwork.image_url || placeholderImage}
@@ -56,25 +57,31 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                   <ImageOff className="h-12 w-12 text-gray-400" />
                 </div>
               )}
-              {!isAdmin && !isActuallyAvailable && (
+              {!isAdmin && !isPubliclyAvailableForPurchase && (
                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                      <Badge variant="destructive">Unavailable</Badge>
+                 </div>
+              )}
+               {!isAdmin && isPubliclyAvailableForPurchase && isOutOfStock && (
+                 <div className="absolute bottom-2 right-2 z-10">
+                     <Badge variant="outline" className="bg-background/80 border-orange-500 text-orange-600">Out of Stock</Badge>
                  </div>
               )}
            </AspectRatio>
            </a>
          </Link>
          {isAdmin && (
-            <div className="absolute top-2 right-2 z-10 space-y-1">
-             {!artwork.is_active && <Badge variant={'destructive'} className="block">Artwork Inactive</Badge>}
-             {artwork.artist && !artwork.artist.is_active && <Badge variant={'destructive'} className="block opacity-80">Artist Inactive</Badge>}
+            <div className="absolute top-2 right-2 z-10 flex flex-col items-end space-y-1">
+             {artwork.is_active === false && <Badge variant={'destructive'} className="text-xs">Artwork Inactive</Badge>}
+             {artwork.artist?.is_active === false && <Badge variant={'destructive'} className="text-xs opacity-80">Artist Inactive</Badge>}
+             {isOutOfStock && artwork.is_active === true && <Badge variant={'outline'} className="text-xs border-orange-500 text-orange-600">Out of Stock</Badge>}
             </div>
          )}
        </CardHeader>
        <CardContent className="p-4 flex-grow">
          <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn("block", !isActuallyAvailable && "pointer-events-none")}>
-           <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isActuallyAvailable && "text-muted-foreground")}>
+           <a className={cn("block", !isPubliclyAvailableForPurchase && "pointer-events-none")}>
+           <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isPubliclyAvailableForPurchase && "text-muted-foreground")}>
              {artwork.name}
            </CardTitle>
            </a>
@@ -86,10 +93,6 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
             <div className="mt-2 text-xs space-y-1">
                 <div className="flex items-center text-muted-foreground">
                     <DollarSign className="h-3.5 w-3.5 mr-1.5" /> Price: {formatPrice(artwork.price)}
-                </div>
-                <div className="flex items-center text-muted-foreground">
-                    {artwork.stock_quantity > 0 ? <PackageCheck className="h-3.5 w-3.5 mr-1.5 text-green-600" /> : <PackageX className="h-3.5 w-3.5 mr-1.5 text-red-600" />}
-                     Stock: {artwork.stock_quantity}
                 </div>
             </div>
          ) : (
@@ -113,14 +116,14 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
          ) : (
            <Button
               size="sm"
-              variant={(artwork.stock_quantity === 0 || !isActuallyAvailable) ? "outline" : "default"}
+              variant={(!isPubliclyAvailableForPurchase || isOutOfStock) ? "outline" : "default"}
               onClick={handleAddToCart}
-              disabled={authIsLoading || isCartLoading || artwork.stock_quantity === 0 || isInCart || !isActuallyAvailable}
-              aria-label={!isActuallyAvailable ? 'Unavailable' : artwork.stock_quantity === 0 ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}
+              disabled={authIsLoading || isCartLoading || !isPubliclyAvailableForPurchase || isOutOfStock || !!isInCart}
+              aria-label={!isPubliclyAvailableForPurchase ? 'Unavailable' : isOutOfStock ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}
            >
-              {!isActuallyAvailable ? (
+              {!isPubliclyAvailableForPurchase ? (
                  <> <EyeOff className="mr-2 h-4 w-4" /> Unavailable</>
-              ) : artwork.stock_quantity === 0 ? (
+              ) : isOutOfStock ? (
                   'Out of Stock'
               ) : isInCart ? (
                   'In Cart'

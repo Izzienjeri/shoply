@@ -1,7 +1,6 @@
-// === app/admin/artworks/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useForm, SubmitHandler, Controller } from 'react-hook-form';
@@ -79,7 +78,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud } from 'lucide-react';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 
 const artworkFormSchema = z.object({
@@ -133,13 +132,26 @@ export default function AdminArtworksPage() {
       price: 0,
       stock_quantity: 0,
       description: null,
-      is_active: true,
+      is_active: true, 
       image_file: null,
       current_image_url: null,
     },
   });
+  const { control, handleSubmit, watch, setValue, reset, setError: setFormError, clearErrors, formState: { errors } } = form;
 
-  // Define fetchArtworksAndArtists at the component scope
+  const stockQuantityValue = watch('stock_quantity');
+  const isActiveValue = watch('is_active');
+
+  useEffect(() => {
+    const stock = Number(stockQuantityValue);
+    if (stock > 0 && !isActiveValue) {
+      setValue('is_active', true, { shouldValidate: true, shouldDirty: true });
+      toast.info("Artwork automatically set to active due to positive stock quantity.", { duration: 4000 });
+      clearErrors(["is_active", "stock_quantity"]); 
+    }
+  }, [stockQuantityValue, isActiveValue, setValue, clearErrors]);
+
+
   const fetchArtworksAndArtists = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -148,13 +160,12 @@ export default function AdminArtworksPage() {
         apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
       ]);
       setArtworks(fetchedArtworks || []);
-      setArtists(fetchedArtists || []);
+      
+      setArtists(fetchedArtists || []); 
 
-      // This logic will run after artists are fetched.
-      // Important: Check if the form is for a NEW artwork and artist_id is not already set
-      // (e.g., by opening an edit dialog which would have its own artist_id).
       if (fetchedArtists && fetchedArtists.length > 0 && !editingArtwork && !form.getValues('artist_id')) {
-        form.setValue('artist_id', fetchedArtists[0].id, { shouldValidate: true });
+        const firstActiveArtist = fetchedArtists.find(a => a.is_active);
+        setValue('artist_id', firstActiveArtist ? firstActiveArtist.id : fetchedArtists[0].id, { shouldValidate: true });
       }
     } catch (error) {
       console.error("Failed to fetch artworks or artists:", error);
@@ -162,29 +173,58 @@ export default function AdminArtworksPage() {
     } finally {
       setIsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, editingArtwork]); // Added form and editingArtwork to dependencies of useCallback
+  }, [form, editingArtwork, setValue]); 
 
   useEffect(() => {
     fetchArtworksAndArtists();
-  }, [fetchArtworksAndArtists]); // Call it on mount
+  }, [fetchArtworksAndArtists]);
 
 
   const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
     setIsSubmitting(true);
+    clearErrors();
+
+    const currentStock = Number(values.stock_quantity);
+    const payload_is_active_val = values.is_active; 
+    
+    let finalIsActive = payload_is_active_val; 
+
+    if (currentStock > 0) {
+        finalIsActive = true;
+    }
+
+    if (payload_is_active_val === false && currentStock > 0) {
+       toast.error("Cannot set artwork as inactive if stock is greater than 0. Artwork will be saved as active.");
+    }
+    
+    if (finalIsActive === false && currentStock > 0) {
+        toast.error("Internal validation error: An inactive artwork cannot have stock. Please correct and try again.");
+        setFormError("is_active", { type: "manual", message: "Inactive artwork must have 0 stock." });
+        setFormError("stock_quantity", { type: "manual", message: "Must be 0 if inactive." });
+        setIsSubmitting(false);
+        return;
+    }
 
     if (!editingArtwork && !values.image_file) {
-      form.setError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
+      setFormError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
       setIsSubmitting(false);
       return;
     }
     if (editingArtwork && !values.image_file && !values.current_image_url) {
-        form.setError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
+        setFormError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
         setIsSubmitting(false);
         return;
     }
     if (!values.artist_id) {
-        form.setError("artist_id", {type: "manual", message: "Artist is required."});
+        setFormError("artist_id", {type: "manual", message: "Artist is required."});
+        setIsSubmitting(false);
+        return;
+    }
+    
+    const selectedArtist = artists.find(a => a.id === values.artist_id);
+    if (selectedArtist && !selectedArtist.is_active && finalIsActive) { 
+        toast.error(`Artist "${selectedArtist.name}" is inactive. Cannot assign an active artwork to an inactive artist. Activate the artist first or make the artwork inactive (with 0 stock).`);
+        setFormError("artist_id", {type: "manual", message: "Selected artist is inactive, cannot assign active artwork."});
         setIsSubmitting(false);
         return;
     }
@@ -193,8 +233,8 @@ export default function AdminArtworksPage() {
     formData.append('name', values.name);
     formData.append('artist_id', values.artist_id); 
     formData.append('price', values.price.toString());
-    formData.append('stock_quantity', values.stock_quantity.toString());
-    formData.append('is_active', String(values.is_active));
+    formData.append('stock_quantity', String(currentStock)); 
+    formData.append('is_active', String(finalIsActive));
     if (values.description) {
       formData.append('description', values.description);
     }
@@ -211,15 +251,16 @@ export default function AdminArtworksPage() {
     }
 
     try {
+      let responseArtwork: ArtworkType | null;
       if (editingArtwork) {
-        await apiClient.patch<ArtworkType>(
+        responseArtwork = await apiClient.patch<ArtworkType>(
           `/artworks/${editingArtwork.id}`,
           formData,
           { needsAuth: true, isFormData: true }
         );
         toast.success("Artwork updated successfully!");
       } else {
-        await apiClient.post<ArtworkType>(
+        responseArtwork = await apiClient.post<ArtworkType>(
           '/artworks/',
           formData,
           { needsAuth: true, isFormData: true }
@@ -227,23 +268,26 @@ export default function AdminArtworksPage() {
         toast.success("Artwork created successfully!");
       }
 
+      if (responseArtwork && responseArtwork.is_active && !payload_is_active_val && Number(responseArtwork.stock_quantity) > 0) {
+          toast.info("Artwork was set to active by the server because stock is greater than 0.", { duration: 5000 });
+      }
+
       setShowFormDialog(false);
       setEditingArtwork(null);
-      form.reset({
+      reset({ 
         name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
         stock_quantity: 0, description: null, is_active: true,
         image_file: null, current_image_url: null,
       });
       setPreviewImage(null);
-      fetchArtworksAndArtists(); // Refresh list
+      fetchArtworksAndArtists(); 
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
       if (apiError.errors) {
         Object.entries(apiError.errors).forEach(([field, messages]) => {
-          console.error(`Server error for ${field}: ${messages.join(", ")}`);
            if (Object.keys(form.getValues()).includes(field)) {
-             form.setError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
+             setFormError(field as keyof ArtworkFormInput, { type: "server", message: messages.join(", ") });
            }
         });
       }
@@ -255,13 +299,13 @@ export default function AdminArtworksPage() {
   const openEditDialog = (artwork: ArtworkType) => {
     setEditingArtwork(artwork);
     setPreviewImage(artwork.image_url || null);
-    form.reset({ 
+    reset({ 
       name: artwork.name,
-      artist_id: artwork.artist?.id || "", // Use ID from the nested artist object, fallback to "" if artist/artist.id is missing
+      artist_id: artwork.artist?.id || "", 
       price: parseFloat(artwork.price),
       stock_quantity: artwork.stock_quantity,
       description: artwork.description || null,
-      is_active: artwork.is_active === undefined ? true : artwork.is_active,
+      is_active: artwork.is_active === undefined ? true : artwork.is_active, 
       image_file: null,
       current_image_url: artwork.image_url || null,
     });
@@ -271,13 +315,13 @@ export default function AdminArtworksPage() {
   const openNewDialog = () => {
     setEditingArtwork(null);
     setPreviewImage(null);
-    form.reset({
+    reset({ 
         name: "",
-        artist_id: artists.length > 0 ? artists[0].id : "",
+        artist_id: artists.length > 0 ? (artists.find(a => a.is_active)?.id || artists[0].id) : "",
         price: 0,
         stock_quantity: 0,
         description: null,
-        is_active: true,
+        is_active: true, 
         image_file: null,
         current_image_url: null,
     });
@@ -341,7 +385,15 @@ export default function AdminArtworksPage() {
           Artist <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<ArtworkType> }) => row.original.artist?.name || 'N/A',
+      cell: ({ row }: { row: Row<ArtworkType> }) => {
+        const artistIsActive = row.original.artist?.is_active;
+        return (
+            <>
+              {row.original.artist?.name || 'N/A'}
+              {artistIsActive === false && <Badge variant="outline" className="ml-1 text-xs">Artist Inactive</Badge>}
+            </>
+        );
+      }
     },
     {
       accessorKey: "price",
@@ -354,12 +406,25 @@ export default function AdminArtworksPage() {
     },
     {
       accessorKey: "stock_quantity",
-      header: "Stock",
-      cell: ({ row }: { row: Row<ArtworkType> }) => row.original.stock_quantity,
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+         Stock <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtworkType> }) => {
+        if (row.original.stock_quantity === 0 && row.original.is_active) {
+            return <Badge variant="outline" className="text-xs border-orange-500 text-orange-600">Out of Stock</Badge>;
+        }
+        return row.original.stock_quantity;
+      }
     },
     {
       accessorKey: "is_active",
-      header: "Status",
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Status <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }: { row: Row<ArtworkType> }) => (
         <Badge variant={row.original.is_active ? "default" : "secondary"}>
           {row.original.is_active ? "Active" : "Inactive"}
@@ -384,7 +449,7 @@ export default function AdminArtworksPage() {
         );
       },
     },
-  ], [artists]); // artists dependency is important for the Select dropdown options
+  ], [artists]); 
 
   const table = useReactTable({
     data: artworks,
@@ -486,8 +551,8 @@ export default function AdminArtworksPage() {
       <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
           setShowFormDialog(isOpen);
           if (!isOpen) {
-              form.reset({
-                name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
+              reset({
+                name: "", artist_id: artists.length > 0 ? (artists.find(a => a.is_active)?.id || artists[0].id) : "", price: 0,
                 stock_quantity: 0, description: null, is_active: true,
                 image_file: null, current_image_url: null,
               });
@@ -503,9 +568,9 @@ export default function AdminArtworksPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+            <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
               <FormField
-                control={form.control}
+                control={control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -516,14 +581,14 @@ export default function AdminArtworksPage() {
                 )}
               />
               <Controller
-                control={form.control}
+                control={control}
                 name="artist_id"
                 render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
                   <FormItem>
                     <FormLabel>Artist</FormLabel>
                     <Select
                       onValueChange={onChange}
-                      value={value || ""} // Ensure value is a string, defaulting to "" if null/undefined
+                      value={value || ""} 
                     >
                       <FormControl>
                         <SelectTrigger ref={ref} className={cn(error && "border-destructive")}>
@@ -540,13 +605,14 @@ export default function AdminArtworksPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage /> {/* This will display Zod validation messages */}
+                    <FormDescription>Only active artists can be assigned to active artworks.</FormDescription>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                    control={form.control}
+                    control={control}
                     name="price"
                     render={({ field }) => (
                     <FormItem>
@@ -557,19 +623,20 @@ export default function AdminArtworksPage() {
                     )}
                 />
                 <FormField
-                    control={form.control}
+                    control={control}
                     name="stock_quantity"
                     render={({ field }) => (
                     <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl><Input type="number" placeholder="e.g., 10" {...field} /></FormControl>
+                        <FormDescription>{'Setting stock > 0 will auto-activate artwork.'}</FormDescription>
                         <FormMessage />
                     </FormItem>
                     )}
                 />
               </div>
               <FormField
-                control={form.control}
+                control={control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
@@ -580,9 +647,9 @@ export default function AdminArtworksPage() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={control}
                 name="image_file"
-                render={({ field: { onChange, value: fileValue, ...restFieldProps } }) => {
+                render={({ field: { onChange: onFileChange, value: fileValue, ...restFieldProps } }) => {
                   const currentImageDisplay = editingArtwork && form.getValues('current_image_url') && !fileValue;
                   return (
                     <FormItem>
@@ -594,7 +661,7 @@ export default function AdminArtworksPage() {
                               "file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                               "disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent hover:text-accent-foreground",
-                              form.formState.errors.image_file && "border-destructive"
+                              errors.image_file && "border-destructive"
                           )}>
                             <div className="flex items-center">
                               <UploadCloud className="mr-2 h-4 w-4" />
@@ -607,7 +674,7 @@ export default function AdminArtworksPage() {
                               accept={ACCEPTED_IMAGE_TYPES.join(",")}
                               onChange={(e) => {
                                 const file = e.target.files?.[0] || null;
-                                onChange(file);
+                                onFileChange(file);
                                 if (file) {
                                   const reader = new FileReader();
                                   reader.onloadend = () => {
@@ -652,18 +719,22 @@ export default function AdminArtworksPage() {
 
 
                <FormField
-                control={form.control}
+                control={control}
                 name="is_active"
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                     <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      <Checkbox 
+                        checked={field.value} 
+                        onCheckedChange={field.onChange}
+                      />
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel>Active</FormLabel>
                       <FormDescription>
-                        Uncheck to hide this artwork from the public store.
+                       {'Artwork with stock > 0 will be active. To make inactive, stock must be 0.'}
                       </FormDescription>
+                       <FormMessage />
                     </div>
                   </FormItem>
                 )}

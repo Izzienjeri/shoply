@@ -1,5 +1,3 @@
-# === ./app/resources/order.py ===
-
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import fields, Schema, ValidationError, validate
@@ -10,7 +8,7 @@ from datetime import datetime
 
 from .. import db, ma
 from ..models import Order, OrderItem, User, Cart, Artwork, CartItem, Artist, PaymentTransaction, DeliveryOption
-from ..schemas import order_schema, orders_schema # delivery_option_schema not directly used for input here
+from ..schemas import order_schema, orders_schema
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..utils.daraja_client import initiate_stk_push
@@ -26,8 +24,7 @@ class CheckoutInputSchema(ma.Schema):
             error="Phone number must be 12 digits and start with 254 (e.g., 2547XXXXXXXX)."
         )
     )
-    delivery_option_id = fields.Str(required=True) # ID of the chosen DeliveryOption
-    # delivery_address = fields.Str(required=False, allow_none=True) # Future: If allowing custom address different from user.address
+    delivery_option_id = fields.Str(required=True)
 
 checkout_input_schema = CheckoutInputSchema()
 
@@ -39,12 +36,12 @@ class OrderList(Resource):
             joinedload(Order.items).options(
                 joinedload(OrderItem.artwork).joinedload(Artwork.artist)
             ),
-            joinedload(Order.delivery_option_details) # Eager load delivery option details with the order
+            joinedload(Order.delivery_option_details)
         ).filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
         return orders_schema.dump(user_orders), 200
 
     @jwt_required()
-    def post(self): # This is the STK Initiation endpoint
+    def post(self):
         user_id = get_jwt_identity()
         current_user = User.query.get(user_id)
         if not current_user:
@@ -60,23 +57,21 @@ class OrderList(Resource):
 
         phone_number = checkout_data['phone_number']
         selected_delivery_option_id = checkout_data['delivery_option_id']
-        # custom_delivery_address = checkout_data.get('delivery_address') # If implemented for custom address
-
+        
         cart = Cart.query.options(
-            joinedload(Cart.items).joinedload(CartItem.artwork) # Ensure artwork is loaded with cart items
+            joinedload(Cart.items).options(
+                joinedload(CartItem.artwork).joinedload(Artwork.artist)
+            )
         ).filter_by(user_id=user_id).first()
         
         if not cart or not cart.items:
             abort(400, message="Your cart is empty.")
 
-        # Fetch the selected delivery option
         delivery_option = DeliveryOption.query.get(selected_delivery_option_id)
         if not delivery_option or not delivery_option.active:
             abort(400, message="Invalid or inactive delivery option selected.")
         
         applied_delivery_fee = delivery_option.price
-
-        # Recalculate cart subtotal and prepare item snapshot
         cart_subtotal_decimal = Decimal('0.0')
         item_details_for_transaction_snapshot = []
         
@@ -85,8 +80,15 @@ class OrderList(Resource):
                 current_app.logger.error(f"Critical: Artwork data missing for cart item {item.id} during checkout. Cart ID: {cart.id}")
                 abort(500, message="Error processing cart. An artwork is missing details.")
             
+            if not item.artwork.is_active:
+                abort(400, message=f"Artwork '{item.artwork.name}' is no longer active and cannot be purchased.")
+            if not item.artwork.artist:
+                 current_app.logger.error(f"Critical: Artist data missing for artwork {item.artwork.id} of cart item {item.id}.")
+                 abort(500, message=f"Artist details missing for '{item.artwork.name}'. Cannot proceed with checkout.")
+            if not item.artwork.artist.is_active:
+                abort(400, message=f"The artist of '{item.artwork.name}' is no longer active. This artwork cannot be purchased.")
             if item.artwork.stock_quantity < item.quantity:
-                abort(400, message=f"Insufficient stock for '{item.artwork.name}'. Available: {item.artwork.stock_quantity}, Requested: {item.quantity}")
+                abort(400, message=f"Insufficient stock for '{item.artwork.name}'. Available: {item.artwork.stock_quantity}, Requested: {item.quantity}. Please update your cart.")
             
             cart_subtotal_decimal += Decimal(item.artwork.price) * Decimal(item.quantity)
             item_details_for_transaction_snapshot.append({
@@ -96,16 +98,13 @@ class OrderList(Resource):
                 'price_at_purchase': str(item.artwork.price) 
             })
         
-        if cart_subtotal_decimal < Decimal('0.0'): # Should ideally be >= 0
+        if cart_subtotal_decimal < Decimal('0.0'):
             abort(400, message="Cart subtotal cannot be negative.")
         
-        # Grand total for payment
         grand_total_for_payment = cart_subtotal_decimal + applied_delivery_fee
-        if grand_total_for_payment <= Decimal('0.0'): # Mpesa STK needs > 0
+        if grand_total_for_payment <= Decimal('0.0'):
             abort(400, message="Total amount for payment (including delivery) must be greater than zero.")
 
-
-        # Create PaymentTransaction record
         transaction = PaymentTransaction(
             user_id=user_id,
             cart_id=cart.id,
@@ -118,7 +117,7 @@ class OrderList(Resource):
         )
         try:
             db.session.add(transaction)
-            db.session.commit() # Commit to get transaction.id
+            db.session.commit()
             current_app.logger.info(f"Created PaymentTransaction {transaction.id} for user {user_id}, cart {cart.id}, amount {grand_total_for_payment} (subtotal: {cart_subtotal_decimal}, delivery: {applied_delivery_fee})")
         except Exception as e:
             db.session.rollback()
@@ -126,7 +125,7 @@ class OrderList(Resource):
             abort(500, message="Error preparing payment. Please try again.")
 
         daraja_account_ref = transaction.id 
-        amount_for_daraja = int(round(float(grand_total_for_payment))) # Daraja STK usually wants whole number
+        amount_for_daraja = int(round(float(grand_total_for_payment)))
 
         stk_response, status_code = initiate_stk_push(
             phone_number=phone_number,
@@ -173,7 +172,7 @@ class OrderDetail(Resource):
             joinedload(Order.items).options(
                 joinedload(OrderItem.artwork).joinedload(Artwork.artist)
             ),
-            joinedload(Order.delivery_option_details) # Eager load delivery option details
+            joinedload(Order.delivery_option_details)
         ).filter_by(id=order_id, user_id=user_id).first_or_404(
             description=f"Order with ID {order_id} not found or does not belong to user."
         )
@@ -190,7 +189,8 @@ class PaymentStatus(Resource):
 
         if not transaction:
             current_app.logger.warning(f"PaymentStatus GET: Transaction not found for CRID {checkout_request_id_from_url} and user {user_id}")
-            return {"status": "not_found", "message": "Transaction not found or still processing initial STK push."}, 404
+            return {"status": "not_found", "message": "Transaction not found."}, 404
+
 
         response_data = {
             "status": transaction.status,
@@ -204,5 +204,5 @@ class PaymentStatus(Resource):
         return response_data, 200
 
 order_api.add_resource(OrderList, '/')
-order_api.add_resource(OrderDetail, '/<string:order_id>') # Ensure string type hint for path param
-order_api.add_resource(PaymentStatus, '/status/<string:checkout_request_id_from_url>') # Ensure string type hint
+order_api.add_resource(OrderDetail, '/<string:order_id>')
+order_api.add_resource(PaymentStatus, '/status/<string:checkout_request_id_from_url>')

@@ -53,9 +53,9 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
         return data
 
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
-    name = fields.Str(required=True)
-    bio = fields.Str()
-    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, attribute="artworks", exclude=("artist",))
+    name = fields.Str(required=True, validate=validate.Length(min=1))
+    bio = fields.Str(allow_none=True)
+    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, exclude=("artist",))
     artworks_count = fields.Method("get_artworks_count", dump_only=True)
     is_active = fields.Bool(load_default=True)
 
@@ -94,26 +94,27 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
     def calculate_total(self, cart):
         total = Decimal('0.00')
         items_iterable = []
+
         if hasattr(cart, 'items'):
             try:
-                items_iterable = cart.items
+                items_iterable = cart.items if cart.items is not None else []
             except Exception as e:
                 current_app.logger.error(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}", exc_info=True)
                 items_iterable = []
 
         for item in items_iterable:
-            if (item.artwork and item.artwork.is_active and
+            if (item and item.artwork and item.artwork.is_active and
                 item.artwork.artist and item.artwork.artist.is_active and
                 hasattr(item.artwork, 'price') and item.artwork.price is not None and
-                hasattr(item, 'quantity')):
+                hasattr(item, 'quantity') and item.quantity is not None):
                 try:
-                    item_price = Decimal(item.artwork.price)
+                    item_price = Decimal(str(item.artwork.price))
                     total += item_price * Decimal(item.quantity)
                 except (TypeError, ValueError, InvalidOperation) as e:
                     current_app.logger.error(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}", exc_info=True)
                     continue
-            elif item.artwork and (not item.artwork.is_active or (item.artwork.artist and not item.artwork.artist.is_active)):
-                 current_app.logger.info(f"Skipping inactive artwork '{item.artwork.name}' or artwork by inactive artist from cart total calculation.")
+            elif item and item.artwork and (not item.artwork.is_active or (item.artwork.artist and not item.artwork.artist.is_active)):
+                 current_app.logger.info(f"Skipping inactive artwork '{item.artwork.name}' or artwork by inactive artist from cart total calculation for cart {getattr(cart, 'id', 'N/A')}.")
             else:
                 current_app.logger.warning(f"Artwork data (price/quantity/active status/artist status) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
         return str(total)
@@ -135,13 +136,15 @@ class OrderItemSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('order_id',)
 
 class DeliveryOptionSchema(ma.SQLAlchemyAutoSchema):
-    price = fields.Decimal(as_string=True, required=True)
-    name = fields.Str(required=True)
-    description = fields.Str(allow_none=True)
-    is_pickup = fields.Bool(required=True)
     id = fields.Str(dump_only=True)
+    name = fields.Str(required=True, validate=validate.Length(min=1, error="Name is required."))
+    price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0, error="Price must be non-negative."))
+    description = fields.Str(allow_none=True)
+    is_pickup = fields.Bool(load_default=False)
     active = fields.Bool(load_default=True)
     sort_order = fields.Int(load_default=0)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
 
     class Meta:
         model = DeliveryOption
@@ -160,11 +163,15 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
     shipping_address = fields.Str(dump_only=True, allow_none=True)
     billing_address = fields.Str(dump_only=True, allow_none=True)
     payment_gateway_ref = fields.Str(dump_only=True, allow_none=True)
-    delivery_fee = fields.Decimal(as_string=True, dump_only=True)
-    delivery_option_details = fields.Nested(DeliveryOptionSchema, dump_only=True, only=("id", "name", "price", "is_pickup", "description"))
+    delivery_fee = fields.Decimal(as_string=True, dump_only=True, allow_none=True)
+    delivery_option_details = fields.Nested(
+        DeliveryOptionSchema,
+        dump_only=True,
+        only=("id", "name", "price", "is_pickup", "description")
+    )
     picked_up_by_name = fields.Str(allow_none=True)
     picked_up_by_id_no = fields.Str(allow_none=True)
-    picked_up_at = fields.DateTime(allow_none=True)
+    picked_up_at = fields.DateTime(allow_none=True, dump_only=True)
 
     class Meta:
         model = Order
@@ -175,19 +182,24 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
 user_schema = UserSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
-delivery_option_schema_public = DeliveryOptionSchema(exclude=('created_at', 'updated_at', 'active', 'sort_order'))
 artist_schema = ArtistSchema()
 artwork_schema = ArtworkSchema()
-
 
 users_schema = UserSchema(many=True)
 artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
-delivery_options_schema_public = DeliveryOptionSchema(many=True, exclude=('created_at', 'updated_at'))
 
+delivery_option_schema_admin = DeliveryOptionSchema()
+delivery_options_schema_admin = DeliveryOptionSchema(many=True)
+
+delivery_option_schema_public = DeliveryOptionSchema(
+    only=('id', 'name', 'price', 'description', 'is_pickup')
+)
+delivery_options_schema_public = DeliveryOptionSchema(
+    many=True,
+    only=('id', 'name', 'price', 'description', 'is_pickup')
+)
 
 admin_artist_schema = ArtistSchema()
 admin_artwork_schema = ArtworkSchema()
-delivery_option_schema_admin = DeliveryOptionSchema()
-delivery_options_schema_admin = DeliveryOptionSchema(many=True)

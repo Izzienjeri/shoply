@@ -1,5 +1,5 @@
 # Extracted Python Code
-# Date and Time: 2025-05-26 01:35:59
+# Date and Time: 2025-05-26 02:34:34
 # Files Included: 17
 
 # === ./seed.py ===
@@ -256,9 +256,9 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
         return data
 
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
-    name = fields.Str(required=True)
-    bio = fields.Str()
-    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, attribute="artworks", exclude=("artist",))
+    name = fields.Str(required=True, validate=validate.Length(min=1))
+    bio = fields.Str(allow_none=True)
+    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, exclude=("artist",))
     artworks_count = fields.Method("get_artworks_count", dump_only=True)
     is_active = fields.Bool(load_default=True)
 
@@ -297,26 +297,27 @@ class CartSchema(ma.SQLAlchemyAutoSchema):
     def calculate_total(self, cart):
         total = Decimal('0.00')
         items_iterable = []
+
         if hasattr(cart, 'items'):
             try:
-                items_iterable = cart.items
+                items_iterable = cart.items if cart.items is not None else []
             except Exception as e:
                 current_app.logger.error(f"Could not iterate cart items for cart {getattr(cart, 'id', 'N/A')}: {e}", exc_info=True)
                 items_iterable = []
 
         for item in items_iterable:
-            if (item.artwork and item.artwork.is_active and
+            if (item and item.artwork and item.artwork.is_active and
                 item.artwork.artist and item.artwork.artist.is_active and
                 hasattr(item.artwork, 'price') and item.artwork.price is not None and
-                hasattr(item, 'quantity')):
+                hasattr(item, 'quantity') and item.quantity is not None):
                 try:
-                    item_price = Decimal(item.artwork.price)
+                    item_price = Decimal(str(item.artwork.price))
                     total += item_price * Decimal(item.quantity)
                 except (TypeError, ValueError, InvalidOperation) as e:
                     current_app.logger.error(f"Could not calculate price for item {getattr(item, 'id', 'N/A')}, artwork {getattr(item.artwork, 'id', 'N/A')}. Price: '{item.artwork.price}', Qty: {item.quantity}. Error: {e}", exc_info=True)
                     continue
-            elif item.artwork and (not item.artwork.is_active or (item.artwork.artist and not item.artwork.artist.is_active)):
-                 current_app.logger.info(f"Skipping inactive artwork '{item.artwork.name}' or artwork by inactive artist from cart total calculation.")
+            elif item and item.artwork and (not item.artwork.is_active or (item.artwork.artist and not item.artwork.artist.is_active)):
+                 current_app.logger.info(f"Skipping inactive artwork '{item.artwork.name}' or artwork by inactive artist from cart total calculation for cart {getattr(cart, 'id', 'N/A')}.")
             else:
                 current_app.logger.warning(f"Artwork data (price/quantity/active status/artist status) missing or incomplete for cart item {getattr(item, 'id', 'N/A')} in cart {getattr(cart, 'id', 'N/A')}. Cannot calculate total accurately.")
         return str(total)
@@ -338,13 +339,15 @@ class OrderItemSchema(ma.SQLAlchemyAutoSchema):
         exclude = ('order_id',)
 
 class DeliveryOptionSchema(ma.SQLAlchemyAutoSchema):
-    price = fields.Decimal(as_string=True, required=True)
-    name = fields.Str(required=True)
-    description = fields.Str(allow_none=True)
-    is_pickup = fields.Bool(required=True)
     id = fields.Str(dump_only=True)
+    name = fields.Str(required=True, validate=validate.Length(min=1, error="Name is required."))
+    price = fields.Decimal(as_string=True, required=True, validate=validate.Range(min=0, error="Price must be non-negative."))
+    description = fields.Str(allow_none=True)
+    is_pickup = fields.Bool(load_default=False)
     active = fields.Bool(load_default=True)
     sort_order = fields.Int(load_default=0)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
 
     class Meta:
         model = DeliveryOption
@@ -363,11 +366,15 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
     shipping_address = fields.Str(dump_only=True, allow_none=True)
     billing_address = fields.Str(dump_only=True, allow_none=True)
     payment_gateway_ref = fields.Str(dump_only=True, allow_none=True)
-    delivery_fee = fields.Decimal(as_string=True, dump_only=True)
-    delivery_option_details = fields.Nested(DeliveryOptionSchema, dump_only=True, only=("id", "name", "price", "is_pickup", "description"))
+    delivery_fee = fields.Decimal(as_string=True, dump_only=True, allow_none=True)
+    delivery_option_details = fields.Nested(
+        DeliveryOptionSchema,
+        dump_only=True,
+        only=("id", "name", "price", "is_pickup", "description")
+    )
     picked_up_by_name = fields.Str(allow_none=True)
     picked_up_by_id_no = fields.Str(allow_none=True)
-    picked_up_at = fields.DateTime(allow_none=True)
+    picked_up_at = fields.DateTime(allow_none=True, dump_only=True)
 
     class Meta:
         model = Order
@@ -378,22 +385,27 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
 user_schema = UserSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
-delivery_option_schema_public = DeliveryOptionSchema(exclude=('created_at', 'updated_at', 'active', 'sort_order'))
 artist_schema = ArtistSchema()
 artwork_schema = ArtworkSchema()
-
 
 users_schema = UserSchema(many=True)
 artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
-delivery_options_schema_public = DeliveryOptionSchema(many=True, exclude=('created_at', 'updated_at'))
 
+delivery_option_schema_admin = DeliveryOptionSchema()
+delivery_options_schema_admin = DeliveryOptionSchema(many=True)
+
+delivery_option_schema_public = DeliveryOptionSchema(
+    only=('id', 'name', 'price', 'description', 'is_pickup')
+)
+delivery_options_schema_public = DeliveryOptionSchema(
+    many=True,
+    only=('id', 'name', 'price', 'description', 'is_pickup')
+)
 
 admin_artist_schema = ArtistSchema()
 admin_artwork_schema = ArtworkSchema()
-delivery_option_schema_admin = DeliveryOptionSchema()
-delivery_options_schema_admin = DeliveryOptionSchema(many=True)
 
 # === ./app/models.py ===
 import uuid
@@ -989,7 +1001,7 @@ from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload, selectinload
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 
 from .. import db
 from ..models import Artist, Artwork, User
@@ -1003,9 +1015,9 @@ class ArtistList(Resource):
     def get(self):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
-            if jwt_payload:
-                user_id_from_token = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id_from_token = get_jwt_identity()
+            if user_id_from_token:
                 user = User.query.get(user_id_from_token)
                 if user and user.is_admin:
                     is_admin_request = True
@@ -1014,9 +1026,10 @@ class ArtistList(Resource):
 
         if is_admin_request:
             current_app.logger.info("Admin request: Fetching all artists with artwork counts for ArtistList.")
-            artists = Artist.query.options(selectinload(Artist.artworks)).order_by(Artist.name).all()
-            for artist in artists:
-                 artist._artworks_count_val = len(artist.artworks)
+            artists_query = Artist.query.options(selectinload(Artist.artworks)).order_by(Artist.name)
+            artists = artists_query.all()
+            for artist_obj in artists:
+                 artist_obj._artworks_count_val = len(artist_obj.artworks) if artist_obj.artworks else 0
         else:
             artists = Artist.query.filter_by(is_active=True).order_by(Artist.name).all()
 
@@ -1040,7 +1053,8 @@ class ArtistList(Resource):
         try:
             db.session.add(new_artist)
             db.session.commit()
-            return artist_schema.dump(new_artist), 201
+            created_artist = Artist.query.options(selectinload(Artist.artworks)).get(new_artist.id)
+            return artist_schema.dump(created_artist), 201
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artist in DB: {e}", exc_info=True)
@@ -1050,9 +1064,9 @@ class ArtistDetail(Resource):
     def get(self, artist_id):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
-            if jwt_payload:
-                user_id_from_token = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id_from_token = get_jwt_identity()
+            if user_id_from_token:
                 user = User.query.get(user_id_from_token)
                 if user and user.is_admin:
                     is_admin_request = True
@@ -1075,12 +1089,12 @@ class ArtistDetail(Resource):
             artist_dump_data = artist_schema.dump(artist)
         else:
             active_artworks = [aw for aw in artist.artworks if aw.is_active]
-            artist.artworks_for_display = active_artworks
-
+            artist.artworks_for_display = active_artworks 
+            
             artist_dump_data = artist_schema.dump(artist)
-
             artist_dump_data['artworks'] = ArtworkSchema(many=True, exclude=("artist",)).dump(active_artworks)
             artist_dump_data['artworks_count'] = len(active_artworks)
+
 
         return artist_dump_data, 200
 
@@ -1093,10 +1107,10 @@ class ArtistDetail(Resource):
         if not json_data:
             return {"message": "No input data provided"}, 400
         
-        is_active_in_payload = json_data.get('is_active')
+        original_is_active_state = artist.is_active 
 
         try:
-            updated_artist = artist_schema.load(
+            updated_artist_instance = artist_schema.load(
                 json_data,
                 instance=artist,
                 partial=True,
@@ -1106,14 +1120,25 @@ class ArtistDetail(Resource):
             return {"message": "Validation errors", "errors": err.messages}, 400
 
         try:
-            if is_active_in_payload is False and artist.is_active is True:
-                current_app.logger.info(f"Artist {artist.id} is being deactivated. Deactivating associated artworks.")
-                for artwork_item in artist.artworks:
-                    artwork_item.is_active = False
-                    current_app.logger.info(f"Deactivated artwork {artwork_item.id} for artist {artist.id}")
+            db.session.commit() 
             
-
-            db.session.commit()
+            if original_is_active_state is True and updated_artist_instance.is_active is False:
+                current_app.logger.info(f"Artist {artist.id} ('{artist.name}') is being deactivated. Processing associated artworks.")
+                
+                artworks_to_update = Artwork.query.filter_by(artist_id=updated_artist_instance.id).all()
+                
+                updated_artworks_count = 0
+                for artwork_item in artworks_to_update:
+                    if artwork_item.is_active or artwork_item.stock_quantity > 0:
+                        artwork_item.is_active = False
+                        artwork_item.stock_quantity = 0 
+                        updated_artworks_count += 1
+                        current_app.logger.info(f"Artwork {artwork_item.id} for artist {artist.id}: set inactive and stock to 0.")
+                
+                if updated_artworks_count > 0:
+                    db.session.commit()
+                    current_app.logger.info(f"Committed changes for {updated_artworks_count} artworks of deactivated artist {artist.id}.")
+            
             refreshed_artist = Artist.query.options(selectinload(Artist.artworks)).get(artist_id)
             return artist_schema.dump(refreshed_artist), 200
         except Exception as e:
@@ -1138,8 +1163,6 @@ artist_api.add_resource(ArtistList, '/')
 artist_api.add_resource(ArtistDetail, '/<string:artist_id>')
 
 # === ./app/resources/order.py ===
-# === ./app/resources/order.py ===
-
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import fields, Schema, ValidationError, validate
@@ -1150,7 +1173,7 @@ from datetime import datetime
 
 from .. import db, ma
 from ..models import Order, OrderItem, User, Cart, Artwork, CartItem, Artist, PaymentTransaction, DeliveryOption
-from ..schemas import order_schema, orders_schema # delivery_option_schema not directly used for input here
+from ..schemas import order_schema, orders_schema
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..utils.daraja_client import initiate_stk_push
@@ -1166,8 +1189,7 @@ class CheckoutInputSchema(ma.Schema):
             error="Phone number must be 12 digits and start with 254 (e.g., 2547XXXXXXXX)."
         )
     )
-    delivery_option_id = fields.Str(required=True) # ID of the chosen DeliveryOption
-    # delivery_address = fields.Str(required=False, allow_none=True) # Future: If allowing custom address different from user.address
+    delivery_option_id = fields.Str(required=True)
 
 checkout_input_schema = CheckoutInputSchema()
 
@@ -1179,12 +1201,12 @@ class OrderList(Resource):
             joinedload(Order.items).options(
                 joinedload(OrderItem.artwork).joinedload(Artwork.artist)
             ),
-            joinedload(Order.delivery_option_details) # Eager load delivery option details with the order
+            joinedload(Order.delivery_option_details)
         ).filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
         return orders_schema.dump(user_orders), 200
 
     @jwt_required()
-    def post(self): # This is the STK Initiation endpoint
+    def post(self):
         user_id = get_jwt_identity()
         current_user = User.query.get(user_id)
         if not current_user:
@@ -1200,23 +1222,21 @@ class OrderList(Resource):
 
         phone_number = checkout_data['phone_number']
         selected_delivery_option_id = checkout_data['delivery_option_id']
-        # custom_delivery_address = checkout_data.get('delivery_address') # If implemented for custom address
-
+        
         cart = Cart.query.options(
-            joinedload(Cart.items).joinedload(CartItem.artwork) # Ensure artwork is loaded with cart items
+            joinedload(Cart.items).options(
+                joinedload(CartItem.artwork).joinedload(Artwork.artist)
+            )
         ).filter_by(user_id=user_id).first()
         
         if not cart or not cart.items:
             abort(400, message="Your cart is empty.")
 
-        # Fetch the selected delivery option
         delivery_option = DeliveryOption.query.get(selected_delivery_option_id)
         if not delivery_option or not delivery_option.active:
             abort(400, message="Invalid or inactive delivery option selected.")
         
         applied_delivery_fee = delivery_option.price
-
-        # Recalculate cart subtotal and prepare item snapshot
         cart_subtotal_decimal = Decimal('0.0')
         item_details_for_transaction_snapshot = []
         
@@ -1225,8 +1245,15 @@ class OrderList(Resource):
                 current_app.logger.error(f"Critical: Artwork data missing for cart item {item.id} during checkout. Cart ID: {cart.id}")
                 abort(500, message="Error processing cart. An artwork is missing details.")
             
+            if not item.artwork.is_active:
+                abort(400, message=f"Artwork '{item.artwork.name}' is no longer active and cannot be purchased.")
+            if not item.artwork.artist:
+                 current_app.logger.error(f"Critical: Artist data missing for artwork {item.artwork.id} of cart item {item.id}.")
+                 abort(500, message=f"Artist details missing for '{item.artwork.name}'. Cannot proceed with checkout.")
+            if not item.artwork.artist.is_active:
+                abort(400, message=f"The artist of '{item.artwork.name}' is no longer active. This artwork cannot be purchased.")
             if item.artwork.stock_quantity < item.quantity:
-                abort(400, message=f"Insufficient stock for '{item.artwork.name}'. Available: {item.artwork.stock_quantity}, Requested: {item.quantity}")
+                abort(400, message=f"Insufficient stock for '{item.artwork.name}'. Available: {item.artwork.stock_quantity}, Requested: {item.quantity}. Please update your cart.")
             
             cart_subtotal_decimal += Decimal(item.artwork.price) * Decimal(item.quantity)
             item_details_for_transaction_snapshot.append({
@@ -1236,16 +1263,13 @@ class OrderList(Resource):
                 'price_at_purchase': str(item.artwork.price) 
             })
         
-        if cart_subtotal_decimal < Decimal('0.0'): # Should ideally be >= 0
+        if cart_subtotal_decimal < Decimal('0.0'):
             abort(400, message="Cart subtotal cannot be negative.")
         
-        # Grand total for payment
         grand_total_for_payment = cart_subtotal_decimal + applied_delivery_fee
-        if grand_total_for_payment <= Decimal('0.0'): # Mpesa STK needs > 0
+        if grand_total_for_payment <= Decimal('0.0'):
             abort(400, message="Total amount for payment (including delivery) must be greater than zero.")
 
-
-        # Create PaymentTransaction record
         transaction = PaymentTransaction(
             user_id=user_id,
             cart_id=cart.id,
@@ -1258,7 +1282,7 @@ class OrderList(Resource):
         )
         try:
             db.session.add(transaction)
-            db.session.commit() # Commit to get transaction.id
+            db.session.commit()
             current_app.logger.info(f"Created PaymentTransaction {transaction.id} for user {user_id}, cart {cart.id}, amount {grand_total_for_payment} (subtotal: {cart_subtotal_decimal}, delivery: {applied_delivery_fee})")
         except Exception as e:
             db.session.rollback()
@@ -1266,7 +1290,7 @@ class OrderList(Resource):
             abort(500, message="Error preparing payment. Please try again.")
 
         daraja_account_ref = transaction.id 
-        amount_for_daraja = int(round(float(grand_total_for_payment))) # Daraja STK usually wants whole number
+        amount_for_daraja = int(round(float(grand_total_for_payment)))
 
         stk_response, status_code = initiate_stk_push(
             phone_number=phone_number,
@@ -1313,7 +1337,7 @@ class OrderDetail(Resource):
             joinedload(Order.items).options(
                 joinedload(OrderItem.artwork).joinedload(Artwork.artist)
             ),
-            joinedload(Order.delivery_option_details) # Eager load delivery option details
+            joinedload(Order.delivery_option_details)
         ).filter_by(id=order_id, user_id=user_id).first_or_404(
             description=f"Order with ID {order_id} not found or does not belong to user."
         )
@@ -1330,7 +1354,8 @@ class PaymentStatus(Resource):
 
         if not transaction:
             current_app.logger.warning(f"PaymentStatus GET: Transaction not found for CRID {checkout_request_id_from_url} and user {user_id}")
-            return {"status": "not_found", "message": "Transaction not found or still processing initial STK push."}, 404
+            return {"status": "not_found", "message": "Transaction not found."}, 404
+
 
         response_data = {
             "status": transaction.status,
@@ -1344,35 +1369,140 @@ class PaymentStatus(Resource):
         return response_data, 200
 
 order_api.add_resource(OrderList, '/')
-order_api.add_resource(OrderDetail, '/<string:order_id>') # Ensure string type hint for path param
-order_api.add_resource(PaymentStatus, '/status/<string:checkout_request_id_from_url>') # Ensure string type hint
+order_api.add_resource(OrderDetail, '/<string:order_id>')
+order_api.add_resource(PaymentStatus, '/status/<string:checkout_request_id_from_url>')
 
 # === ./app/resources/delivery.py ===
-# === ./app/resources/delivery.py ===
+from flask import request, Blueprint, jsonify, current_app
+from flask_restful import Resource, Api, abort
+from marshmallow import ValidationError
 
-from flask import Blueprint
-from flask_restful import Resource, Api, current_app
+from .. import db
+from ..models import DeliveryOption, Order
 
-from ..models import DeliveryOption
-# Corrected import names:
-from ..schemas import delivery_options_schema_public, delivery_option_schema_public 
+from ..schemas import (
+    delivery_options_schema_public,
+    delivery_option_schema_public,
+    delivery_option_schema_admin,
+    delivery_options_schema_admin
+)
+
+from ..decorators import admin_required
 
 delivery_bp = Blueprint('delivery', __name__)
 delivery_api = Api(delivery_bp)
 
 class DeliveryOptionList(Resource):
     def get(self):
-        """Fetches all active delivery options, ordered by sort_order then name."""
+        """
+        Fetches delivery options.
+        If accessed by an admin (implicitly via an admin-only route or frontend that calls this),
+        it should show all. Otherwise, for public, only active.
+        The current frontend page for admin delivery options will likely call this.
+        So, for admin management, we'll provide all options here.
+        The public /api/delivery/options should ideally be filtered.
+        Let's assume this endpoint is used by admin UI for now, so we show all.
+        If you have separate endpoints for public vs admin listing, adjust accordingly.
+        """
         try:
-            options = DeliveryOption.query.filter_by(active=True).order_by(DeliveryOption.sort_order, DeliveryOption.name).all()
-            # Use the imported schema
-            return delivery_options_schema_public.dump(options), 200
+            options = DeliveryOption.query.order_by(DeliveryOption.sort_order, DeliveryOption.name).all()
+            return delivery_options_schema_admin.dump(options), 200
         except Exception as e:
-            current_app.logger.error(f"Error fetching delivery options: {e}")
+            current_app.logger.error(f"Error fetching delivery options for admin: {e}", exc_info=True)
             return {"message": "Could not retrieve delivery options"}, 500
 
-# delivery_option_schema_public might not be used here if only list is exposed publicly
-delivery_api.add_resource(DeliveryOptionList, '/options') # Route for GET /api/delivery/options
+    @admin_required
+    def post(self):
+        """ Admin: Creates a new delivery option. """
+        json_data = request.get_json()
+        if not json_data:
+            abort(400, message="No input data provided")
+
+        try:
+            json_data.setdefault('is_pickup', False)
+            json_data.setdefault('active', True)
+            json_data.setdefault('sort_order', 0)
+
+            new_option = delivery_option_schema_admin.load(json_data, session=db.session)
+        except ValidationError as err:
+            abort(400, message="Validation errors", errors=err.messages)
+        except Exception as e:
+            current_app.logger.error(f"Error loading delivery option data: {e}", exc_info=True)
+            abort(500, message="Error processing delivery option data.")
+
+        try:
+            db.session.add(new_option)
+            db.session.commit()
+            return delivery_option_schema_admin.dump(new_option), 201
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error creating delivery option in DB: {e}", exc_info=True)
+            if "UNIQUE constraint failed" in str(e) or "Duplicate entry" in str(e):
+                 abort(409, message="A delivery option with this name already exists.")
+            abort(500, message="An error occurred while saving the delivery option.")
+
+class DeliveryOptionDetail(Resource):
+    @admin_required
+    def get(self, option_id):
+        """ Admin: Fetches a specific delivery option by ID. """
+        option = DeliveryOption.query.get_or_404(option_id, description=f"Delivery Option with ID {option_id} not found.")
+        return delivery_option_schema_admin.dump(option), 200
+
+    @admin_required
+    def patch(self, option_id):
+        """ Admin: Updates a specific delivery option. """
+        option = DeliveryOption.query.get_or_404(option_id, description=f"Delivery Option with ID {option_id} not found.")
+        json_data = request.get_json()
+        if not json_data:
+            abort(400, message="No input data provided")
+
+        try:
+            updated_option = delivery_option_schema_admin.load(
+                json_data,
+                instance=option,
+                partial=True,
+                session=db.session
+            )
+        except ValidationError as err:
+            abort(400, message="Validation errors", errors=err.messages)
+        except Exception as e:
+            current_app.logger.error(f"Error loading delivery option data for update: {e}", exc_info=True)
+            abort(500, message="Error processing delivery option data for update.")
+
+        try:
+            db.session.commit()
+            refreshed_option = DeliveryOption.query.get(option.id)
+            return delivery_option_schema_admin.dump(refreshed_option), 200
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating delivery option {option_id}: {e}", exc_info=True)
+            if "UNIQUE constraint failed" in str(e) or "Duplicate entry" in str(e):
+                 abort(409, message="A delivery option with this name already exists.")
+            abort(500, message="An error occurred while updating the delivery option.")
+
+    @admin_required
+    def delete(self, option_id):
+        """ Admin: Deletes a specific delivery option. """
+        option = DeliveryOption.query.get_or_404(option_id, description=f"Delivery Option with ID {option_id} not found.")
+
+        orders_using_option_count = Order.query.filter_by(delivery_option_id=option_id).count()
+        if orders_using_option_count > 0:
+            current_app.logger.warning(f"Attempt to delete delivery option {option_id} which is used by {orders_using_option_count} order(s).")
+            abort(400, message=f"Cannot delete '{option.name}'. It is associated with {orders_using_option_count} existing order(s). Consider deactivating it instead.")
+
+        try:
+            db.session.delete(option)
+            db.session.commit()
+            return '', 204
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error deleting delivery option {option_id}: {e}", exc_info=True)
+            abort(500, message="An error occurred while deleting the delivery option.")
+
+
+
+delivery_api.add_resource(DeliveryOptionList, '/options')
+delivery_api.add_resource(DeliveryOptionDetail, '/options/<string:option_id>')
 
 # === ./app/resources/admin_dashboard.py ===
 from flask import Blueprint, jsonify, current_app, request
@@ -1880,30 +2010,22 @@ auth_api.add_resource(UserLogout, '/logout')
 auth_api.add_resource(UserProfile, '/me')
 
 # === ./app/resources/artwork.py ===
-# === ./app/resources/artwork.py ===
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from werkzeug.utils import secure_filename
 import os
 import uuid
 
 from .. import db
 from ..models import Artwork, Artist, User
-# from ..schemas import artwork_schema, artworks_schema, ArtworkSchema # OLD WAY
-from .. import schemas  # NEW WAY: Import the module itself
+from .. import schemas
 from ..decorators import admin_required
 
 artwork_bp = Blueprint('artworks', __name__)
 artwork_api = Api(artwork_bp)
-
-# Access schemas via the module:
-# artwork_schema_instance = schemas.artwork_schema
-# artworks_schema_instance = schemas.artworks_schema
-# ArtworkSchema_class = schemas.ArtworkSchema 
-# It's better to use the instances directly if they are defined in schemas.py
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -1931,14 +2053,15 @@ class ArtworkList(Resource):
     def get(self):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt() 
-            if jwt_payload:
-                user_id = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id = get_jwt_identity()
+            if user_id:
                 user = User.query.get(user_id)
                 if user and user.is_admin:
                     is_admin_request = True
         except Exception:
             pass
+
 
         if is_admin_request:
             current_app.logger.info("Admin request: Fetching all artworks for ArtworkList.")
@@ -1949,26 +2072,44 @@ class ArtworkList(Resource):
                 .filter(Artwork.is_active == True, Artist.is_active == True)\
                 .order_by(Artwork.created_at.desc()).all()
         
-        return schemas.artworks_schema.dump(artworks), 200 # Use schemas.artworks_schema
+        return schemas.artworks_schema.dump(artworks), 200
 
     @admin_required
     def post(self):
         form_data = request.form.to_dict()
         image_file = request.files.get('image_file')
 
-        if 'is_active' not in form_data:
-            form_data['is_active'] = True
-        else:
-            form_data['is_active'] = str(form_data['is_active']).lower() in ['true', 'on', '1', 'yes']
-
         artist_id_val = form_data.get('artist_id')
-        if artist_id_val:
-            artist = Artist.query.get(artist_id_val)
-            if not artist:
-                abort(400, message=f"Artist with ID {artist_id_val} not found.")
-        else:
-             abort(400, message="artist_id is required.")
+        if not artist_id_val:
+            abort(400, message="artist_id is required.")
+        artist = Artist.query.get(artist_id_val)
+        if not artist:
+            abort(400, message=f"Artist with ID {artist_id_val} not found.")
+        if not artist.is_active:
+             abort(400, message=f"Cannot assign artwork to an inactive artist ('{artist.name}'). Activate the artist first.")
 
+        try:
+            target_stock_quantity = int(form_data.get('stock_quantity', 0))
+            if target_stock_quantity < 0:
+                abort(400, message="Stock quantity cannot be negative.")
+        except ValueError:
+            abort(400, message="Invalid stock_quantity format.")
+        
+        payload_is_active_val = form_data.get('is_active')
+        if payload_is_active_val is None: 
+            target_is_active = True 
+        else:
+            target_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+
+        if target_stock_quantity > 0:
+            target_is_active = True 
+
+        if not target_is_active and target_stock_quantity > 0: 
+            abort(400, message="Cannot create an inactive artwork with stock. Set stock to 0 or create as active.")
+        
+        form_data['is_active'] = target_is_active
+        form_data['stock_quantity'] = target_stock_quantity
+        
         uploaded_image_path = None
         if image_file:
             uploaded_image_path = save_artwork_image(image_file)
@@ -1979,12 +2120,11 @@ class ArtworkList(Resource):
         elif 'image_url' in form_data and form_data['image_url']:
             pass
         else:
-            if not image_file:
+            if not image_file: 
                  return {"message": "image_file is required for new artworks."}, 400
             form_data['image_url'] = None 
 
         try:
-            # Use schemas.artwork_schema here
             new_artwork_instance = schemas.artwork_schema.load(form_data, session=db.session)
         except ValidationError as err:
             return {"message": "Validation errors", "errors": err.messages}, 400
@@ -1995,7 +2135,8 @@ class ArtworkList(Resource):
         try:
             db.session.add(new_artwork_instance)
             db.session.commit()
-            return schemas.artwork_schema.dump(new_artwork_instance), 201 # Use schemas.artwork_schema
+            created_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(new_artwork_instance.id)
+            return schemas.artwork_schema.dump(created_artwork), 201
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artwork in DB: {e}", exc_info=True)
@@ -2008,14 +2149,15 @@ class ArtworkDetail(Resource):
     def get(self, artwork_id):
         is_admin_request = False
         try:
-            jwt_payload = get_jwt()
-            if jwt_payload:
-                user_id = get_jwt_identity()
+            verify_jwt_in_request(optional=True)
+            user_id = get_jwt_identity()
+            if user_id:
                 user = User.query.get(user_id)
                 if user and user.is_admin:
                     is_admin_request = True
         except Exception:
             pass
+
 
         query = Artwork.query.options(joinedload(Artwork.artist))
         artwork = query.get(artwork_id)
@@ -2027,33 +2169,65 @@ class ArtworkDetail(Resource):
             if not artwork.is_active or (artwork.artist and not artwork.artist.is_active):
                 return {"message": f"Artwork with ID {artwork_id} not found or not active."}, 404
         
-        return schemas.artwork_schema.dump(artwork), 200 # Use schemas.artwork_schema
+        return schemas.artwork_schema.dump(artwork), 200
 
     @admin_required
     def patch(self, artwork_id):
-        artwork = Artwork.query.get_or_404(
-            artwork_id, description=f"Artwork with ID {artwork_id} not found."
-        )
+        current_artwork_from_db = Artwork.query.options(joinedload(Artwork.artist)).get(artwork_id)
+        if not current_artwork_from_db:
+            abort(404, message=f"Artwork with ID {artwork_id} not found.")
 
         form_data = request.form.to_dict()
         image_file = request.files.get('image_file')
         
-        if 'is_active' in form_data:
-            form_data['is_active'] = str(form_data['is_active']).lower() in ['true', 'on', '1', 'yes']
-
         new_artist_id = form_data.get('artist_id')
-        if new_artist_id and new_artist_id != artwork.artist_id:
+        if new_artist_id and new_artist_id != current_artwork_from_db.artist_id:
             artist = Artist.query.get(new_artist_id)
             if not artist:
                 abort(400, message=f"New artist with ID {new_artist_id} not found.")
+            if not artist.is_active:
+                payload_is_active_val = form_data.get('is_active', current_artwork_from_db.is_active)
+                target_artwork_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+                if target_artwork_is_active:
+                    abort(400, message=f"Cannot assign active artwork to an inactive artist ('{artist.name}'). Activate the artist first or deactivate the artwork.")
 
+
+        target_stock_quantity_str = form_data.get('stock_quantity')
+        if target_stock_quantity_str is not None:
+            try:
+                target_stock_quantity = int(target_stock_quantity_str)
+                if target_stock_quantity < 0:
+                    abort(400, message="Stock quantity cannot be negative.")
+            except ValueError:
+                abort(400, message="Invalid stock_quantity format.")
+        else:
+            target_stock_quantity = current_artwork_from_db.stock_quantity
+
+        payload_is_active_val = form_data.get('is_active')
+        if payload_is_active_val is not None:
+            target_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+        else:
+            target_is_active = current_artwork_from_db.is_active
+        
+        if target_is_active is False:
+            if target_stock_quantity > 0:
+                abort(400, message="Cannot deactivate artwork with stock. Please set stock to 0 first or in the same request.")
+        
+        if target_stock_quantity > 0:
+            target_is_active = True
+
+        if not target_is_active and target_stock_quantity > 0:
+            abort(400, message="Internal logic error: Inactive artwork cannot have stock. Please review request or contact support.")
+
+        form_data['is_active'] = target_is_active 
+        form_data['stock_quantity'] = target_stock_quantity
+        
         if image_file:
-            old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url) if artwork.image_url else None
-            
+            old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], current_artwork_from_db.image_url) if current_artwork_from_db.image_url else None
             uploaded_image_path = save_artwork_image(image_file)
             if uploaded_image_path:
                 form_data['image_url'] = uploaded_image_path
-                if old_image_path_abs and os.path.exists(old_image_path_abs) and artwork.image_url != uploaded_image_path:
+                if old_image_path_abs and os.path.exists(old_image_path_abs) and current_artwork_from_db.image_url != uploaded_image_path:
                     try:
                         os.remove(old_image_path_abs)
                         current_app.logger.info(f"Deleted old image: {old_image_path_abs}")
@@ -2061,9 +2235,9 @@ class ArtworkDetail(Resource):
                         current_app.logger.error(f"Error deleting old image {old_image_path_abs}: {e}")
             else:
                 return {"message": "Invalid image file or error during upload for update."}, 400
-        elif 'image_url' in form_data and form_data['image_url'] == "" : 
-            if artwork.image_url:
-                old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
+        elif 'image_url' in form_data and form_data['image_url'] == "" :
+            if current_artwork_from_db.image_url:
+                old_image_path_abs = os.path.join(current_app.config['MEDIA_FOLDER'], current_artwork_from_db.image_url)
                 if os.path.exists(old_image_path_abs):
                     try: 
                         os.remove(old_image_path_abs)
@@ -2071,15 +2245,12 @@ class ArtworkDetail(Resource):
                     except OSError as e:
                         current_app.logger.error(f"Error deleting image {old_image_path_abs}: {e}")
             form_data['image_url'] = None
-        elif 'image_url' in form_data :
-            pass
-
+        
         try:
-            # Use schemas.artwork_schema
-            updated_artwork = schemas.artwork_schema.load(
-                form_data,
-                instance=artwork,
-                partial=True, 
+            updated_artwork_instance = schemas.artwork_schema.load(
+                form_data, 
+                instance=current_artwork_from_db,
+                partial=True,
                 session=db.session
             )
         except ValidationError as err:
@@ -2087,8 +2258,8 @@ class ArtworkDetail(Resource):
 
         try:
             db.session.commit()
-            refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(artwork.id)
-            return schemas.artwork_schema.dump(refreshed_artwork), 200 # Use schemas.artwork_schema
+            refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(current_artwork_from_db.id)
+            return schemas.artwork_schema.dump(refreshed_artwork), 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating artwork {artwork_id}: {e}", exc_info=True)
