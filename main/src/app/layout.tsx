@@ -4,7 +4,7 @@ import { Playfair_Display, Montserrat } from 'next/font/google';
 import { cn } from "@/lib/utils";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
-import { Navbar } from "@/components/layout/Navbar";
+import { ConditionalNavbarWrapper } from "@/components/layout/ConditionalNavbarWrapper";
 import { Footer } from "@/components/layout/Footer";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -41,7 +41,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           <CartProvider>
-            <Navbar />
+            <ConditionalNavbarWrapper />
             <main className="flex-grow container mx-auto px-4 py-8">
               {children}
             </main>
