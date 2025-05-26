@@ -1,4 +1,3 @@
-# === ./app/resources/payment.py ===
 
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
@@ -6,7 +5,9 @@ from decimal import Decimal
 import json
 
 from .. import db
-from ..models import Order, OrderItem, Artwork, Cart, CartItem, User, PaymentTransaction, DeliveryOption # Added DeliveryOption
+from ..models import Order, OrderItem, Artwork, Cart, CartItem, User, PaymentTransaction, DeliveryOption
+from ..socket_events import notify_new_order_to_admins, notify_order_status_update
+from ..schemas import order_schema
 
 payment_bp = Blueprint('payments', __name__)
 payment_api = Api(payment_bp)
@@ -100,6 +101,7 @@ class DarajaCallback(Resource):
                     db.session.rollback()
                     current_app.logger.error(f"Transaction {transaction.id}: DB Error committing 'failed_underpaid' status: {e_commit}")
             else:
+                new_order = None
                 try:
                     user = User.query.get(transaction.user_id)
                     
@@ -130,7 +132,7 @@ class DarajaCallback(Resource):
                         delivery_option_id=transaction.selected_delivery_option_id,
                         delivery_fee=transaction.applied_delivery_fee or Decimal('0.00'),
                         shipping_address=shipping_addr,
-                        billing_address=user.address if user and user.address else shipping_addr, # Default billing to user address or shipping
+                        billing_address=user.address if user and user.address else shipping_addr,
                         payment_transaction_id=transaction.id
                     )
                     db.session.add(new_order)
@@ -168,6 +170,14 @@ class DarajaCallback(Resource):
                     transaction.status = 'successful'
                     db.session.commit()
                     current_app.logger.info(f"Order {new_order.id} created successfully and committed for Transaction {transaction.id} (CRID: {checkout_request_id}).")
+
+                    if new_order:
+
+                        order_dump = order_schema.dump(new_order)
+                        
+                        notify_new_order_to_admins(order_dump)
+                        notify_order_status_update(order_dump)
+
 
                 except ValueError as ve:
                     db.session.rollback()

@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager
 from flask_bcrypt import Bcrypt
 from flask_marshmallow import Marshmallow
 from flask_cors import CORS
+from flask_socketio import SocketIO
 from .config import Config
 
 db = SQLAlchemy()
@@ -13,6 +14,7 @@ migrate = Migrate()
 jwt = JWTManager()
 bcrypt = Bcrypt()
 ma = Marshmallow()
+socketio = SocketIO()
 
 BLOCKLIST = set()
 
@@ -47,6 +49,8 @@ def create_app(config_class=Config):
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
          allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Requested-With"]
     )
+    
+    socketio.init_app(app, cors_allowed_origins=allowed_origins, async_mode='eventlet')
 
 
     from . import models
@@ -85,6 +89,8 @@ def create_app(config_class=Config):
     app.register_blueprint(delivery_bp, url_prefix='/api/delivery')
     app.register_blueprint(admin_dashboard_bp, url_prefix='/api/admin/dashboard')
     app.register_blueprint(search_bp, url_prefix='/api/search')
+
+    from . import socket_events 
 
     @app.route('/')
     def index():

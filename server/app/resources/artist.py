@@ -8,6 +8,7 @@ from .. import db
 from ..models import Artist, Artwork, User
 from ..schemas import artist_schema, artists_schema, ArtworkSchema
 from ..decorators import admin_required
+from ..socket_events import notify_artist_update_globally
 
 artist_bp = Blueprint('artists', __name__)
 artist_api = Api(artist_bp)
@@ -55,7 +56,9 @@ class ArtistList(Resource):
             db.session.add(new_artist)
             db.session.commit()
             created_artist = Artist.query.options(selectinload(Artist.artworks)).get(new_artist.id)
-            return artist_schema.dump(created_artist), 201
+            created_artist_dump = artist_schema.dump(created_artist)
+            notify_artist_update_globally(created_artist_dump)
+            return created_artist_dump, 201
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artist in DB: {e}", exc_info=True)
@@ -90,7 +93,6 @@ class ArtistDetail(Resource):
             artist.artworks_for_display = [aw for aw in artist.artworks if aw.is_active]
 
         artist_dump_data = artist_schema.dump(artist)
-
         return artist_dump_data, 200
 
 
@@ -146,7 +148,9 @@ class ArtistDetail(Resource):
             db.session.commit()
             
             refreshed_artist = Artist.query.options(selectinload(Artist.artworks)).get(artist_id)
-            return artist_schema.dump(refreshed_artist), 200
+            refreshed_artist_dump = artist_schema.dump(refreshed_artist)
+            notify_artist_update_globally(refreshed_artist_dump)
+            return refreshed_artist_dump, 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating artist {artist_id}: {e}", exc_info=True)
@@ -155,9 +159,13 @@ class ArtistDetail(Resource):
     @admin_required
     def delete(self, artist_id):
         artist = Artist.query.get_or_404(artist_id, description=f"Artist with ID {artist_id} not found.")
+        artist_dump_for_delete = artist_schema.dump(artist)
+        artist_dump_for_delete['is_deleted'] = True
+        
         try:
             db.session.delete(artist)
             db.session.commit()
+            notify_artist_update_globally(artist_dump_for_delete)
             return '', 204
         except Exception as e:
             db.session.rollback()

@@ -11,6 +11,8 @@ from ..models import Artwork, Artist, Order, OrderItem, User, DeliveryOption
 from ..schemas import orders_schema, order_schema
 from ..decorators import admin_required
 from marshmallow import fields, validate as marshmallow_validate, ValidationError
+from ..socket_events import notify_order_status_update
+
 
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__)
 admin_dashboard_api = Api(admin_dashboard_bp)
@@ -226,12 +228,24 @@ class AdminOrderDetail(Resource):
                     ),
                     joinedload(Order.delivery_option_details)
                 ).get(order.id)
-                return order_schema.dump(refreshed_order), 200
+                
+                order_dump = order_schema.dump(refreshed_order)
+                notify_order_status_update(order_dump)
+                
+                return order_dump, 200
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.error(f"Error updating order {order_id} by admin: {e}", exc_info=True)
                 abort(500, message="An error occurred while updating the order.")
         else:
-            return {"message": "No valid fields provided for update or no changes made."}, 200
+            current_order_state = Order.query.options(
+                joinedload(Order.user),
+                joinedload(Order.items).options(
+                    joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+                ),
+                joinedload(Order.delivery_option_details)
+            ).get(order.id)
+            return order_schema.dump(current_order_state), 200
+
 
 admin_dashboard_api.add_resource(AdminOrderDetail, '/orders/<string:order_id>')

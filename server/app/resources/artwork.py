@@ -13,6 +13,7 @@ from .. import db, ma
 from ..models import Artwork, Artist, User
 from .. import schemas
 from ..decorators import admin_required
+from ..socket_events import notify_artwork_update_globally
 
 artwork_bp = Blueprint('artworks', __name__)
 artwork_api = Api(artwork_bp)
@@ -57,8 +58,11 @@ class ArtworkList(Resource):
         min_price_str = request.args.get('min_price')
         max_price_str = request.args.get('max_price')
         artist_id_filter = request.args.get('artist_id_filter')
-        status_filter_str = request.args.get('status_filter')
+        status_filter_str = request.args.get('is_active')
         
+        search_query_param = request.args.get('q')
+
+
         if is_admin_request:
             query = Artwork.query.options(joinedload(Artwork.artist))
         else:
@@ -85,9 +89,24 @@ class ArtworkList(Resource):
             try:
                 max_price = Decimal(max_price_str)
                 if max_price < 0: abort(400, message="max_price cannot be negative.")
-                if min_price_str and max_price < Decimal(min_price_str): abort(400, message="max_price cannot be less than min_price.")
+                if min_price_str and max_price < Decimal(min_price_str):
+                    abort(400, message="max_price cannot be less than min_price.")
                 query = query.filter(Artwork.price <= max_price)
             except (ValueError, TypeError): abort(400, message="Invalid max_price format.")
+
+        if search_query_param and is_admin_request:
+            search_term = f"%{search_query_param}%"
+            query = query.filter(
+                or_(
+                    Artwork.name.ilike(search_term),
+                    Artwork.description.ilike(search_term),
+                    Artist.name.ilike(search_term)
+                )
+            )
+            if not any(isinstance(opt, joinedload) and opt.attribute is Artwork.artist for opt in query._with_options):
+                if not query._legacy_setup_joins or ('artists', Artist.__table__) not in query._legacy_setup_joins:
+                   query = query.join(Artist, Artwork.artist_id == Artist.id)
+
 
         valid_sort_fields = {
             'name': Artwork.name,
@@ -120,19 +139,17 @@ class ArtworkList(Resource):
 
         artist_id_val = form_data.get('artist_id')
         if not artist_id_val:
-            abort(400, message="artist_id is required.")
+            abort(400, message={"artist_id": ["Artist selection is required."]})
         artist = Artist.query.get(artist_id_val)
         if not artist:
-            abort(400, message=f"Artist with ID {artist_id_val} not found.")
-        if not artist.is_active:
-             abort(400, message=f"Cannot assign artwork to an inactive artist ('{artist.name}'). Activate the artist first.")
-
+            abort(400, message={"artist_id": [f"Artist with ID {artist_id_val} not found."]})
+        
         try:
             target_stock_quantity = int(form_data.get('stock_quantity', 0))
             if target_stock_quantity < 0:
-                abort(400, message="Stock quantity cannot be negative.")
+                abort(400, message={"stock_quantity": ["Stock quantity cannot be negative."]})
         except ValueError:
-            abort(400, message="Invalid stock_quantity format.")
+            abort(400, message={"stock_quantity": ["Invalid stock_quantity format."]})
         
         payload_is_active_val = form_data.get('is_active')
         if payload_is_active_val is None: 
@@ -140,12 +157,14 @@ class ArtworkList(Resource):
         else:
             target_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
 
-        if target_stock_quantity > 0:
-            target_is_active = True 
+        if not artist.is_active and target_is_active:
+             abort(400, message={"artist_id": [f"Cannot assign active artwork to an inactive artist ('{artist.name}'). Activate the artist first."]})
 
-        if not target_is_active and target_stock_quantity > 0: 
-            abort(400, message="Cannot create an inactive artwork with stock. Set stock to 0 or create as active.")
-        
+        if target_stock_quantity > 0:
+            target_is_active = True
+        elif target_is_active is False and target_stock_quantity > 0 :
+            abort(400, message="Error: Inactive artwork cannot have stock.")
+
         form_data['is_active'] = target_is_active
         form_data['stock_quantity'] = target_stock_quantity
         
@@ -161,7 +180,7 @@ class ArtworkList(Resource):
         else:
             if not image_file:
                  return {"message": "image_file is required for new artworks."}, 400
-            form_data['image_url'] = None 
+            form_data['image_url'] = None
 
         try:
             new_artwork_instance = schemas.artwork_schema.load(form_data, session=db.session)
@@ -175,7 +194,11 @@ class ArtworkList(Resource):
             db.session.add(new_artwork_instance)
             db.session.commit()
             created_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(new_artwork_instance.id)
-            return schemas.artwork_schema.dump(created_artwork), 201
+            artwork_dump = schemas.artwork_schema.dump(created_artwork)
+            
+            notify_artwork_update_globally(artwork_dump)
+            
+            return artwork_dump, 201
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error creating artwork in DB: {e}", exc_info=True)
@@ -223,37 +246,38 @@ class ArtworkDetail(Resource):
         if new_artist_id and new_artist_id != current_artwork_from_db.artist_id:
             artist = Artist.query.get(new_artist_id)
             if not artist:
-                abort(400, message=f"New artist with ID {new_artist_id} not found.")
-            if not artist.is_active:
-                payload_is_active_val = form_data.get('is_active', str(current_artwork_from_db.is_active))
-                target_artwork_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
-                if target_artwork_is_active:
-                    abort(400, message=f"Cannot assign active artwork to an inactive artist ('{artist.name}'). Activate the artist first or deactivate the artwork.")
-
-
+                abort(400, message={"artist_id": [f"New artist with ID {new_artist_id} not found."]})
+        
         target_stock_quantity_str = form_data.get('stock_quantity')
         if target_stock_quantity_str is not None:
             try:
                 target_stock_quantity = int(target_stock_quantity_str)
                 if target_stock_quantity < 0:
-                    abort(400, message="Stock quantity cannot be negative.")
+                    abort(400, message={"stock_quantity": ["Stock quantity cannot be negative."]})
             except ValueError:
-                abort(400, message="Invalid stock_quantity format.")
+                abort(400, message={"stock_quantity": ["Invalid stock_quantity format."]})
         else:
             target_stock_quantity = current_artwork_from_db.stock_quantity
 
         payload_is_active_val = form_data.get('is_active')
         if payload_is_active_val is not None:
-            target_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
+            target_artwork_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
         else:
-            target_is_active = current_artwork_from_db.is_active
+            target_artwork_is_active = current_artwork_from_db.is_active
         
-        if target_stock_quantity > 0:
-            target_is_active = True 
-        elif target_is_active is False and target_stock_quantity > 0 :
-             abort(400, message="Cannot deactivate artwork with stock. Please set stock to 0 first or in the same request.")
+        artist_for_this_artwork = Artist.query.get(form_data.get('artist_id', current_artwork_from_db.artist_id))
+        if not artist_for_this_artwork:
+             abort(400, message="Artist not found for artwork update.")
+        
+        if not artist_for_this_artwork.is_active and target_artwork_is_active:
+            abort(400, message={"artist_id": [f"Cannot assign/keep artwork active with an inactive artist ('{artist_for_this_artwork.name}'). Activate artist first or deactivate artwork."]})
 
-        form_data['is_active'] = target_is_active 
+        if target_stock_quantity > 0:
+            target_artwork_is_active = True
+        elif target_artwork_is_active is False and target_stock_quantity > 0 : 
+            abort(400, message="Error: Inactive artwork cannot have stock.")
+            
+        form_data['is_active'] = target_artwork_is_active 
         form_data['stock_quantity'] = target_stock_quantity
         
         if image_file:
@@ -279,7 +303,7 @@ class ArtworkDetail(Resource):
                     except OSError as e:
                         current_app.logger.error(f"Error deleting image {old_image_path_abs}: {e}")
             form_data['image_url'] = None
-        
+
         try:
             updated_artwork_instance = schemas.artwork_schema.load(
                 form_data, 
@@ -293,7 +317,11 @@ class ArtworkDetail(Resource):
         try:
             db.session.commit()
             refreshed_artwork = Artwork.query.options(joinedload(Artwork.artist)).get(current_artwork_from_db.id)
-            return schemas.artwork_schema.dump(refreshed_artwork), 200
+            artwork_dump = schemas.artwork_schema.dump(refreshed_artwork)
+            
+            notify_artwork_update_globally(artwork_dump)
+            
+            return artwork_dump, 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating artwork {artwork_id}: {e}", exc_info=True)
@@ -307,6 +335,11 @@ class ArtworkDetail(Resource):
              artwork_id, description=f"Artwork with ID {artwork_id} not found."
         )
         
+        artwork_dump_for_delete_notification = schemas.artwork_schema.dump(artwork)
+        artwork_dump_for_delete_notification['is_active'] = False
+        artwork_dump_for_delete_notification['stock_quantity'] = 0
+        artwork_dump_for_delete_notification['is_deleted'] = True
+
         if artwork.image_url:
             image_full_path = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
             if os.path.exists(image_full_path):
@@ -319,6 +352,9 @@ class ArtworkDetail(Resource):
         try:
             db.session.delete(artwork)
             db.session.commit()
+            
+            notify_artwork_update_globally(artwork_dump_for_delete_notification)
+
             return '', 204
         except Exception as e:
             db.session.rollback()
@@ -353,39 +389,50 @@ class ArtworkBulkActions(Resource):
         if not ids:
             return {"message": "No artwork IDs provided for bulk update."}, 200
 
-        artworks_to_update = Artwork.query.filter(Artwork.id.in_(ids)).all()
+        changed_artwork_ids = [] 
+        artworks_to_update_query = Artwork.query.options(joinedload(Artwork.artist)).filter(Artwork.id.in_(ids))
+        
+        artworks_instances = artworks_to_update_query.all()
         updated_count = 0
 
-        for artwork in artworks_to_update:
-            changed = False
+        for artwork in artworks_instances:
+            original_is_active = artwork.is_active
+            original_stock = artwork.stock_quantity
+            changed_this_iteration = False
+
             if action == 'activate':
                 if artwork.artist and artwork.artist.is_active:
                     if not artwork.is_active:
                         artwork.is_active = True
-                        changed = True
+                        changed_this_iteration = True
                 else:
-                    current_app.logger.warning(f"Bulk activate: Cannot activate artwork {artwork.id} because its artist {artwork.artist_id} is inactive.")
+                    current_app.logger.warning(f"Bulk activate: Cannot activate artwork {artwork.id} because its artist '{artwork.artist.name if artwork.artist else artwork.artist_id}' is inactive.")
                     continue
 
             elif action == 'deactivate':
                 if artwork.is_active:
                     artwork.is_active = False
                     artwork.stock_quantity = 0
-                    changed = True
+                    changed_this_iteration = True
             
-            if changed:
+            if changed_this_iteration:
                 updated_count +=1
+                changed_artwork_ids.append(artwork.id)
         
         if updated_count > 0:
             try:
                 db.session.commit()
+                artworks_for_socket = Artwork.query.options(joinedload(Artwork.artist)).filter(Artwork.id.in_(changed_artwork_ids)).all()
+                for art_instance in artworks_for_socket:
+                    artwork_dump = schemas.artwork_schema.dump(art_instance)
+                    notify_artwork_update_globally(artwork_dump)
                 return {"message": f"Successfully {action}d {updated_count} artworks."}, 200
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.error(f"Error during bulk artwork {action}: {e}", exc_info=True)
                 abort(500, message=f"An error occurred during bulk {action}.")
         else:
-            return {"message": f"No artworks were updated. They might already be in the target state or artists are inactive for activation requests."}, 200
+            return {"message": f"No artworks were updated. They might already be in the target state or their artists are inactive (for activation requests)."}, 200
 
 
     @admin_required
@@ -406,8 +453,15 @@ class ArtworkBulkActions(Resource):
 
             artworks_to_delete = Artwork.query.filter(Artwork.id.in_(ids)).all()
             deleted_count = 0
+            deleted_artworks_for_socket = []
             
             for artwork in artworks_to_delete:
+                artwork_dump = schemas.artwork_schema.dump(artwork)
+                artwork_dump['is_active'] = False 
+                artwork_dump['stock_quantity'] = 0
+                artwork_dump['is_deleted'] = True
+                deleted_artworks_for_socket.append(artwork_dump)
+
                 if artwork.image_url:
                     image_full_path = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
                     if os.path.exists(image_full_path):
@@ -421,6 +475,8 @@ class ArtworkBulkActions(Resource):
             if deleted_count > 0:
                 try:
                     db.session.commit()
+                    for art_dump in deleted_artworks_for_socket:
+                        notify_artwork_update_globally(art_dump) 
                     return {"message": f"Successfully deleted {deleted_count} artworks."}, 200
                 except Exception as e:
                     db.session.rollback()
@@ -429,8 +485,9 @@ class ArtworkBulkActions(Resource):
             else:
                 return {"message": "No artworks found for the provided IDs, or no IDs provided."}, 200
         else:
-            abort(405)
+            abort(405, message="Method Not Allowed. Use PATCH for activate/deactivate, or POST to /bulk-delete for deletion.")
 
 artwork_api.add_resource(ArtworkList, '/')
 artwork_api.add_resource(ArtworkDetail, '/<string:artwork_id>')
-artwork_api.add_resource(ArtworkBulkActions, '/bulk-actions', '/bulk-actions/bulk-delete')
+artwork_api.add_resource(ArtworkBulkActions, '/bulk-actions', endpoint='artwork_bulk_status_actions') 
+artwork_api.add_resource(ArtworkBulkActions, '/bulk-actions/bulk-delete', endpoint='artwork_bulk_delete_action')

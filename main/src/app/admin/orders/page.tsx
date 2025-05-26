@@ -1,7 +1,6 @@
-// === app/admin/orders/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useForm, SubmitHandler } from 'react-hook-form';
@@ -23,8 +22,9 @@ import {
   HeaderGroup,
   Cell,
 } from '@tanstack/react-table';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { Order as OrderType, OrderItem as OrderItemType, ApiErrorResponse, AdminOrderUpdatePayload, User as UserType, DeliveryOption as DeliveryOptionType } from '@/lib/types';
+import { Order as OrderType, OrderItem as OrderItemType, ApiErrorResponse, AdminOrderUpdatePayload } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 
@@ -64,15 +64,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info } from 'lucide-react';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info, ImageOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-
 
 const orderUpdateFormSchema = z.object({
   status: z.enum(['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'picked_up']),
@@ -93,7 +86,9 @@ function OrderItemDetailsCard({ item }: { item: OrderItemType }) {
           fill
           sizes="48px"
           className="object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
         />
+         {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-5 w-5 text-muted-foreground" />}
       </div>
       <div className="flex-1 space-y-0.5">
         <p className="text-sm font-medium">{item.artwork.name}</p>
@@ -104,51 +99,100 @@ function OrderItemDetailsCard({ item }: { item: OrderItemType }) {
   );
 }
 
+function OrderTableSkeleton() {
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                 <h1 className="text-2xl font-semibold">Manage Orders</h1>
+                <Skeleton className="h-10 w-36" />
+            </div>
+            <Skeleton className="h-10 w-full" />
+            <div className="rounded-md border">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            {Array.from({length: 7}).map((_, i) => <TableHead key={i}><Skeleton className="h-5 w-20" /></TableHead>)}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {Array.from({length: 5}).map((_, i) => (
+                            <TableRow key={i}>
+                                {Array.from({length: 7}).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>)}
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        </div>
+    );
+}
+
+
+const fetchAdminOrders = async (): Promise<OrderType[]> => {
+  const data = await apiClient.get<OrderType[]>('/api/admin/dashboard/orders', { needsAuth: true });
+  return data || [];
+};
+
 
 export default function AdminOrdersPage() {
-  const [orders, setOrders] = useState<OrderType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingOrder, setEditingOrder] = useState<OrderType | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [viewingOrderDetails, setViewingOrderDetails] = useState<OrderType | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
 
-
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+
+  const queryClient = useQueryClient();
+
+  const { data: orders = [], isLoading, error, refetch } = useQuery<OrderType[], Error>({
+    queryKey: ['adminOrders'],
+    queryFn: fetchAdminOrders,
+  });
 
   const form = useForm<OrderUpdateFormValues>({
     resolver: zodResolver(orderUpdateFormSchema),
   });
 
-  const fetchOrders = async () => {
-    setIsLoading(true);
-    try {
-      const fetchedOrders = await apiClient.get<OrderType[]>('/api/admin/dashboard/orders', { needsAuth: true });
-      setOrders(fetchedOrders || []);
-    } catch (error) {
-      console.error("Failed to fetch orders:", error);
-      toast.error("Could not load orders.");
-    } finally {
-      setIsLoading(false);
+  const updateOrderMutation = useMutation<
+    OrderType, 
+    Error, 
+    { orderId: string; payload: AdminOrderUpdatePayload }
+  >({
+    mutationFn: async ({ orderId, payload }) => {
+        const updatedOrder = await apiClient.patch<OrderType>(
+            `/api/admin/dashboard/orders/${orderId}`, 
+            payload, 
+            { needsAuth: true }
+        );
+        if (updatedOrder === null) { 
+            throw new Error("Order update returned no data, but an Order object was expected.");
+        }
+        return updatedOrder;
+    },
+    onSuccess: (updatedOrder) => {
+        toast.success("Order status updated successfully!");
+        setShowEditDialog(false);
+        setEditingOrder(null);
+        form.reset();
+        queryClient.invalidateQueries({ queryKey: ['adminOrders'] });
+        queryClient.invalidateQueries({ queryKey: ['adminOrderDetails', updatedOrder.id] });
+        queryClient.invalidateQueries({ queryKey: ['adminDashboardStats']});
+    },
+    onError: (error: any) => {
+        const apiError = error as ApiErrorResponse;
+        toast.error(apiError.message || "An error occurred while updating the order.");
     }
-  };
-
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  });
 
   const handleUpdateSubmit: SubmitHandler<OrderUpdateFormValues> = async (values) => {
     if (!editingOrder) return;
-    setIsSubmitting(true);
 
     const payload: AdminOrderUpdatePayload = { status: values.status };
     if (values.status === 'picked_up') {
       if (!values.picked_up_by_name || !values.picked_up_by_id_no) {
         toast.error("Picker name and ID number are required for 'Picked Up' status.");
-        setIsSubmitting(false);
         return;
       }
       payload.picked_up_by_name = values.picked_up_by_name;
@@ -157,21 +201,7 @@ export default function AdminOrdersPage() {
         payload.picked_up_by_name = '';
         payload.picked_up_by_id_no = '';
     }
-
-
-    try {
-      await apiClient.patch<OrderType>(`/api/admin/dashboard/orders/${editingOrder.id}`, payload, { needsAuth: true });
-      toast.success("Order status updated successfully!");
-      setShowEditDialog(false);
-      setEditingOrder(null);
-      form.reset();
-      fetchOrders();
-    } catch (error: any) {
-      const apiError = error as ApiErrorResponse;
-      toast.error(apiError.message || "An error occurred while updating the order.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    updateOrderMutation.mutate({ orderId: editingOrder.id, payload });
   };
 
   const openEditDialog = useCallback((order: OrderType) => {
@@ -194,34 +224,42 @@ export default function AdminOrdersPage() {
   const columns: ColumnDef<OrderType>[] = useMemo(() => [
     {
       accessorKey: "id",
-      header: ({ column }: { column: Column<OrderType, unknown> }) => (
+      header: ({ column }) => (
         <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
           Order ID <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<OrderType> }) => <span className="font-mono text-xs">{row.original.id.substring(0,8)}...</span>,
+      cell: ({ row }) => <span className="font-mono text-xs">{row.original.id.substring(0,8)}...</span>,
     },
     {
       id: 'customerInfo',
       header: "Customer",
-      accessorFn: (row: OrderType) => row.user?.name || row.user?.email || row.user_id.substring(0,8)+'...',
-      cell: ({ getValue }) => getValue() as string,
+      accessorFn: (row) => row.user?.name || row.user?.email || row.user_id.substring(0,8)+'...',
+      cell: ({ getValue }) => <span className="text-xs">{getValue() as string}</span>,
     },
     {
       accessorKey: "created_at",
-      header: "Date Placed",
-      cell: ({ row }: { row: Row<OrderType> }) => new Date(row.original.created_at).toLocaleDateString(),
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Date Placed <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
     },
     {
       accessorKey: "total_price",
-      header: "Total",
-      cell: ({ row }: { row: Row<OrderType> }) => formatPrice(row.original.total_price),
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Total <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => formatPrice(row.original.total_price),
     },
     {
         id: 'deliveryMethod',
         header: "Delivery",
-        accessorFn: (row: OrderType) => row.delivery_option_details?.name || 'N/A',
-        cell: ({ row }: { row: Row<OrderType> }) => (
+        accessorFn: (row) => row.delivery_option_details?.name || 'N/A',
+        cell: ({ row }) => (
             <div className="text-xs">
                 <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
                 {row.original.delivery_option_details?.is_pickup && <Badge variant="outline" className="mt-1">Pickup</Badge>}
@@ -230,8 +268,12 @@ export default function AdminOrdersPage() {
     },
     {
       accessorKey: "status",
-      header: "Status",
-      cell: ({ row }: { row: Row<OrderType> }) => (
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Status <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => (
         <Badge
           variant={
             row.original.status === 'paid' || row.original.status === 'delivered' || row.original.status === 'picked_up' ? 'default' :
@@ -244,13 +286,13 @@ export default function AdminOrdersPage() {
           {row.original.status.replace('_', ' ')}
         </Badge>
       ),
-      filterFn: (row: Row<OrderType>, id: string, value: any) => value.includes(row.getValue(id)),
+      filterFn: (row, id, value) => value.includes(row.getValue(id)),
     },
     {
       id: "actions",
-      header: "Actions",
-      cell: ({ row }: { row: Row<OrderType> }) => (
-        <div className="flex space-x-1">
+      header: () => <div className="text-right">Actions</div>,
+      cell: ({ row }) => (
+        <div className="flex space-x-1 justify-end">
           <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(row.original)} title="View Details">
             <Eye className="h-4 w-4" />
           </Button>
@@ -272,7 +314,7 @@ export default function AdminOrdersPage() {
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: (row: Row<OrderType>, columnId: string, filterValue: string) => {
+    globalFilterFn: (row, columnId, filterValue) => {
         const orderId = row.original.id.toLowerCase();
         const customerName = row.original.user?.name?.toLowerCase() || '';
         const customerEmail = row.original.user?.email?.toLowerCase() || '';
@@ -289,14 +331,12 @@ export default function AdminOrdersPage() {
     },
   });
 
-  if (isLoading && orders.length === 0) {
-    return (
-        <div className="space-y-4">
-            <h1 className="text-2xl font-semibold">Manage Orders</h1>
-            <Skeleton className="h-10 w-full" />
-            {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
-        </div>
-    );
+  if (isLoading) {
+    return <OrderTableSkeleton />;
+  }
+  
+  if (error) {
+    return <div className="text-red-500 p-4">Error loading orders: {error.message} <Button onClick={() => refetch()} className="ml-2">Retry</Button></div>;
   }
 
   return (
@@ -318,7 +358,7 @@ export default function AdminOrdersPage() {
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
-            {table.getHeaderGroups().map((headerGroup: HeaderGroup<OrderType>) => (
+            {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <TableHead key={header.id}>
@@ -330,9 +370,9 @@ export default function AdminOrdersPage() {
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row: Row<OrderType>) => (
+              table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell: Cell<OrderType, unknown>) => (
+                  {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
@@ -412,8 +452,8 @@ export default function AdminOrdersPage() {
               )}
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button type="submit" disabled={updateOrderMutation.isPending}>
+                  {updateOrderMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Update Status
                 </Button>
               </DialogFooter>
@@ -422,7 +462,6 @@ export default function AdminOrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* View Order Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -466,7 +505,6 @@ export default function AdminOrdersPage() {
             </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

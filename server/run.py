@@ -1,4 +1,4 @@
-from app import create_app
+from app import create_app, socketio
 from seed import run_seed
 
 app = create_app()
@@ -9,4 +9,4 @@ def seed_db():
     run_seed()
 
 if __name__ =='__main__':
-    app.run(debug=True)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)

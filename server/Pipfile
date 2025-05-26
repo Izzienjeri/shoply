@@ -19,6 +19,8 @@ cryptography = "*"
 requests = "*"
 faker = "*"
 python-dateutil = "*"
+flask-socketio = "*"
+eventlet = "*"
 
 [dev-packages]
 

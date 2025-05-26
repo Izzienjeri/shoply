@@ -7,6 +7,8 @@ import { CartProvider } from "@/contexts/CartContext";
 import { ConditionalNavbarWrapper } from "@/components/layout/ConditionalNavbarWrapper";
 import { Footer } from "@/components/layout/Footer";
 import { Toaster } from "@/components/ui/sonner";
+import { SocketProvider } from "@/contexts/SocketContext";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -39,16 +41,20 @@ export default function RootLayout({
           playfair.variable
         )}
       >
-        <AuthProvider>
-          <CartProvider>
-            <ConditionalNavbarWrapper />
-            <main className="flex-grow container mx-auto px-4 py-8">
-              {children}
-            </main>
-            <Footer />
-            <Toaster richColors position="top-right" />
-          </CartProvider>
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <CartProvider>
+              <SocketProvider>
+                <ConditionalNavbarWrapper />
+                <main className="flex-grow container mx-auto px-4 py-8">
+                  {children}
+                </main>
+                <Footer />
+                <Toaster richColors position="top-right" />
+              </SocketProvider>
+            </CartProvider>
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

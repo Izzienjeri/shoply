@@ -95,7 +95,6 @@ def seed_users():
     print(f"Seeding 10 users (including 1 admin, 1 test user)...")
     users = []
 
-    # Admin
     if not User.query.filter_by(email=ADMIN_EMAIL).first():
         admin = User(email=ADMIN_EMAIL, name="Admin User", address="Artistry Haven HQ", is_admin=True)
         admin.set_password(DEFAULT_PASSWORD)
@@ -104,7 +103,6 @@ def seed_users():
     else:
         print("Admin already exists.")
 
-    # Test User
     if not User.query.filter_by(email=TEST_USER_EMAIL).first():
         test_user = User(email=TEST_USER_EMAIL, name="Test User", address="Nairobi", is_admin=False)
         test_user.set_password(DEFAULT_PASSWORD)
@@ -113,7 +111,6 @@ def seed_users():
     else:
         print("Test user already exists.")
 
-    # 8 other users
     for i in range(8):
         email = fake.unique.email() if fake else f"user{i+1}@example.com"
         if User.query.filter_by(email=email).first():

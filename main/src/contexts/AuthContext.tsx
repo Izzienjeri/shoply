@@ -29,13 +29,6 @@ const setAuthToken = (token: string | null): void => {
 
 export const clearAuthToken = (): void => {
     setAuthToken(null);
-    if (typeof window !== 'undefined') {
-        try {
-            localStorage.removeItem('isAdmin');
-        } catch (error) {
-            console.error("Failed to remove isAdmin from localStorage:", error);
-        }
-    }
 };
 
 
@@ -57,50 +50,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(() => getAuthToken());
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-        return localStorage.getItem('isAdmin') === 'true';
-    } catch (error) {
-        console.error("Failed to read isAdmin from localStorage:", error);
-        return false;
-    }
-  });
 
-  const storeAdminStatus = (isAdminFlag: boolean) => {
-    if (typeof window !== 'undefined') {
-        try {
-            localStorage.setItem('isAdmin', String(isAdminFlag));
-        } catch (error) {
-            console.error("Failed to store isAdmin in localStorage:", error);
-        }
-    }
-    setIsAdmin(isAdminFlag);
-  };
+  const isAdmin = !!user?.is_admin;
 
-  const fetchUser = useCallback(async () => {
-    const currentToken = getAuthToken();
+  const fetchUser = useCallback(async (currentTokenOverride?: string) => {
+    const currentToken = currentTokenOverride || getAuthToken();
     if (!currentToken) {
        setToken(null);
        setUser(null);
-       storeAdminStatus(false);
        setIsLoading(false);
        return;
     }
 
-    if (currentToken && !user) {
+    if (!token && currentToken) {
         setToken(currentToken);
     }
-
+    
     setIsLoading(true);
     try {
        const fetchedUser = await apiClient.get<UserProfile>('/api/auth/me', { needsAuth: true });
        if (fetchedUser) {
           setUser(fetchedUser);
-          storeAdminStatus(!!fetchedUser.is_admin);
        } else {
-          setUser(null);
-          storeAdminStatus(false);
+          setUser(null); 
+          if (currentToken) {
+            console.warn("User fetch returned null/undefined with a valid token present. Clearing token.");
+            clearAuthToken();
+            setToken(null);
+          }
        }
     } catch (error: any) {
        console.warn("Failed to fetch user:", error.message);
@@ -108,29 +85,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        if (error.message?.includes("401") || error.message?.includes("Unauthorized")) {
             clearAuthToken();
             setToken(null);
-       } else {
        }
     } finally {
        setIsLoading(false);
     }
-  }, [user]);
+  }, [token]);
 
   useEffect(() => {
-     const currentToken = getAuthToken();
-     if (currentToken && !user) {
-         fetchUser();
-     } else if (!currentToken) {
+     const currentTokenOnLoad = getAuthToken();
+     if (currentTokenOnLoad && !user) {
+         fetchUser(currentTokenOnLoad);
+     } else if (!currentTokenOnLoad) {
          setUser(null);
          setToken(null);
-         storeAdminStatus(false);
          setIsLoading(false);
-     } else {
+     } else if (currentTokenOnLoad && user && token !== currentTokenOnLoad) {
+         setToken(currentTokenOnLoad);
+         fetchUser(currentTokenOnLoad);
+     }
+     else {
          setIsLoading(false);
      }
-  }, [fetchUser, user]);
+  }, [fetchUser, user, token]);
 
 
   const login = async (email: string, password: string) => {
+     setIsLoading(true);
      try {
          const response = await apiClient.post<LoginResponse>('/api/auth/login', { email, password });
 
@@ -139,9 +119,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
              setToken(response.access_token);
              if (response.user) {
                  setUser(response.user as UserProfile);
-                 storeAdminStatus(!!response.user.is_admin);
              } else {
-                 await fetchUser();
+                 await fetchUser(response.access_token);
              }
          } else {
              console.error("Login failed: Invalid response structure from server.", response);
@@ -149,14 +128,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
          }
      } catch (error) {
          console.error("Login failed:", error);
-         clearAuthToken();
-         setToken(null);
-         setUser(null);
+         clearAuthToken(); 
+         setToken(null);     
+         setUser(null);    
          throw error;
+     } finally {
+        setIsLoading(false); 
      }
   };
 
- const signup = async (userData: Omit<User, 'id'|'created_at'|'is_admin'> & {password: string}) => {
+  const signup = async (userData: Omit<User, 'id'|'created_at'|'is_admin'> & {password: string}) => {
+     setIsLoading(true);
      try {
          const response = await apiClient.post<SignupResponse>('/api/auth/signup', userData);
          if (!response || !response.user) {
@@ -165,10 +147,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
      } catch (error) {
          console.error("Signup failed:", error);
          throw error;
+     } finally {
+        setIsLoading(false);
      }
- };
+  };
 
   const logout = async () => {
+     setIsLoading(true);
      const currentToken = getAuthToken();
      try {
         if (currentToken) {
@@ -180,11 +165,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         clearAuthToken();
         setToken(null);
         setUser(null);
-        window.location.href = '/';
+        setIsLoading(false);
+        if (typeof window !== 'undefined') {
+            window.location.href = '/';
+        }
      }
   };
 
-  const isAuthenticated = !isLoading && !!token;
+  const isAuthenticated = !isLoading && !!token && !!user;
 
   return (
     <AuthContext.Provider value={{ user, token, isLoading, isAuthenticated, isAdmin, login, signup, logout, fetchUser }}>
