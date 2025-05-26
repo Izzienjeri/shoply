@@ -18,6 +18,7 @@ marshmallow-sqlalchemy = "*"
 cryptography = "*"
 requests = "*"
 faker = "*"
+python-dateutil = "*"
 
 [dev-packages]
 

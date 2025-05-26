@@ -82,6 +82,7 @@ interface ArtistApiPayload {
     name: string;
     bio?: string | null;
     is_active: boolean;
+    reactivate_artworks?: boolean;
 }
 
 export default function AdminArtistsPage() {
@@ -91,6 +92,8 @@ export default function AdminArtistsPage() {
   const [editingArtist, setEditingArtist] = useState<ArtistType | null>(null);
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [artistToDelete, setArtistToDelete] = useState<ArtistType | null>(null);
+  const [showReactivationConfirmDialog, setShowReactivationConfirmDialog] = useState(false);
+  const [pendingArtistData, setPendingArtistData] = useState<ArtistFormValues | null>(null);
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -123,21 +126,28 @@ export default function AdminArtistsPage() {
     fetchArtists();
   }, []);
 
-  const handleFormSubmit: SubmitHandler<ArtistFormValues> = async (values) => {
+  const proceedWithArtistUpdate = async (values: ArtistFormValues, reactivateArtworksFlag: boolean) => {
     setIsSubmitting(true);
     const payload: ArtistApiPayload = {
-        ...values,
+        name: values.name,
         bio: values.bio || null,
+        is_active: values.is_active,
+        reactivate_artworks: reactivateArtworksFlag,
     };
 
     try {
       if (editingArtist) {
         await apiClient.patch<ArtistType>(`/api/artists/${editingArtist.id}`, payload, { needsAuth: true });
         toast.success("Artist updated successfully!");
+        if (reactivateArtworksFlag) {
+             toast.info("Attempted to reactivate associated artworks. Please check their status.");
+        }
       } else {
         await apiClient.post<ArtistType>('/api/artists/', payload, { needsAuth: true });
         toast.success("Artist created successfully!");
       }
+      setShowReactivationConfirmDialog(false);
+      setPendingArtistData(null);
       setShowFormDialog(false);
       setEditingArtist(null);
       form.reset({ name: "", bio: null, is_active: true });
@@ -152,6 +162,15 @@ export default function AdminArtistsPage() {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleFormSubmit: SubmitHandler<ArtistFormValues> = async (values) => {
+    if (editingArtist && editingArtist.is_active === false && values.is_active === true) {
+      setPendingArtistData(values);
+      setShowReactivationConfirmDialog(true);
+    } else {
+      proceedWithArtistUpdate(values, false);
     }
   };
 
@@ -412,6 +431,33 @@ export default function AdminArtistsPage() {
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReactivationConfirmDialog} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+              setShowReactivationConfirmDialog(false);
+              setPendingArtistData(null);
+          }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Artwork Reactivation</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are reactivating the artist "{pendingArtistData?.name}".
+              Do you also want to reactivate all their currently inactive artworks?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {setShowReactivationConfirmDialog(false); setPendingArtistData(null);}}>Cancel</AlertDialogCancel>
+            <Button variant="outline" onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, false)} disabled={isSubmitting}>
+                No, Just Artist
+            </Button>
+            <AlertDialogAction onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, true)} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Yes, Reactivate Artworks
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

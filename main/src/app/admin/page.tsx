@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Package, Users, DollarSign, ShoppingBag, Settings, BarChart3, AlertTriangle, Loader2 } from "lucide-react";
+import { Package, Users, DollarSign, ShoppingBag, Settings, BarChart3, AlertTriangle, Loader2, CalendarIcon } from "lucide-react";
 import Link from "next/link";
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api';
@@ -11,7 +11,10 @@ import { formatPrice, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-
+import { DateRange } from "react-day-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
 
 interface StatCardProps {
   title: string;
@@ -52,35 +55,54 @@ export default function AdminDashboardPage() {
   const [statsData, setStatsData] = useState<AdminDashboardStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    to: new Date(),
+  });
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await apiClient.get<AdminDashboardStatsData>('/api/admin/dashboard/stats', { needsAuth: true });
-        setStatsData(data);
-      } catch (err: any) {
-        setError(err.message || "Failed to load dashboard data.");
-        console.error("Dashboard fetch error:", err);
-      } finally {
-        setIsLoading(false);
+  const fetchDashboardData = async (selectedDateRange?: DateRange) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (selectedDateRange?.from) {
+        params.append('start_date', format(selectedDateRange.from, 'yyyy-MM-dd'));
       }
-    };
-    fetchDashboardData();
-  }, []);
+      if (selectedDateRange?.to) {
+        params.append('end_date', format(selectedDateRange.to, 'yyyy-MM-dd'));
+      }
+      
+      const data = await apiClient.get<AdminDashboardStatsData>(`/api/admin/dashboard/stats?${params.toString()}`, { needsAuth: true });
+      setStatsData(data);
+    } catch (err: any) {
+      setError(err.message || "Failed to load dashboard data.");
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  useEffect(() => {
+    fetchDashboardData(dateRange);
+  }, [dateRange]);
+
+  const revenueStatDescription = dateRange?.from && dateRange.to
+    ? `Revenue from ${format(dateRange.from, "LLL dd, y")} to ${format(dateRange.to, "LLL dd, y")}`
+    : "Revenue (This Month)";
 
   const dynamicStats = statsData ? [
     { title: "Total Artworks", value: statsData.total_artworks, description: `${statsData.active_artworks} active`, icon: Package, href: "/admin/artworks" },
     { title: "Total Artists", value: statsData.total_artists, description: `${statsData.active_artists} active`, icon: Users, href: "/admin/artists" },
-    { title: "Pending Orders", value: statsData.pending_orders_count, description: `${statsData.paid_orders_count} paid`, icon: ShoppingBag, href: "/admin/orders?status=pending" },
-    { title: "Revenue (This Month)", value: formatPrice(statsData.revenue_this_month), icon: DollarSign, href: "/admin/orders?status=paid" },
+    { title: "Pending Orders", value: statsData.pending_orders_count, description: `${statsData.paid_orders_count} paid (all time)`, icon: ShoppingBag, href: "/admin/orders?status=pending" },
+    { title: revenueStatDescription, value: formatPrice(statsData.revenue_this_month), icon: DollarSign, href: "/admin/orders?status=paid" },
   ] : [
     { title: "Total Artworks", value: "0", icon: Package, href: "/admin/artworks", isLoading: true },
     { title: "Total Artists", value: "0", icon: Users, href: "/admin/artists", isLoading: true },
     { title: "Pending Orders", value: "0", icon: ShoppingBag, href: "/admin/orders?status=pending", isLoading: true },
-    { title: "Revenue (This Month)", value: "Ksh 0.00", icon: DollarSign, href: "#", isLoading: true },
+    { title: revenueStatDescription, value: "Ksh 0.00", icon: DollarSign, href: "#", isLoading: true },
   ];
+
 
   if (error) {
     return (
@@ -88,16 +110,54 @@ export default function AdminDashboardPage() {
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-xl font-semibold text-destructive">Error Loading Dashboard</h2>
         <p className="text-muted-foreground">{error}</p>
-        <Button onClick={() => window.location.reload()} className="mt-4">Retry</Button>
+        <Button onClick={() => fetchDashboardData(dateRange)} className="mt-4">Retry</Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Admin Dashboard</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Overview of your art store.</p>
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Admin Dashboard</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Overview of your art store.</p>
+        </div>
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button
+                    id="date"
+                    variant={"outline"}
+                    className={cn(
+                        "w-full sm:w-[300px] justify-start text-left font-normal mt-4 sm:mt-0",
+                        !dateRange && "text-muted-foreground"
+                    )}
+                >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange?.from ? (
+                        dateRange.to ? (
+                        <>
+                            {format(dateRange.from, "LLL dd, y")} -{" "}
+                            {format(dateRange.to, "LLL dd, y")}
+                        </>
+                        ) : (
+                        format(dateRange.from, "LLL dd, y")
+                        )
+                    ) : (
+                        <span>Pick a date range</span>
+                    )}
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                />
+            </PopoverContent>
+        </Popover>
       </header>
 
       <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -118,7 +178,7 @@ export default function AdminDashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Recent Orders</CardTitle>
-            <CardDescription>A list of the most recent orders.</CardDescription>
+            <CardDescription>A list of the most recent orders (not date filtered).</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading && !statsData?.recent_orders ? (
@@ -169,7 +229,9 @@ export default function AdminDashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Sales Analytics</CardTitle>
-             <CardDescription>Monthly sales performance chart (last 6 months).</CardDescription>
+             <CardDescription>
+                Monthly sales performance for {dateRange?.from && dateRange.to ? `selected range` : `last 6 months`}.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading && !statsData?.sales_trend ? (
@@ -189,7 +251,7 @@ export default function AdminDashboardPage() {
               </div>
             ) : (
               <div className="h-64 bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-md">
-                <p className="text-muted-foreground">No sales data available for chart.</p>
+                <p className="text-muted-foreground">No sales data available for chart in the selected range.</p>
               </div>
             )}
           </CardContent>

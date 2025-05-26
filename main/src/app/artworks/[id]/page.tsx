@@ -150,7 +150,7 @@ export default function ArtworkDetailPage() {
             <AlertDescription>
               {artwork.is_active === false && <>Artwork status: <Badge variant="destructive">INACTIVE</Badge>. </>}
               {artwork.artist?.is_active === false && <>Artist status: <Badge variant="destructive">INACTIVE</Badge>. </>}
-              {isOutOfStock && artwork.is_active && <>Stock status: <Badge variant="outline" className="border-orange-500 text-orange-600">OUT OF STOCK</Badge>. </>}
+              {isOutOfStock && artwork.is_active && <Badge variant="outline" className="border-orange-500 text-orange-600">OUT OF STOCK</Badge>}
               <br/>
               If artwork or artist is inactive, it's hidden from public. Inactive artworks must have 0 stock.
             </AlertDescription>
@@ -207,8 +207,8 @@ export default function ArtworkDetailPage() {
           </div>
           
           <div className="flex items-center space-x-2">
-              {isOutOfStock ? <PackageX className="h-5 w-5 text-orange-600" /> : <PackageCheck className="h-5 w-5 text-green-600" />}
-              <p className={cn("text-sm font-medium", isOutOfStock ? "text-orange-600" : "text-green-700")}>
+              {isOutOfStock ? <PackageX className="h-5 w-5 text-red-600" /> : <PackageCheck className="h-5 w-5 text-green-600" />}
+              <p className={cn("text-sm font-medium", isOutOfStock ? "text-red-600" : "text-green-700")}>
                   {isOutOfStock ? "Out of Stock" : 
                    (artwork.stock_quantity < 5 ? `Only ${artwork.stock_quantity} left in stock!` : `In Stock (${artwork.stock_quantity} available)`)
                   }

@@ -17,13 +17,14 @@ import {
   useReactTable,
   SortingState,
   ColumnFiltersState,
+  RowSelectionState,
   Row,
   Column,
   HeaderGroup,
   Cell,
 } from '@tanstack/react-table';
 
-import { Artwork as ArtworkType, Artist as ArtistType, ApiErrorResponse } from '@/lib/types';
+import { Artwork as ArtworkType, Artist as ArtistType, ApiErrorResponse, ArtworkBulkActionPayload, ArtworkBulkDeletePayload } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 
@@ -76,7 +77,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud, Filter, CheckSquare, XSquare, Trash } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
@@ -113,15 +116,18 @@ export default function AdminArtworksPage() {
   const [artists, setArtists] = useState<ArtistType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<ArtworkType | null>(null);
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [artworkToDelete, setArtworkToDelete] = useState<ArtworkType | null>(null);
+  const [artworksToBulkDelete, setArtworksToBulkDelete] = useState<string[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
 
   const form = useForm<ArtworkFormInput, any, ArtworkFormValues>({
@@ -132,7 +138,7 @@ export default function AdminArtworksPage() {
       price: 0,
       stock_quantity: 0,
       description: null,
-      is_active: true, 
+      is_active: true,
       image_file: null,
       current_image_url: null,
     },
@@ -147,7 +153,7 @@ export default function AdminArtworksPage() {
     if (stock > 0 && !isActiveValue) {
       setValue('is_active', true, { shouldValidate: true, shouldDirty: true });
       toast.info("Artwork automatically set to active due to positive stock quantity.", { duration: 4000 });
-      clearErrors(["is_active", "stock_quantity"]); 
+      clearErrors(["is_active", "stock_quantity"]);
     }
   }, [stockQuantityValue, isActiveValue, setValue, clearErrors]);
 
@@ -155,16 +161,27 @@ export default function AdminArtworksPage() {
   const fetchArtworksAndArtists = useCallback(async () => {
     setIsLoading(true);
     try {
+      const queryParams = new URLSearchParams();
+      columnFilters.forEach(filter => {
+        if (filter.value && typeof filter.value === 'string' && filter.value.trim() !== '') {
+          if (filter.id === 'artist_id_filter') {
+             queryParams.append('artist_id_filter', filter.value);
+          } else {
+             queryParams.append(filter.id, filter.value);
+          }
+        }
+      });
+      if (globalFilter) queryParams.append('q', globalFilter);
+
       const [fetchedArtworks, fetchedArtists] = await Promise.all([
-        apiClient.get<ArtworkType[]>('/api/artworks/', { needsAuth: true }),
+        apiClient.get<ArtworkType[]>(`/api/artworks/?${queryParams.toString()}`, { needsAuth: true }),
         apiClient.get<ArtistType[]>('/api/artists/', { needsAuth: true }),
       ]);
       setArtworks(fetchedArtworks || []);
-      
-      setArtists(fetchedArtists || []); 
+      setArtists(fetchedArtists || []);
 
       if (fetchedArtists && fetchedArtists.length > 0 && !editingArtwork && !form.getValues('artist_id')) {
-        const firstActiveArtist = fetchedArtists.find(a => a.is_active);
+        const firstActiveArtist = fetchedArtists.find(a => a.is_active !== false);
         setValue('artist_id', firstActiveArtist ? firstActiveArtist.id : fetchedArtists[0].id, { shouldValidate: true });
       }
     } catch (error) {
@@ -173,11 +190,11 @@ export default function AdminArtworksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [form, editingArtwork, setValue]); 
+  }, [form, editingArtwork, setValue, columnFilters, globalFilter]);
 
   useEffect(() => {
     fetchArtworksAndArtists();
-  }, [fetchArtworksAndArtists]);
+  }, [columnFilters, globalFilter, fetchArtworksAndArtists]);
 
 
   const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
@@ -185,9 +202,9 @@ export default function AdminArtworksPage() {
     clearErrors();
 
     const currentStock = Number(values.stock_quantity);
-    const payload_is_active_val = values.is_active; 
-    
-    let finalIsActive = payload_is_active_val; 
+    const payload_is_active_val = values.is_active;
+
+    let finalIsActive = payload_is_active_val;
 
     if (currentStock > 0) {
         finalIsActive = true;
@@ -196,7 +213,7 @@ export default function AdminArtworksPage() {
     if (payload_is_active_val === false && currentStock > 0) {
        toast.error("Cannot set artwork as inactive if stock is greater than 0. Artwork will be saved as active.");
     }
-    
+
     if (finalIsActive === false && currentStock > 0) {
         toast.error("Internal validation error: An inactive artwork cannot have stock. Please correct and try again.");
         setFormError("is_active", { type: "manual", message: "Inactive artwork must have 0 stock." });
@@ -220,9 +237,9 @@ export default function AdminArtworksPage() {
         setIsSubmitting(false);
         return;
     }
-    
+
     const selectedArtist = artists.find(a => a.id === values.artist_id);
-    if (selectedArtist && !selectedArtist.is_active && finalIsActive) { 
+    if (selectedArtist && selectedArtist.is_active === false && finalIsActive) {
         toast.error(`Artist "${selectedArtist.name}" is inactive. Cannot assign an active artwork to an inactive artist. Activate the artist first or make the artwork inactive (with 0 stock).`);
         setFormError("artist_id", {type: "manual", message: "Selected artist is inactive, cannot assign active artwork."});
         setIsSubmitting(false);
@@ -231,9 +248,9 @@ export default function AdminArtworksPage() {
 
     const formData = new FormData();
     formData.append('name', values.name);
-    formData.append('artist_id', values.artist_id); 
+    formData.append('artist_id', values.artist_id);
     formData.append('price', values.price.toString());
-    formData.append('stock_quantity', String(currentStock)); 
+    formData.append('stock_quantity', String(currentStock));
     formData.append('is_active', String(finalIsActive));
     if (values.description) {
       formData.append('description', values.description);
@@ -242,7 +259,11 @@ export default function AdminArtworksPage() {
     if (values.image_file) {
       formData.append('image_file', values.image_file);
     } else if (editingArtwork && values.current_image_url) {
-      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL}/media/`; 
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        toast.error("API URL not configured."); setIsSubmitting(false); return;
+      }
+      const mediaBase = `${apiUrl.replace('/api', '')}/media/`;
       let relativePath = values.current_image_url;
       if (values.current_image_url?.startsWith(mediaBase)) {
         relativePath = values.current_image_url.substring(mediaBase.length);
@@ -274,13 +295,13 @@ export default function AdminArtworksPage() {
 
       setShowFormDialog(false);
       setEditingArtwork(null);
-      reset({ 
-        name: "", artist_id: artists.length > 0 ? artists[0].id : "", price: 0,
+      reset({
+        name: "", artist_id: artists.length > 0 ? (artists.find(a=>a.is_active !==false)?.id || artists[0].id) : "", price: 0,
         stock_quantity: 0, description: null, is_active: true,
         image_file: null, current_image_url: null,
       });
       setPreviewImage(null);
-      fetchArtworksAndArtists(); 
+      fetchArtworksAndArtists();
     } catch (error: any) {
       const apiError = error as ApiErrorResponse;
       toast.error(apiError.message || "An error occurred.");
@@ -299,13 +320,13 @@ export default function AdminArtworksPage() {
   const openEditDialog = (artwork: ArtworkType) => {
     setEditingArtwork(artwork);
     setPreviewImage(artwork.image_url || null);
-    reset({ 
+    reset({
       name: artwork.name,
-      artist_id: artwork.artist?.id || "", 
+      artist_id: artwork.artist?.id || "",
       price: parseFloat(artwork.price),
       stock_quantity: artwork.stock_quantity,
       description: artwork.description || null,
-      is_active: artwork.is_active === undefined ? true : artwork.is_active, 
+      is_active: artwork.is_active === undefined ? true : artwork.is_active,
       image_file: null,
       current_image_url: artwork.image_url || null,
     });
@@ -315,13 +336,13 @@ export default function AdminArtworksPage() {
   const openNewDialog = () => {
     setEditingArtwork(null);
     setPreviewImage(null);
-    reset({ 
+    reset({
         name: "",
-        artist_id: artists.length > 0 ? (artists.find(a => a.is_active)?.id || artists[0].id) : "",
+        artist_id: artists.length > 0 ? (artists.find(a => a.is_active !== false)?.id || artists[0].id) : "",
         price: 0,
         stock_quantity: 0,
         description: null,
-        is_active: true, 
+        is_active: true,
         image_file: null,
         current_image_url: null,
     });
@@ -343,7 +364,70 @@ export default function AdminArtworksPage() {
     }
   };
 
+  const handleBulkAction = async (action: 'activate' | 'deactivate' | 'delete') => {
+    const selectedArtworkIds = Object.keys(rowSelection).filter(id => rowSelection[id]);
+    if (selectedArtworkIds.length === 0) {
+      toast.info("No artworks selected.");
+      return;
+    }
+
+    if (action === 'delete') {
+        setArtworksToBulkDelete(selectedArtworkIds);
+        return;
+    }
+    
+    setIsBulkSubmitting(true);
+    try {
+        const payload: ArtworkBulkActionPayload = { ids: selectedArtworkIds, action };
+        await apiClient.patch<any>('/api/artworks/bulk-actions', payload, { needsAuth: true });
+        toast.success(`Successfully ${action}d ${selectedArtworkIds.length} artworks.`);
+        fetchArtworksAndArtists();
+        setRowSelection({});
+    } catch (error: any) {
+        toast.error(error.message || `Failed to ${action} artworks.`);
+    } finally {
+        setIsBulkSubmitting(false);
+    }
+  };
+
+  const confirmBulkDelete = async () => {
+    if (artworksToBulkDelete.length === 0) return;
+    setIsBulkSubmitting(true);
+    try {
+        const payload: ArtworkBulkDeletePayload = { ids: artworksToBulkDelete };
+        await apiClient.post<any>('/api/artworks/bulk-actions/bulk-delete', payload, { needsAuth: true });
+        toast.success(`Successfully deleted ${artworksToBulkDelete.length} artworks.`);
+        fetchArtworksAndArtists();
+        setRowSelection({});
+    } catch (error: any) {
+        toast.error(error.message || "Failed to delete artworks.");
+    } finally {
+        setIsBulkSubmitting(false);
+        setArtworksToBulkDelete([]);
+    }
+  };
+
+
   const columns: ColumnDef<ArtworkType>[] = useMemo(() => [
+    {
+      id: 'select',
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected()}
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       accessorKey: "image_url",
       header: "Image",
@@ -379,6 +463,7 @@ export default function AdminArtworksPage() {
       ),
     },
     {
+      id: "artist_id_filter",
       accessorKey: "artist.name",
       header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
         <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
@@ -393,7 +478,11 @@ export default function AdminArtworksPage() {
               {artistIsActive === false && <Badge variant="outline" className="ml-1 text-xs">Artist Inactive</Badge>}
             </>
         );
-      }
+      },
+      filterFn: (row, id, value) => {
+        if (!row.original.artist) return false;
+        return value === row.original.artist.id;
+      },
     },
     {
       accessorKey: "price",
@@ -430,7 +519,7 @@ export default function AdminArtworksPage() {
           {row.original.is_active ? "Active" : "Inactive"}
         </Badge>
       ),
-      filterFn: (row: Row<ArtworkType>, id: string, value: any) => value.includes(row.getValue(id))
+      filterFn: (row: Row<ArtworkType>, id: string, value: any) => value === String(row.getValue(id)),
     },
     {
       id: "actions",
@@ -449,7 +538,7 @@ export default function AdminArtworksPage() {
         );
       },
     },
-  ], [artists]);
+  ], []);
 
   const table = useReactTable({
     data: artworks,
@@ -461,9 +550,10 @@ export default function AdminArtworksPage() {
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: (row, columnId, filterValue) => { 
+    onRowSelectionChange: setRowSelection,
+    globalFilterFn: (row, columnId, filterValue) => {
       const artworkName = row.getValue('name') as string;
-      const artistName = row.original.artist?.name || ''; 
+      const artistName = row.original.artist?.name || '';
       return artworkName.toLowerCase().includes(filterValue.toLowerCase()) ||
              artistName.toLowerCase().includes(filterValue.toLowerCase());
     },
@@ -471,8 +561,11 @@ export default function AdminArtworksPage() {
       sorting,
       columnFilters,
       globalFilter,
+      rowSelection,
     },
   });
+  
+  const selectedRowCount = Object.keys(rowSelection).length;
 
   if (isLoading && artworks.length === 0) {
     return (
@@ -496,8 +589,8 @@ export default function AdminArtworksPage() {
         </Button>
       </div>
 
-      <div className="flex items-center py-4">
-        <div className="relative w-full max-w-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4">
+        <div className="relative w-full sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by artwork or artist name..."
@@ -506,7 +599,68 @@ export default function AdminArtworksPage() {
             className="pl-10"
           />
         </div>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Select
+                value={table.getColumn('artist_id_filter')?.getFilterValue() as string ?? ''}
+                onValueChange={(value) => table.getColumn('artist_id_filter')?.setFilterValue(value === 'all' ? '' : value)}
+            >
+                <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filter by Artist" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Artists</SelectItem>
+                    {artists.map(artist => (
+                        <SelectItem key={artist.id} value={artist.id}>{artist.name}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <Select
+                value={table.getColumn('is_active')?.getFilterValue() as string ?? 'all'}
+                onValueChange={(value) => table.getColumn('is_active')?.setFilterValue(value === 'all' ? '' : value)}
+            >
+                <SelectTrigger className="w-full sm:w-[160px]">
+                    <SelectValue placeholder="Filter by Status" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="true">Active</SelectItem>
+                    <SelectItem value="false">Inactive</SelectItem>
+                </SelectContent>
+            </Select>
+        </div>
       </div>
+
+      {selectedRowCount > 0 && (
+        <div className="mb-4 flex items-center space-x-2">
+            <span className="text-sm text-muted-foreground">{selectedRowCount} row(s) selected.</span>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={isBulkSubmitting}>
+                        Bulk Actions {isBulkSubmitting && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                    <DropdownMenuLabel>Apply to selected</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleBulkAction('activate')} disabled={isBulkSubmitting}>
+                        <CheckSquare className="mr-2 h-4 w-4" /> Activate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkAction('deactivate')} disabled={isBulkSubmitting}>
+                        <XSquare className="mr-2 h-4 w-4" /> Deactivate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        onClick={() => handleBulkAction('delete')}
+                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                        disabled={isBulkSubmitting}
+                    >
+                        <Trash className="mr-2 h-4 w-4" /> Delete
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+      )}
+
 
       <div className="rounded-md border bg-card">
         <Table>
@@ -552,7 +706,7 @@ export default function AdminArtworksPage() {
           setShowFormDialog(isOpen);
           if (!isOpen) {
               reset({
-                name: "", artist_id: artists.length > 0 ? (artists.find(a => a.is_active)?.id || artists[0].id) : "", price: 0,
+                name: "", artist_id: artists.length > 0 ? (artists.find(a => a.is_active !== false)?.id || artists[0].id) : "", price: 0,
                 stock_quantity: 0, description: null, is_active: true,
                 image_file: null, current_image_url: null,
               });
@@ -588,7 +742,7 @@ export default function AdminArtworksPage() {
                     <FormLabel>Artist</FormLabel>
                     <Select
                       onValueChange={onChange}
-                      value={value || ""} 
+                      value={value || ""}
                     >
                       <FormControl>
                         <SelectTrigger ref={ref} className={cn(error && "border-destructive")}>
@@ -691,7 +845,7 @@ export default function AdminArtworksPage() {
                         </div>
                       </FormControl>
                      <FormDescription>
-                        {editingArtwork && currentImageDisplay ? "Upload a new file to replace the current image." : 
+                        {editingArtwork && currentImageDisplay ? "Upload a new file to replace the current image." :
                          !editingArtwork ? "Image is required for new artworks. " : ""}
                         Max 5MB. JPG, PNG, GIF.
                     </FormDescription>
@@ -724,8 +878,8 @@ export default function AdminArtworksPage() {
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                     <FormControl>
-                      <Checkbox 
-                        checked={field.value} 
+                      <Checkbox
+                        checked={field.value}
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
@@ -771,6 +925,28 @@ export default function AdminArtworksPage() {
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={artworksToBulkDelete.length > 0} onOpenChange={(isOpen) => !isOpen && setArtworksToBulkDelete([])}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Bulk Delete</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete {artworksToBulkDelete.length} selected artwork(s)? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setArtworksToBulkDelete([])} disabled={isBulkSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmBulkDelete}
+              disabled={isBulkSubmitting}
+              className={cn(isBulkSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+            >
+              {isBulkSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Selected
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -147,3 +147,12 @@ export interface SearchResults {
   artists: Artist[];
   query: string;
 }
+
+export interface ArtworkBulkActionPayload {
+  ids: string[];
+  action: 'activate' | 'deactivate';
+}
+
+export interface ArtworkBulkDeletePayload {
+  ids: string[];
+}

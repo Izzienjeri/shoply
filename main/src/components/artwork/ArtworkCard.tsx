@@ -107,7 +107,11 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
            </span>
            <Button
               size="sm"
-              variant={(!isPubliclyAvailableForPurchase || isOutOfStock) ? "outline" : "default"}
+              variant={
+                (!isPubliclyAvailableForPurchase) ? "outline" : 
+                (isOutOfStock) ? "destructive" : 
+                "default"
+              }
               onClick={handleAddToCart}
               disabled={authIsLoading || isCartLoading || !isPubliclyAvailableForPurchase || isOutOfStock || !!isInCart}
               aria-label={!isPubliclyAvailableForPurchase ? 'Unavailable' : isOutOfStock ? 'Out of Stock' : isInCart ? 'Already in Cart' : 'Add to Cart'}

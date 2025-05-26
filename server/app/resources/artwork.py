@@ -1,15 +1,15 @@
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
-from marshmallow import ValidationError
+from marshmallow import ValidationError, fields as ma_fields
 from sqlalchemy.orm import joinedload
-from sqlalchemy import desc, asc
+from sqlalchemy import desc, asc, or_
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from werkzeug.utils import secure_filename
 import os
 import uuid
 from decimal import Decimal
 
-from .. import db
+from .. import db, ma
 from ..models import Artwork, Artist, User
 from .. import schemas
 from ..decorators import admin_required
@@ -52,57 +52,64 @@ class ArtworkList(Resource):
         except Exception:
             pass
 
-        sort_by = request.args.get('sort_by', 'created_at') 
-        sort_order = request.args.get('sort_order', 'desc') 
+        sort_by_param = request.args.get('sort_by', 'created_at') 
+        sort_order_param = request.args.get('sort_order', 'desc') 
         min_price_str = request.args.get('min_price')
         max_price_str = request.args.get('max_price')
+        artist_id_filter = request.args.get('artist_id_filter')
+        status_filter_str = request.args.get('status_filter')
         
-
         if is_admin_request:
-            current_app.logger.info("Admin request: Fetching all artworks for ArtworkList with filters.")
             query = Artwork.query.options(joinedload(Artwork.artist))
         else:
             query = Artwork.query.options(joinedload(Artwork.artist))\
                 .join(Artist, Artwork.artist_id == Artist.id)\
                 .filter(Artwork.is_active == True, Artist.is_active == True)
         
+        if is_admin_request:
+            if artist_id_filter:
+                query = query.filter(Artwork.artist_id == artist_id_filter)
+            
+            if status_filter_str is not None and status_filter_str != "":
+                is_active_filter = status_filter_str.lower() == 'true'
+                query = query.filter(Artwork.is_active == is_active_filter)
+        
         if min_price_str:
             try:
                 min_price = Decimal(min_price_str)
-                if min_price < 0:
-                    abort(400, message="min_price cannot be negative.")
+                if min_price < 0: abort(400, message="min_price cannot be negative.")
                 query = query.filter(Artwork.price >= min_price)
-            except (ValueError, TypeError):
-                abort(400, message="Invalid min_price format. Must be a number.")
+            except (ValueError, TypeError): abort(400, message="Invalid min_price format.")
         
         if max_price_str:
             try:
                 max_price = Decimal(max_price_str)
-                if max_price < 0:
-                     abort(400, message="max_price cannot be negative.")
-                if min_price_str and max_price < Decimal(min_price_str):
-                    abort(400, message="max_price cannot be less than min_price.")
+                if max_price < 0: abort(400, message="max_price cannot be negative.")
+                if min_price_str and max_price < Decimal(min_price_str): abort(400, message="max_price cannot be less than min_price.")
                 query = query.filter(Artwork.price <= max_price)
-            except (ValueError, TypeError):
-                abort(400, message="Invalid max_price format. Must be a number.")
+            except (ValueError, TypeError): abort(400, message="Invalid max_price format.")
 
         valid_sort_fields = {
             'name': Artwork.name,
             'price': Artwork.price,
-            'created_at': Artwork.created_at
+            'created_at': Artwork.created_at,
+            'stock_quantity': Artwork.stock_quantity,
+            'artist.name': Artist.name
         }
         
-        sort_column = valid_sort_fields.get(sort_by, Artwork.created_at)
+        sort_column = valid_sort_fields.get(sort_by_param, Artwork.created_at)
         
-        if sort_order.lower() == 'asc':
+        if sort_by_param == 'artist.name' and not any(isinstance(opt, joinedload) and opt.attribute is Artwork.artist for opt in query._with_options):
+             if not query._legacy_setup_joins or ('artists', Artist.__table__) not in query._legacy_setup_joins:
+                query = query.join(Artist, Artwork.artist_id == Artist.id)
+
+
+        if sort_order_param.lower() == 'asc':
             query = query.order_by(asc(sort_column))
-        elif sort_order.lower() == 'desc':
-            query = query.order_by(desc(sort_column))
         else:
             query = query.order_by(desc(sort_column))
         
         artworks = query.all()
-        
         return schemas.artworks_schema.dump(artworks), 200
 
 
@@ -318,5 +325,112 @@ class ArtworkDetail(Resource):
             current_app.logger.error(f"Error deleting artwork {artwork_id}: {e}", exc_info=True)
             abort(500, message="An error occurred while deleting the artwork.")
 
+class ArtworkBulkUpdateSchema(ma.Schema):
+    ids = ma_fields.List(ma_fields.String(), required=True)
+    action = ma_fields.String(validate=lambda val: val in ['activate', 'deactivate'], required=True)
+
+artwork_bulk_update_schema = ArtworkBulkUpdateSchema()
+
+class ArtworkBulkDeleteSchema(ma.Schema):
+    ids = ma_fields.List(ma_fields.String(), required=True)
+
+artwork_bulk_delete_schema = ArtworkBulkDeleteSchema()
+
+class ArtworkBulkActions(Resource):
+    @admin_required
+    def patch(self):
+        json_data = request.get_json()
+        if not json_data:
+            abort(400, message="No input data provided")
+        try:
+            data = artwork_bulk_update_schema.load(json_data)
+        except ValidationError as err:
+            abort(400, errors=err.messages)
+
+        ids = data['ids']
+        action = data['action']
+        
+        if not ids:
+            return {"message": "No artwork IDs provided for bulk update."}, 200
+
+        artworks_to_update = Artwork.query.filter(Artwork.id.in_(ids)).all()
+        updated_count = 0
+
+        for artwork in artworks_to_update:
+            changed = False
+            if action == 'activate':
+                if artwork.artist and artwork.artist.is_active:
+                    if not artwork.is_active:
+                        artwork.is_active = True
+                        changed = True
+                else:
+                    current_app.logger.warning(f"Bulk activate: Cannot activate artwork {artwork.id} because its artist {artwork.artist_id} is inactive.")
+                    continue
+
+            elif action == 'deactivate':
+                if artwork.is_active:
+                    artwork.is_active = False
+                    artwork.stock_quantity = 0
+                    changed = True
+            
+            if changed:
+                updated_count +=1
+        
+        if updated_count > 0:
+            try:
+                db.session.commit()
+                return {"message": f"Successfully {action}d {updated_count} artworks."}, 200
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error during bulk artwork {action}: {e}", exc_info=True)
+                abort(500, message=f"An error occurred during bulk {action}.")
+        else:
+            return {"message": f"No artworks were updated. They might already be in the target state or artists are inactive for activation requests."}, 200
+
+
+    @admin_required
+    def post(self):
+        if request.path.endswith('/bulk-delete'):
+            json_data = request.get_json()
+            if not json_data:
+                abort(400, message="No input data provided")
+            try:
+                data = artwork_bulk_delete_schema.load(json_data)
+            except ValidationError as err:
+                abort(400, errors=err.messages)
+
+            ids = data['ids']
+            if not ids:
+                 return {"message": "No artwork IDs provided for bulk delete."}, 200
+
+
+            artworks_to_delete = Artwork.query.filter(Artwork.id.in_(ids)).all()
+            deleted_count = 0
+            
+            for artwork in artworks_to_delete:
+                if artwork.image_url:
+                    image_full_path = os.path.join(current_app.config['MEDIA_FOLDER'], artwork.image_url)
+                    if os.path.exists(image_full_path):
+                        try:
+                            os.remove(image_full_path)
+                        except OSError as e:
+                            current_app.logger.error(f"Error deleting image file {image_full_path} during bulk delete: {e}")
+                db.session.delete(artwork)
+                deleted_count += 1
+            
+            if deleted_count > 0:
+                try:
+                    db.session.commit()
+                    return {"message": f"Successfully deleted {deleted_count} artworks."}, 200
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.error(f"Error during bulk artwork delete: {e}", exc_info=True)
+                    abort(500, message="An error occurred during bulk delete.")
+            else:
+                return {"message": "No artworks found for the provided IDs, or no IDs provided."}, 200
+        else:
+            abort(405)
+
 artwork_api.add_resource(ArtworkList, '/')
 artwork_api.add_resource(ArtworkDetail, '/<string:artwork_id>')
+artwork_api.add_resource(ArtworkBulkActions, '/bulk-actions', '/bulk-actions/bulk-delete')

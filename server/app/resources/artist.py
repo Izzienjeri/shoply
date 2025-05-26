@@ -102,7 +102,9 @@ class ArtistDetail(Resource):
         if not json_data:
             return {"message": "No input data provided"}, 400
         
-        original_is_active_state = artist.is_active 
+        original_is_active_state = artist.is_active
+        
+        should_reactivate_artworks = json_data.pop('reactivate_artworks', False)
 
         try:
             updated_artist_instance = artist_schema.load(
@@ -112,10 +114,10 @@ class ArtistDetail(Resource):
                 session=db.session
             )
         except ValidationError as err:
+            json_data['reactivate_artworks'] = should_reactivate_artworks 
             return {"message": "Validation errors", "errors": err.messages}, 400
 
         try:
-            db.session.commit() 
             
             if original_is_active_state is True and updated_artist_instance.is_active is False:
                 current_app.logger.info(f"Artist {artist.id} ('{artist.name}') is being deactivated. Processing associated artworks.")
@@ -130,9 +132,18 @@ class ArtistDetail(Resource):
                         updated_artworks_count += 1
                         current_app.logger.info(f"Artwork {artwork_item.id} for artist {artist.id}: set inactive and stock to 0.")
                 
-                if updated_artworks_count > 0:
-                    db.session.commit()
-                    current_app.logger.info(f"Committed changes for {updated_artworks_count} artworks of deactivated artist {artist.id}.")
+            elif original_is_active_state is False and updated_artist_instance.is_active is True:
+                current_app.logger.info(f"Artist {artist.id} ('{artist.name}') is being reactivated.")
+                if should_reactivate_artworks:
+                    current_app.logger.info(f"Reactivating artworks for artist {artist.id} as requested.")
+                    artworks_to_reactivate = Artwork.query.filter_by(artist_id=updated_artist_instance.id, is_active=False).all()
+                    reactivated_count = 0
+                    for artwork_item in artworks_to_reactivate:
+                        artwork_item.is_active = True
+                        reactivated_count += 1
+                    current_app.logger.info(f"Marked {reactivated_count} artworks for artist {artist.id} to be reactivated on commit.")
+            
+            db.session.commit()
             
             refreshed_artist = Artist.query.options(selectinload(Artist.artworks)).get(artist_id)
             return artist_schema.dump(refreshed_artist), 200

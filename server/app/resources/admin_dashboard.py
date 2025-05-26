@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, current_app, request
 from flask_restful import Resource, Api, abort
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, and_
 from sqlalchemy.orm import joinedload
-from datetime import datetime, timedelta 
+from datetime import datetime, timedelta
+from dateutil import parser
 from decimal import Decimal
 
 from .. import db, ma
@@ -18,43 +19,100 @@ class AdminDashboardStats(Resource):
     @admin_required
     def get(self):
         try:
+            start_date_str = request.args.get('start_date')
+            end_date_str = request.args.get('end_date')
+
+            start_date, end_date = None, None
+            if start_date_str:
+                try:
+                    start_date = parser.parse(start_date_str).date()
+                except (ValueError, TypeError):
+                    abort(400, message="Invalid start_date format. Use YYYY-MM-DD.")
+            if end_date_str:
+                try:
+                    end_date = parser.parse(end_date_str).date() + timedelta(days=1)
+                except (ValueError, TypeError):
+                    abort(400, message="Invalid end_date format. Use YYYY-MM-DD.")
+            
+            if start_date and end_date and start_date >= end_date:
+                 abort(400, message="start_date cannot be after or the same as end_date.")
+
+
             total_artworks = db.session.query(func.count(Artwork.id)).scalar()
             active_artworks = db.session.query(func.count(Artwork.id)).filter(Artwork.is_active == True).scalar()
-            
             total_artists = db.session.query(func.count(Artist.id)).scalar()
             active_artists = db.session.query(func.count(Artist.id)).filter(Artist.is_active == True).scalar()
-
             pending_orders_count = db.session.query(func.count(Order.id)).filter(Order.status == 'pending').scalar()
             paid_orders_count = db.session.query(func.count(Order.id)).filter(Order.status == 'paid').scalar()
 
-            current_month = datetime.utcnow().month
-            current_year = datetime.utcnow().year
-            
-            revenue_this_month = db.session.query(func.sum(Order.total_price))\
-                .filter(
+            revenue_query = db.session.query(func.sum(Order.total_price))\
+                .filter(Order.status.in_(['paid', 'delivered', 'picked_up']))
+
+            if start_date and end_date:
+                revenue_query = revenue_query.filter(Order.created_at >= start_date, Order.created_at < end_date)
+            else:
+                current_month = datetime.utcnow().month
+                current_year = datetime.utcnow().year
+                revenue_query = revenue_query.filter(
                     extract('month', Order.created_at) == current_month,
-                    extract('year', Order.created_at) == current_year,
-                    Order.status.in_(['paid', 'delivered', 'picked_up'])
-                ).scalar() or Decimal('0.00')
+                    extract('year', Order.created_at) == current_year
+                )
+            
+            revenue_for_period = revenue_query.scalar() or Decimal('0.00')
 
             recent_orders = Order.query.order_by(Order.created_at.desc()).limit(5).all()
             
             sales_trend_data = []
-            for i in range(5, -1, -1):
-                month_date = datetime.utcnow() - timedelta(days=i*30)
-                month_val = month_date.month
-                year_val = month_date.year
-                
-                monthly_revenue = db.session.query(func.sum(Order.total_price))\
-                    .filter(
-                        extract('month', Order.created_at) == month_val,
-                        extract('year', Order.created_at) == year_val,
+            if start_date and end_date:
+                num_days = (end_date - start_date).days
+                if num_days > 90:
+                    sales_trend_query = db.session.query(
+                        extract('year', Order.created_at).label('year'),
+                        extract('month', Order.created_at).label('month'),
+                        func.sum(Order.total_price).label('revenue')
+                    ).filter(
+                        Order.created_at >= start_date,
+                        Order.created_at < end_date,
                         Order.status.in_(['paid', 'delivered', 'picked_up'])
-                    ).scalar() or Decimal('0.00')
-                sales_trend_data.append({
-                    "month": month_date.strftime("%b %Y"),
-                    "revenue": float(monthly_revenue)
-                })
+                    ).group_by('year', 'month').order_by('year', 'month')
+                    
+                    for row in sales_trend_query.all():
+                        sales_trend_data.append({
+                            "month": datetime(int(row.year), int(row.month), 1).strftime("%b %Y"),
+                            "revenue": float(row.revenue or 0)
+                        })
+                else:
+                    sales_trend_query = db.session.query(
+                        func.date(Order.created_at).label('day'),
+                        func.sum(Order.total_price).label('revenue')
+                    ).filter(
+                        Order.created_at >= start_date,
+                        Order.created_at < end_date,
+                        Order.status.in_(['paid', 'delivered', 'picked_up'])
+                    ).group_by('day').order_by('day')
+                    for row in sales_trend_query.all():
+                         sales_trend_data.append({
+                            "month": row.day.strftime("%b %d"),
+                            "revenue": float(row.revenue or 0)
+                        })
+
+            else:
+                for i in range(5, -1, -1):
+                    month_date = datetime.utcnow() - timedelta(days=i*30)
+                    month_start = month_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    
+                    next_month_start = (month_start + timedelta(days=32)).replace(day=1)
+
+                    monthly_revenue = db.session.query(func.sum(Order.total_price))\
+                        .filter(
+                            Order.created_at >= month_start,
+                            Order.created_at < next_month_start,
+                            Order.status.in_(['paid', 'delivered', 'picked_up'])
+                        ).scalar() or Decimal('0.00')
+                    sales_trend_data.append({
+                        "month": month_start.strftime("%b %Y"),
+                        "revenue": float(monthly_revenue)
+                    })
             
             stats = {
                 "total_artworks": total_artworks,
@@ -63,7 +121,7 @@ class AdminDashboardStats(Resource):
                 "active_artists": active_artists,
                 "pending_orders_count": pending_orders_count,
                 "paid_orders_count": paid_orders_count,
-                "revenue_this_month": str(revenue_this_month),
+                "revenue_this_month": str(revenue_for_period),
                 "recent_orders": orders_schema.dump(recent_orders),
                 "sales_trend": sales_trend_data
             }
