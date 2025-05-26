@@ -58,12 +58,14 @@ export interface OrderItem {
   artwork: Pick<Artwork, 'id' | 'name' | 'image_url' | 'artist' | 'is_active'>;
 }
 
+export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled' | 'picked_up';
+
 export interface Order {
   id: string;
   user_id: string;
   user?: Pick<User, 'id' | 'email' | 'name'>;
   total_price: string;
-  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled' | 'picked_up';
+  status: OrderStatus;
   created_at: string;
   updated_at: string;
   shipped_at?: string | null;
@@ -73,9 +75,10 @@ export interface Order {
   items: OrderItem[];
   delivery_fee?: string;
   delivery_option_details?: Pick<DeliveryOption, 'id' | 'name' | 'price' | 'is_pickup' | 'description'>;
-  picked_up_by_name?: string | null;
-  picked_up_by_id_no?: string | null;
+  picked_up_by_name?: string | null | undefined;
+  picked_up_by_id_no?: string | null | undefined;
   picked_up_at?: string | null;
+  is_pickup_order?: boolean;
 }
 
 export interface User {
@@ -126,8 +129,8 @@ export interface PaymentTransactionStatusResponse {
 
 export interface AdminOrderUpdatePayload {
     status?: Order['status'];
-    picked_up_by_name?: string;
-    picked_up_by_id_no?: string;
+    picked_up_by_name?: string | null;
+    picked_up_by_id_no?: string | null;
 }
 
 export interface AdminDashboardStatsData {

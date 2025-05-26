@@ -24,7 +24,7 @@ import {
 } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { Order as OrderType, OrderItem as OrderItemType, ApiErrorResponse, AdminOrderUpdatePayload } from '@/lib/types';
+import { Order as OrderType, OrderItem as OrderItemType, ApiErrorResponse, AdminOrderUpdatePayload, OrderStatus } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 
@@ -133,6 +133,13 @@ const fetchAdminOrders = async (): Promise<OrderType[]> => {
   return data || [];
 };
 
+const deliveryStatuses: OrderStatus[] = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'];
+const pickupStatuses: OrderStatus[] = ['pending', 'paid', 'picked_up', 'cancelled'];
+
+const getAvailableStatuses = (orderIsPickup?: boolean): OrderStatus[] => {
+    return orderIsPickup ? pickupStatuses : deliveryStatuses;
+};
+
 
 export default function AdminOrdersPage() {
   const [editingOrder, setEditingOrder] = useState<OrderType | null>(null);
@@ -193,13 +200,15 @@ export default function AdminOrdersPage() {
     if (values.status === 'picked_up') {
       if (!values.picked_up_by_name || !values.picked_up_by_id_no) {
         toast.error("Picker name and ID number are required for 'Picked Up' status.");
+        form.setError("picked_up_by_name", { type: "manual", message: "Name is required for picked up status."});
+        form.setError("picked_up_by_id_no", { type: "manual", message: "ID is required for picked up status."});
         return;
       }
       payload.picked_up_by_name = values.picked_up_by_name;
       payload.picked_up_by_id_no = values.picked_up_by_id_no;
     } else {
-        payload.picked_up_by_name = '';
-        payload.picked_up_by_id_no = '';
+        payload.picked_up_by_name = null; 
+        payload.picked_up_by_id_no = null;
     }
     updateOrderMutation.mutate({ orderId: editingOrder.id, payload });
   };
@@ -219,7 +228,12 @@ export default function AdminOrdersPage() {
     setShowDetailsDialog(true);
   }, []);
 
-  const currentStatus = form.watch('status');
+  const currentStatusInForm = form.watch('status');
+  const availableStatusesForEdit = useMemo(() => {
+    if (!editingOrder) return [];
+    return getAvailableStatuses(editingOrder.is_pickup_order ?? editingOrder.delivery_option_details?.is_pickup);
+  }, [editingOrder]);
+
 
   const columns: ColumnDef<OrderType>[] = useMemo(() => [
     {
@@ -262,7 +276,9 @@ export default function AdminOrdersPage() {
         cell: ({ row }) => (
             <div className="text-xs">
                 <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
-                {row.original.delivery_option_details?.is_pickup && <Badge variant="outline" className="mt-1">Pickup</Badge>}
+                { (row.original.is_pickup_order ?? row.original.delivery_option_details?.is_pickup) && 
+                  <Badge variant="outline" className="mt-1">Pickup</Badge>
+                }
             </div>
         ),
     },
@@ -402,7 +418,7 @@ export default function AdminOrdersPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Update Order Status</DialogTitle>
-            <DialogDescription>Order ID: {editingOrder?.id.substring(0,8)}...</DialogDescription>
+            <DialogDescription>Order ID: {editingOrder?.id.substring(0,8)}... ({ (editingOrder?.is_pickup_order ?? editingOrder?.delivery_option_details?.is_pickup) ? "Pickup Order" : "Delivery Order"})</DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleUpdateSubmit)} className="space-y-4 py-4">
@@ -415,7 +431,7 @@ export default function AdminOrdersPage() {
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {(['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'picked_up'] as const).map(s => (
+                        {availableStatusesForEdit.map(s => (
                           <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
                         ))}
                       </SelectContent>
@@ -424,7 +440,7 @@ export default function AdminOrdersPage() {
                   </FormItem>
                 )}
               />
-              {currentStatus === 'picked_up' && (
+              {currentStatusInForm === 'picked_up' && (
                 <>
                   <FormField
                     control={form.control}
@@ -483,7 +499,7 @@ export default function AdminOrdersPage() {
                         <p className="text-sm"><strong>Method:</strong> {viewingOrderDetails.delivery_option_details?.name || 'N/A'}</p>
                         <p className="text-sm"><strong>Fee:</strong> {formatPrice(viewingOrderDetails.delivery_fee || '0')}</p>
                         <p className="text-sm"><strong>Address:</strong> {viewingOrderDetails.shipping_address || 'N/A'}</p>
-                         {viewingOrderDetails.delivery_option_details?.is_pickup && viewingOrderDetails.status === 'picked_up' && (
+                         { (viewingOrderDetails.is_pickup_order ?? viewingOrderDetails.delivery_option_details?.is_pickup) && viewingOrderDetails.status === 'picked_up' && (
                             <>
                                 <p className="text-sm mt-1"><strong>Picked Up By:</strong> {viewingOrderDetails.picked_up_by_name || 'N/A'}</p>
                                 <p className="text-sm"><strong>Picker's ID:</strong> {viewingOrderDetails.picked_up_by_id_no || 'N/A'}</p>

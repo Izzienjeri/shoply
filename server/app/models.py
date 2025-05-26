@@ -149,6 +149,12 @@ class Order(db.Model):
     
     delivery_option_details = db.relationship('DeliveryOption', lazy='joined')
 
+    @property
+    def is_pickup_order(self):
+        if self.delivery_option_details:
+            return self.delivery_option_details.is_pickup
+        return False
+
     def __repr__(self):
         return f"<Order {self.id} Status {self.status} User {self.user_id} Total {self.total_price}>"
 

@@ -169,9 +169,10 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
         dump_only=True,
         only=("id", "name", "price", "is_pickup", "description")
     )
-    picked_up_by_name = fields.Str(allow_none=True)
-    picked_up_by_id_no = fields.Str(allow_none=True)
+    picked_up_by_name = fields.Str(allow_none=True, dump_only=True)
+    picked_up_by_id_no = fields.Str(allow_none=True, dump_only=True)
     picked_up_at = fields.DateTime(allow_none=True, dump_only=True)
+    is_pickup_order = fields.Boolean(dump_only=True)
 
     class Meta:
         model = Order
