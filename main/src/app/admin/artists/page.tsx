@@ -21,6 +21,7 @@ import {
   Cell,
 } from '@tanstack/react-table';
 
+import Link from 'next/link';
 import { Artist as ArtistType, ApiErrorResponse } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -67,7 +68,7 @@ import {
 } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2, Users, PackageIcon } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2, Users, PackageIcon, ExternalLink } from 'lucide-react';
 
 const artistFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -93,6 +94,7 @@ export default function AdminArtistsPage() {
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [artistToDelete, setArtistToDelete] = useState<ArtistType | null>(null);
   const [showReactivationConfirmDialog, setShowReactivationConfirmDialog] = useState(false);
+  const [showArtistDeactivationConfirmDialog, setShowArtistDeactivationConfirmDialog] = useState(false);
   const [pendingArtistData, setPendingArtistData] = useState<ArtistFormValues | null>(null);
 
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -139,7 +141,9 @@ export default function AdminArtistsPage() {
       if (editingArtist) {
         await apiClient.patch<ArtistType>(`/api/artists/${editingArtist.id}`, payload, { needsAuth: true });
         toast.success("Artist updated successfully!");
-        if (reactivateArtworksFlag) {
+        if (values.is_active === false) {
+             toast.info("Artist deactivated. Associated artworks were also deactivated and stock set to 0.");
+        } else if (reactivateArtworksFlag) {
              toast.info("Attempted to reactivate associated artworks. Please check their status.");
         }
       } else {
@@ -147,6 +151,7 @@ export default function AdminArtistsPage() {
         toast.success("Artist created successfully!");
       }
       setShowReactivationConfirmDialog(false);
+      setShowArtistDeactivationConfirmDialog(false);
       setPendingArtistData(null);
       setShowFormDialog(false);
       setEditingArtist(null);
@@ -166,9 +171,12 @@ export default function AdminArtistsPage() {
   };
 
   const handleFormSubmit: SubmitHandler<ArtistFormValues> = async (values) => {
-    if (editingArtist && editingArtist.is_active === false && values.is_active === true) {
+    if (editingArtist && editingArtist.is_active === true && values.is_active === false) {
       setPendingArtistData(values);
-      setShowReactivationConfirmDialog(true);
+      setShowArtistDeactivationConfirmDialog(true); 
+    } else if (editingArtist && editingArtist.is_active === false && values.is_active === true) {
+      setPendingArtistData(values);
+      setShowReactivationConfirmDialog(true); 
     } else {
       proceedWithArtistUpdate(values, false);
     }
@@ -213,9 +221,15 @@ export default function AdminArtistsPage() {
           Name <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<ArtistType> }) => (
-        <div className="font-medium">{row.original.name}</div>
-      )
+      cell: ({ row }: { row: Row<ArtistType> }) => {
+        const artist = row.original;
+        return (
+          <Link href={`/admin/artists/${artist.id}`} className="font-medium hover:text-primary hover:underline">
+            {artist.name} <ExternalLink className="inline h-3 w-3 ml-1 text-muted-foreground group-hover:text-primary" />
+          </Link>
+        )
+      },
+      enableGlobalFilter: true,
     },
     {
       accessorKey: "bio",
@@ -223,6 +237,7 @@ export default function AdminArtistsPage() {
       cell: ({ row }: { row: Row<ArtistType> }) => (
         <p className="truncate max-w-xs text-sm text-muted-foreground">{row.original.bio || "N/A"}</p>
       ),
+      enableGlobalFilter: true,
     },
     {
       accessorKey: "artworks_count",
@@ -247,7 +262,7 @@ export default function AdminArtistsPage() {
           {row.original.is_active ? "Active" : "Inactive"}
         </Badge>
       ),
-       filterFn: (row, id, value) => value.includes(row.getValue(id)),
+       filterFn: (row: Row<ArtistType>, id: string, value: any) => value.includes(row.getValue(id)),
     },
     {
       id: "actions",
@@ -275,6 +290,14 @@ export default function AdminArtistsPage() {
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row: Row<ArtistType>, columnId: string, filterValue: string) => {
+        const artistName = row.original.name.toLowerCase();
+        const artistBio = row.original.bio?.toLowerCase() || '';
+        const searchTerm = filterValue.toLowerCase();
+
+        return artistName.includes(searchTerm) ||
+               artistBio.includes(searchTerm);
+    },
     state: {
       sorting,
       columnFilters,
@@ -458,6 +481,36 @@ export default function AdminArtistsPage() {
             <AlertDialogAction onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, true)} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Reactivate Artworks
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showArtistDeactivationConfirmDialog} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+              setShowArtistDeactivationConfirmDialog(false);
+              setPendingArtistData(null);
+          }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Artist Deactivation</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to deactivate the artist "{pendingArtistData?.name}".
+              This will also deactivate all their artworks and set their stock quantities to 0.
+              Artworks will not be automatically reactivated if you reactivate the artist later (you'll be prompted for that separately).
+              Are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {setShowArtistDeactivationConfirmDialog(false); setPendingArtistData(null);}}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, false)} 
+              disabled={isSubmitting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Yes, Deactivate Artist
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

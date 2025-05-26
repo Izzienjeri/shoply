@@ -122,6 +122,8 @@ export default function AdminArtworksPage() {
   const [artworkToDelete, setArtworkToDelete] = useState<ArtworkType | null>(null);
   const [artworksToBulkDelete, setArtworksToBulkDelete] = useState<string[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showArtworkDeactivationConfirmDialog, setShowArtworkDeactivationConfirmDialog] = useState(false);
+  const [pendingArtworkData, setPendingArtworkData] = useState<ArtworkFormValues | null>(null);
 
 
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -196,62 +198,45 @@ export default function AdminArtworksPage() {
     fetchArtworksAndArtists();
   }, [columnFilters, globalFilter, fetchArtworksAndArtists]);
 
-
-  const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
+  const proceedWithArtworkUpdate = async (values: ArtworkFormValues) => {
     setIsSubmitting(true);
     clearErrors();
 
-    const currentStock = Number(values.stock_quantity);
-    const payload_is_active_val = values.is_active;
+    let effectiveIsActive = values.is_active;
+    let effectiveStockQuantity = Number(values.stock_quantity);
 
-    let finalIsActive = payload_is_active_val;
-
-    if (currentStock > 0) {
-        finalIsActive = true;
+    if (effectiveIsActive === false) {
+        effectiveStockQuantity = 0;
+    } else if (effectiveStockQuantity > 0) {
+        effectiveIsActive = true;
     }
-
-    if (payload_is_active_val === false && currentStock > 0) {
-       toast.error("Cannot set artwork as inactive if stock is greater than 0. Artwork will be saved as active.");
-    }
-
-    if (finalIsActive === false && currentStock > 0) {
-        toast.error("Internal validation error: An inactive artwork cannot have stock. Please correct and try again.");
-        setFormError("is_active", { type: "manual", message: "Inactive artwork must have 0 stock." });
-        setFormError("stock_quantity", { type: "manual", message: "Must be 0 if inactive." });
-        setIsSubmitting(false);
-        return;
-    }
-
-    if (!editingArtwork && !values.image_file) {
-      setFormError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
-      setIsSubmitting(false);
-      return;
-    }
-    if (editingArtwork && !values.image_file && !values.current_image_url) {
-        setFormError("image_file", { type: "manual", message: "An image is required. Please upload a new image." });
-        setIsSubmitting(false);
-        return;
-    }
+    
+    const selectedArtist = artists.find(a => a.id === values.artist_id);
     if (!values.artist_id) {
         setFormError("artist_id", {type: "manual", message: "Artist is required."});
-        setIsSubmitting(false);
-        return;
+        toast.error("Artist is required.");
+        setIsSubmitting(false); return;
     }
-
-    const selectedArtist = artists.find(a => a.id === values.artist_id);
-    if (selectedArtist && selectedArtist.is_active === false && finalIsActive) {
-        toast.error(`Artist "${selectedArtist.name}" is inactive. Cannot assign an active artwork to an inactive artist. Activate the artist first or make the artwork inactive (with 0 stock).`);
+    if (selectedArtist && selectedArtist.is_active === false && effectiveIsActive) {
+        toast.error(`Artist "${selectedArtist.name}" is inactive. Cannot assign an active artwork to an inactive artist. Activate the artist first or make the artwork inactive.`);
         setFormError("artist_id", {type: "manual", message: "Selected artist is inactive, cannot assign active artwork."});
-        setIsSubmitting(false);
-        return;
+        setIsSubmitting(false); return;
+    }
+    if (!editingArtwork && !values.image_file) {
+      setFormError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
+      setIsSubmitting(false); return;
+    }
+    if (editingArtwork && !values.image_file && !values.current_image_url) {
+        setFormError("image_file", { type: "manual", message: "An image is required. Please upload a new image or ensure current image URL is present." });
+        setIsSubmitting(false); return;
     }
 
     const formData = new FormData();
     formData.append('name', values.name);
     formData.append('artist_id', values.artist_id);
     formData.append('price', values.price.toString());
-    formData.append('stock_quantity', String(currentStock));
-    formData.append('is_active', String(finalIsActive));
+    formData.append('stock_quantity', String(effectiveStockQuantity));
+    formData.append('is_active', String(effectiveIsActive));
     if (values.description) {
       formData.append('description', values.description);
     }
@@ -289,8 +274,13 @@ export default function AdminArtworksPage() {
         toast.success("Artwork created successfully!");
       }
 
-      if (responseArtwork && responseArtwork.is_active && !payload_is_active_val && Number(responseArtwork.stock_quantity) > 0) {
-          toast.info("Artwork was set to active by the server because stock is greater than 0.", { duration: 5000 });
+      if (responseArtwork) {
+          if (responseArtwork.is_active && !values.is_active && Number(responseArtwork.stock_quantity) > 0) {
+              toast.info("Artwork was set to active by the server because stock is greater than 0.", { duration: 5000 });
+          }
+          if (responseArtwork.is_active === false && Number(responseArtwork.stock_quantity) !== 0) {
+              toast.info("Artwork was deactivated and stock set to 0 by the server.", {duration: 5000});
+          }
       }
 
       setShowFormDialog(false);
@@ -315,6 +305,28 @@ export default function AdminArtworksPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+
+  const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
+    const intendedIsActive = values.is_active;
+    let showDeactivationDialog = false;
+
+    if (intendedIsActive === false) {
+        if (editingArtwork && (editingArtwork.is_active === true || editingArtwork.is_active === undefined)) {
+            showDeactivationDialog = true;
+        } else if (!editingArtwork) {
+            showDeactivationDialog = true;
+        }
+    }
+
+    if (showDeactivationDialog) {
+        setPendingArtworkData(values);
+        setShowArtworkDeactivationConfirmDialog(true);
+        return; 
+    }
+    
+    await proceedWithArtworkUpdate(values);
   };
 
   const openEditDialog = (artwork: ArtworkType) => {
@@ -947,6 +959,41 @@ export default function AdminArtworksPage() {
             >
               {isBulkSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete Selected
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showArtworkDeactivationConfirmDialog} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+              setShowArtworkDeactivationConfirmDialog(false);
+              setPendingArtworkData(null);
+          }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Artwork Deactivation</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to mark the artwork "{pendingArtworkData?.name || 'this artwork'}" as inactive.
+              If it currently has stock, its stock quantity will be set to 0.
+              Are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {setShowArtworkDeactivationConfirmDialog(false); setPendingArtworkData(null);}}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={async () => {
+                  if (pendingArtworkData) {
+                      await proceedWithArtworkUpdate(pendingArtworkData);
+                  }
+                  setShowArtworkDeactivationConfirmDialog(false);
+                  setPendingArtworkData(null);
+              }} 
+              disabled={isSubmitting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Yes, Deactivate Artwork
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

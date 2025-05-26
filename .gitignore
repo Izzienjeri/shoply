@@ -1,3 +1,4 @@
 .env
 .secrets
-.env.local
+server/extract.py
+server/data.txt
