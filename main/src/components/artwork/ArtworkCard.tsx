@@ -9,7 +9,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice, cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { ImageOff, ShoppingCartIcon, Edit, DollarSign, PackageCheck, PackageX, EyeOff } from 'lucide-react';
+import { ImageOff, ShoppingCartIcon, DollarSign, PackageCheck, PackageX, EyeOff, Package as PackageIcon } from 'lucide-react';
 
 interface ArtworkCardProps {
   artwork: Artwork;
@@ -36,8 +36,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
   return (
     <Card className="overflow-hidden flex flex-col h-full group border shadow-sm hover:shadow-lg transition-shadow duration-300">
        <CardHeader className="p-0 border-b relative">
-         <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn(!isPubliclyAvailableForPurchase && "opacity-60 group-hover:opacity-80 transition-opacity")}>
+         <Link href={`/artworks/${artwork.id}`}>
+           <div className={cn("cursor-pointer",!isPubliclyAvailableForPurchase && "opacity-60 group-hover:opacity-80 transition-opacity")}>
            <AspectRatio ratio={1 / 1} className="bg-muted overflow-hidden">
              <Image
                src={artwork.image_url || placeholderImage}
@@ -62,13 +62,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                      <Badge variant="destructive">Unavailable</Badge>
                  </div>
               )}
-               {!isAdmin && isPubliclyAvailableForPurchase && isOutOfStock && (
-                 <div className="absolute bottom-2 right-2 z-10">
-                     <Badge variant="outline" className="bg-background/80 border-orange-500 text-orange-600">Out of Stock</Badge>
-                 </div>
-              )}
            </AspectRatio>
-           </a>
+           </div>
          </Link>
          {isAdmin && (
             <div className="absolute top-2 right-2 z-10 flex flex-col items-end space-y-1">
@@ -79,20 +74,24 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
          )}
        </CardHeader>
        <CardContent className="p-4 flex-grow">
-         <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn("block", !isPubliclyAvailableForPurchase && "pointer-events-none")}>
+         <Link href={`/artworks/${artwork.id}`}>
+           <div className={cn("cursor-pointer block", !isPubliclyAvailableForPurchase && "pointer-events-none")}>
            <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isPubliclyAvailableForPurchase && "text-muted-foreground")}>
              {artwork.name}
            </CardTitle>
-           </a>
+           </div>
          </Link>
          <Link href={`/artists/${artwork.artist.id}`} className="text-sm text-muted-foreground hover:text-primary transition-colors">
-           {artwork.artist.name}
+           By {artwork.artist.name}
          </Link>
+         
          {isAdmin ? (
-            <div className="mt-2 text-xs space-y-1">
-                <div className="flex items-center text-muted-foreground">
-                    <DollarSign className="h-3.5 w-3.5 mr-1.5" /> Price: {formatPrice(artwork.price)}
+            <div className="mt-3 text-xs space-y-1.5 text-muted-foreground">
+                <div className="flex items-center">
+                    <DollarSign className="h-3.5 w-3.5 mr-1.5 text-primary/80" /> Price: {formatPrice(artwork.price)}
+                </div>
+                <div className="flex items-center">
+                    <PackageIcon className="h-3.5 w-3.5 mr-1.5 text-primary/80" /> Stock: {artwork.stock_quantity}
                 </div>
             </div>
          ) : (
@@ -101,19 +100,11 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
             </p>
          )}
        </CardContent>
-       <CardFooter className="p-4 pt-0 flex justify-between items-center mt-auto">
-        {!isAdmin && (
-            <span className="text-lg font-semibold text-primary">
+       {!isAdmin && (
+         <CardFooter className="p-4 pt-0 flex justify-between items-center mt-auto">
+           <span className="text-lg font-semibold text-primary">
              {formatPrice(artwork.price)}
-            </span>
-        )}
-         {isAdmin ? (
-           <Link href={`/admin/artworks?edit=${artwork.id}`} className="w-full" legacyBehavior>
-             <Button size="sm" variant="outline" className="w-full">
-               <Edit className="mr-2 h-4 w-4" /> Edit Artwork
-             </Button>
-           </Link>
-         ) : (
+           </span>
            <Button
               size="sm"
               variant={(!isPubliclyAvailableForPurchase || isOutOfStock) ? "outline" : "default"}
@@ -133,8 +124,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                   </>
               )}
            </Button>
-         )}
-       </CardFooter>
+         </CardFooter>
+       )}
     </Card>
   );
 }

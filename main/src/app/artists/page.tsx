@@ -1,4 +1,3 @@
-// === app/artists/page.tsx ===
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -17,7 +16,7 @@ interface ArtistCardProps {
 
 function ArtistCard({ artist }: ArtistCardProps) {
   return (
-    <Link href={`/artists/${artist.id}`} className="block group"> {/* Removed legacyBehavior */}
+    <Link href={`/artists/${artist.id}`} className="block group">
       <Card className="h-full hover:shadow-lg transition-shadow duration-200">
         <CardHeader className="flex flex-row items-center space-x-4 pb-2">
           <div className="p-3 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
@@ -60,7 +59,7 @@ export default function ArtistsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const fetchedArtists = await apiClient.get<Artist[]>('/artists/');
+        const fetchedArtists = await apiClient.get<Artist[]>('/api/artists/');
         setArtists(fetchedArtists || []);
       } catch (err: any) {
         console.error("Failed to fetch artists:", err);

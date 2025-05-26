@@ -58,7 +58,7 @@ export default function AdminDashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await apiClient.get<AdminDashboardStatsData>('/admin/dashboard/stats', { needsAuth: true });
+        const data = await apiClient.get<AdminDashboardStatsData>('/api/admin/dashboard/stats', { needsAuth: true });
         setStatsData(data);
       } catch (err: any) {
         setError(err.message || "Failed to load dashboard data.");

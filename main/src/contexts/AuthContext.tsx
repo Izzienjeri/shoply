@@ -94,7 +94,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setIsLoading(true);
     try {
-       const fetchedUser = await apiClient.get<UserProfile>('/auth/me', { needsAuth: true });
+       const fetchedUser = await apiClient.get<UserProfile>('/api/auth/me', { needsAuth: true });
        if (fetchedUser) {
           setUser(fetchedUser);
           storeAdminStatus(!!fetchedUser.is_admin);
@@ -132,7 +132,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
      try {
-         const response = await apiClient.post<LoginResponse>('/auth/login', { email, password });
+         const response = await apiClient.post<LoginResponse>('/api/auth/login', { email, password });
 
          if (response && typeof response.access_token === 'string') {
              setAuthToken(response.access_token);
@@ -158,7 +158,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
  const signup = async (userData: Omit<User, 'id'|'created_at'|'is_admin'> & {password: string}) => {
      try {
-         const response = await apiClient.post<SignupResponse>('/auth/signup', userData);
+         const response = await apiClient.post<SignupResponse>('/api/auth/signup', userData);
          if (!response || !response.user) {
             throw new Error("Signup response did not include user data.");
          }
@@ -172,7 +172,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
      const currentToken = getAuthToken();
      try {
         if (currentToken) {
-           await apiClient.post('/auth/logout', {}, { needsAuth: true });
+           await apiClient.post('/api/auth/logout', {}, { needsAuth: true });
         }
      } catch (error) {
          console.warn("Logout API call failed (continuing client-side logout):", error);

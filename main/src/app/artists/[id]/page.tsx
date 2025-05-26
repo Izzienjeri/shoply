@@ -57,7 +57,7 @@ export default function ArtistDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const fetchedArtist = await apiClient.get<ArtistType>(`/artists/${artistId}`, { needsAuth: isAuthenticated });
+          const fetchedArtist = await apiClient.get<ArtistType>(`/api/artists/${artistId}`, { needsAuth: isAuthenticated });
           setArtist(fetchedArtist);
         } catch (err: any) {
           console.error("Failed to fetch artist details:", err);
@@ -117,7 +117,7 @@ export default function ArtistDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
-          <Link href={`/admin/artists/`} passHref legacyBehavior> 
+          <Link href={`/admin/artists/`}>
             <Button variant="default" size="sm">
               <Edit className="mr-2 h-4 w-4" /> Manage Artists
             </Button>

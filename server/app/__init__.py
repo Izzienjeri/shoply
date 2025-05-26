@@ -35,7 +35,18 @@ def create_app(config_class=Config):
     bcrypt.init_app(app)
     ma.init_app(app)
     
-    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+    allowed_origins = [
+        str(os.getenv('NEXT_PUBLIC_BASE_URL', 'http://localhost:3000')).rstrip('/')
+    ]
+    if "http://localhost:3000" not in allowed_origins:
+        allowed_origins.append("http://localhost:3000")
+    
+    CORS(app, 
+         origins=allowed_origins, 
+         supports_credentials=True,
+         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+         allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Requested-With"]
+    )
 
 
     from . import models
@@ -63,6 +74,7 @@ def create_app(config_class=Config):
     from .resources.payment import payment_bp
     from .resources.delivery import delivery_bp
     from .resources.admin_dashboard import admin_dashboard_bp 
+    from .resources.search import search_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(artwork_bp, url_prefix='/api/artworks')
@@ -72,7 +84,7 @@ def create_app(config_class=Config):
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
     app.register_blueprint(delivery_bp, url_prefix='/api/delivery')
     app.register_blueprint(admin_dashboard_bp, url_prefix='/api/admin/dashboard')
-
+    app.register_blueprint(search_bp, url_prefix='/api/search')
 
     @app.route('/')
     def index():

@@ -1,6 +1,6 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-26 03:06:13
-# Files Included: 28
+# Date and Time: 2025-05-26 04:53:37
+# Files Included: 29
 
 # === lib/utils.ts ===
 import { clsx, type ClassValue } from "clsx"
@@ -242,6 +242,12 @@ export interface AdminDashboardStatsData {
   revenue_this_month: string;
   recent_orders: Order[];
   sales_trend: { month: string; revenue: number }[];
+}
+
+export interface SearchResults {
+  artworks: Artwork[];
+  artists: Artist[];
+  query: string;
 }
 
 # === app/globals.css ===
@@ -587,7 +593,7 @@ export default function AdminDashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await apiClient.get<AdminDashboardStatsData>('/admin/dashboard/stats', { needsAuth: true });
+        const data = await apiClient.get<AdminDashboardStatsData>('/api/admin/dashboard/stats', { needsAuth: true });
         setStatsData(data);
       } catch (err: any) {
         setError(err.message || "Failed to load dashboard data.");
@@ -882,7 +888,7 @@ export default function AdminDeliveryOptionsPage() {
   const fetchDeliveryOptions = async () => {
     setIsLoading(true);
     try {
-      const fetchedOptions = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
+      const fetchedOptions = await apiClient.get<DeliveryOptionType[]>('/api/delivery/options', { needsAuth: true });
       setDeliveryOptions(fetchedOptions || []);
     } catch (error) {
       console.error("Failed to fetch delivery options:", error);
@@ -906,10 +912,10 @@ export default function AdminDeliveryOptionsPage() {
 
     try {
       if (editingOption) {
-        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
+        await apiClient.patch<DeliveryOptionType>(`/api/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
         toast.success("Delivery option updated successfully!");
       } else {
-        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
+        await apiClient.post<DeliveryOptionType>('/api/delivery/options', payload, { needsAuth: true });
         toast.success("Delivery option created successfully!");
       }
       setShowFormDialog(false);
@@ -959,7 +965,7 @@ export default function AdminDeliveryOptionsPage() {
     if (!optionToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
+      await apiClient.delete(`/api/delivery/options/${optionToDelete.id}`, { needsAuth: true });
       toast.success("Delivery option deleted successfully!");
       fetchDeliveryOptions();
     } catch (error: any) {
@@ -1226,6 +1232,7 @@ export default function AdminDeliveryOptionsPage() {
 }
 
 # === app/admin/orders/page.tsx ===
+// === app/admin/orders/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -1353,7 +1360,7 @@ export default function AdminOrdersPage() {
   const fetchOrders = async () => {
     setIsLoading(true);
     try {
-      const fetchedOrders = await apiClient.get<OrderType[]>('/admin/dashboard/orders', { needsAuth: true });
+      const fetchedOrders = await apiClient.get<OrderType[]>('/api/admin/dashboard/orders', { needsAuth: true });
       setOrders(fetchedOrders || []);
     } catch (error) {
       console.error("Failed to fetch orders:", error);
@@ -1387,7 +1394,7 @@ export default function AdminOrdersPage() {
 
 
     try {
-      await apiClient.patch<OrderType>(`/admin/dashboard/orders/${editingOrder.id}`, payload, { needsAuth: true });
+      await apiClient.patch<OrderType>(`/api/admin/dashboard/orders/${editingOrder.id}`, payload, { needsAuth: true });
       toast.success("Order status updated successfully!");
       setShowEditDialog(false);
       setEditingOrder(null);
@@ -1810,7 +1817,7 @@ export default function AdminArtistsPage() {
   const fetchArtists = async () => {
     setIsLoading(true);
     try {
-      const fetchedArtists = await apiClient.get<ArtistType[]>('/artists/', { needsAuth: true });
+      const fetchedArtists = await apiClient.get<ArtistType[]>('/api/artists/', { needsAuth: true });
       setArtists(fetchedArtists || []);
     } catch (error) {
       console.error("Failed to fetch artists:", error);
@@ -1833,10 +1840,10 @@ export default function AdminArtistsPage() {
 
     try {
       if (editingArtist) {
-        await apiClient.patch<ArtistType>(`/artists/${editingArtist.id}`, payload, { needsAuth: true });
+        await apiClient.patch<ArtistType>(`/api/artists/${editingArtist.id}`, payload, { needsAuth: true });
         toast.success("Artist updated successfully!");
       } else {
-        await apiClient.post<ArtistType>('/artists/', payload, { needsAuth: true });
+        await apiClient.post<ArtistType>('/api/artists/', payload, { needsAuth: true });
         toast.success("Artist created successfully!");
       }
       setShowFormDialog(false);
@@ -1876,7 +1883,7 @@ export default function AdminArtistsPage() {
     if (!artistToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/artists/${artistToDelete.id}`, { needsAuth: true });
+      await apiClient.delete(`/api/artists/${artistToDelete.id}`, { needsAuth: true });
       toast.success("Artist deleted successfully! Associated artworks were also deleted.");
       setArtistToDelete(null);
       fetchArtists();
@@ -2280,8 +2287,8 @@ export default function AdminArtworksPage() {
     setIsLoading(true);
     try {
       const [fetchedArtworks, fetchedArtists] = await Promise.all([
-        apiClient.get<ArtworkType[]>('/artworks/', { needsAuth: true }),
-        apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
+        apiClient.get<ArtworkType[]>('/api/artworks/', { needsAuth: true }),
+        apiClient.get<ArtistType[]>('/api/artists/', { needsAuth: true }),
       ]);
       setArtworks(fetchedArtworks || []);
       
@@ -2366,7 +2373,7 @@ export default function AdminArtworksPage() {
     if (values.image_file) {
       formData.append('image_file', values.image_file);
     } else if (editingArtwork && values.current_image_url) {
-      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/media/`;
+      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL}/media/`; 
       let relativePath = values.current_image_url;
       if (values.current_image_url?.startsWith(mediaBase)) {
         relativePath = values.current_image_url.substring(mediaBase.length);
@@ -2378,14 +2385,14 @@ export default function AdminArtworksPage() {
       let responseArtwork: ArtworkType | null;
       if (editingArtwork) {
         responseArtwork = await apiClient.patch<ArtworkType>(
-          `/artworks/${editingArtwork.id}`,
+          `/api/artworks/${editingArtwork.id}`,
           formData,
           { needsAuth: true, isFormData: true }
         );
         toast.success("Artwork updated successfully!");
       } else {
         responseArtwork = await apiClient.post<ArtworkType>(
-          '/artworks/',
+          '/api/artworks/',
           formData,
           { needsAuth: true, isFormData: true }
         );
@@ -2456,7 +2463,7 @@ export default function AdminArtworksPage() {
     if (!artworkToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/artworks/${artworkToDelete.id}`, { needsAuth: true });
+      await apiClient.delete(`/api/artworks/${artworkToDelete.id}`, { needsAuth: true });
       toast.success("Artwork deleted successfully!");
       setArtworkToDelete(null);
       fetchArtworksAndArtists();
@@ -2573,7 +2580,7 @@ export default function AdminArtworksPage() {
         );
       },
     },
-  ], [artists]); 
+  ], [artists]);
 
   const table = useReactTable({
     data: artworks,
@@ -2922,7 +2929,7 @@ import {
     ApiErrorResponse,
     CartItem as CartItemType,
     StkPushInitiationResponse,
-    DeliveryOption as DeliveryOptionType, 
+    DeliveryOption as DeliveryOptionType,
     PaymentTransactionStatusResponse
 } from '@/lib/types';
 import { apiClient } from '@/lib/api';
@@ -2935,9 +2942,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
-  FormLabel, 
+  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -3027,8 +3035,8 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
       </div>
 
       <div className="flex-1 space-y-1 min-w-0">
-        <Link 
-            href={`/artworks/${item.artwork.id}`} 
+        <Link
+            href={`/artworks/${item.artwork.id}`}
             className={cn(
                 "font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2",
                 (!isItemAvailable || isItemOutOfStock) && "text-muted-foreground line-through"
@@ -3131,8 +3139,8 @@ export default function CartPage() {
   });
 
   const availableCartItems = useMemo(() => {
-    return cart?.items.filter(item => 
-        item.artwork.is_active && 
+    return cart?.items.filter(item =>
+        item.artwork.is_active &&
         item.artwork.artist.is_active &&
         item.artwork.stock_quantity > 0 &&
         item.artwork.stock_quantity >= item.quantity
@@ -3140,8 +3148,8 @@ export default function CartPage() {
   }, [cart]);
 
   const unavailableCartItems = useMemo(() => {
-    return cart?.items.filter(item => 
-        !item.artwork.is_active || 
+    return cart?.items.filter(item =>
+        !item.artwork.is_active ||
         !item.artwork.artist.is_active ||
         item.artwork.stock_quantity === 0 ||
         item.artwork.stock_quantity < item.quantity
@@ -3161,7 +3169,7 @@ export default function CartPage() {
       const fetchDeliveryOpts = async () => {
         setIsLoadingDeliveryOptions(true);
         try {
-          const opts = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
+          const opts = await apiClient.get<DeliveryOptionType[]>('/api/delivery/options', { needsAuth: true });
           setDeliveryOptions(opts || []);
           const activePickupOption = opts?.find(opt => opt.is_pickup && opt.active);
           const firstActiveDelivery = opts?.find(opt => !opt.is_pickup && opt.active);
@@ -3190,7 +3198,7 @@ export default function CartPage() {
 
   useEffect(() => {
     if (user?.address && !isStkFlowActive) {
-      const potentialPhone = user.address.replace(/\D/g, ''); 
+      const potentialPhone = user.address.replace(/\D/g, '');
       if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
         checkoutForm.setValue("phoneNumber", potentialPhone);
       }
@@ -3231,12 +3239,12 @@ export default function CartPage() {
 
     setPollingMessage(successMessage);
     toast.success("Order Placed Successfully!", {
-        description: successMessage.replace("Payment successful! Your order has been placed.", ""), 
+        description: successMessage.replace("Payment successful! Your order has been placed.", ""),
         duration: 15000,
         action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } :
                          { label: "My Orders", onClick: () => router.push(`/orders`) },
     });
-    fetchCart(); 
+    fetchCart();
   }, [stopPolling, router, fetchCart, selectedDeliveryOption]);
 
   const handlePaymentFailure = useCallback((message: string, finalStatus?: PaymentTransactionStatusResponse['status']) => {
@@ -3262,7 +3270,7 @@ export default function CartPage() {
     setPollingMessage(`Checking payment status (attempt ${pollingAttemptsRef.current} of ${MAX_POLLING_ATTEMPTS})...`);
 
     try {
-      const statusResponse = await apiClient.get<PaymentTransactionStatusResponse>(`/orders/status/${checkoutIdToPoll}`, { needsAuth: true });
+      const statusResponse = await apiClient.get<PaymentTransactionStatusResponse>(`/api/orders/status/${checkoutIdToPoll}`, { needsAuth: true });
       if (statusResponse) {
         setPaymentStatus(statusResponse.status);
         if (statusResponse.status === 'successful') {
@@ -3305,9 +3313,9 @@ export default function CartPage() {
       if (paymentStatus === null || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') {
          setPollingMessage("Waiting for M-Pesa confirmation...");
       }
-      pollPaymentStatus(stkCheckoutId); 
+      pollPaymentStatus(stkCheckoutId);
 
-      if (!pollingIntervalRef.current && stkCheckoutId) { 
+      if (!pollingIntervalRef.current && stkCheckoutId) {
         pollingIntervalRef.current = setInterval(() => {
             if (stkCheckoutId) {
                  pollPaymentStatus(stkCheckoutId);
@@ -3346,7 +3354,7 @@ export default function CartPage() {
 
     try {
       const response = await apiClient.post<StkPushInitiationResponse>(
-          '/orders/',
+          '/api/orders/',
           {
             phone_number: data.phoneNumber,
             delivery_option_id: selectedDeliveryOptionId,
@@ -3370,10 +3378,10 @@ export default function CartPage() {
   const handleDeliveryTypeChange = (type: 'pickup' | 'delivery') => {
     setDeliveryType(type);
     setSelectedDeliveryOptionId(null);
-    const relevantOptions = type === 'pickup' 
+    const relevantOptions = type === 'pickup'
         ? deliveryOptions.filter(opt => opt.is_pickup && opt.active)
         : deliveryOptions.filter(opt => !opt.is_pickup && opt.active);
-    
+
     if (relevantOptions.length > 0) {
         setSelectedDeliveryOptionId(relevantOptions[0].id);
     }
@@ -3509,8 +3517,8 @@ export default function CartPage() {
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Some items are unavailable!</AlertTitle>
           <AlertDescription>
-            One or more items in your cart are currently out of stock or no longer available. 
-            They have been excluded from the total and cannot be purchased. 
+            One or more items in your cart are currently out of stock or no longer available.
+            They have been excluded from the total and cannot be purchased.
             Please review the items below. You can remove them or update quantities if partial stock is available for other items.
           </AlertDescription>
         </Alert>
@@ -3637,15 +3645,23 @@ export default function CartPage() {
                 <h3 className="text-lg font-semibold">Checkout with M-Pesa</h3>
                  <Form {...checkoutForm}>
                     <form onSubmit={checkoutForm.handleSubmit(handleInitiateCheckout)} className="space-y-4">
-                         <FormField
+                    <FormField
                             control={checkoutForm.control}
                             name="phoneNumber"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>M-Pesa Phone Number</FormLabel>
+                                <FormLabel htmlFor="phoneNumber">M-Pesa Phone Number</FormLabel>
                                 <FormControl>
-                                  <Input type="tel" placeholder="2547XXXXXXXX" {...field} />
+                                  <Input
+                                    id="phoneNumber"
+                                    type="tel"
+                                    placeholder="e.g., 254712345678"
+                                    {...field}
+                                    />
                                 </FormControl>
+                                <FormDescription>
+                                  Enter your M-Pesa registered phone number. It must start with 254 and be 12 digits long.
+                                </FormDescription>
                                 <FormMessage />
                               </FormItem>
                             )}
@@ -3686,13 +3702,12 @@ export default function CartPage() {
 }
 
 # === app/orders/page.tsx ===
-// === app/orders/page.tsx ===
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types'; // OrderType now includes delivery_option_details
+import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types'; 
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/lib/utils';
@@ -3738,7 +3753,7 @@ function OrderItemCard({ item }: { item: OrderItemType }) {
         {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
       </div>
       <div className="flex-1 space-y-1">
-        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-sm"> {/* Added Link */}
+        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-sm">
             {item.artwork.name}
         </Link>
         <p className="text-xs text-muted-foreground">By {item.artwork.artist.name}</p>
@@ -3789,7 +3804,7 @@ export default function OrdersPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const fetchedOrders = await apiClient.get<OrderType[]>('/orders/', { needsAuth: true });
+        const fetchedOrders = await apiClient.get<OrderType[]>('/api/orders/', { needsAuth: true });
         setOrders(fetchedOrders || []);
       } catch (err: any) {
         console.error("Failed to fetch orders:", err);
@@ -4223,7 +4238,6 @@ export default function SignupPage() {
 }
 
 # === app/artists/page.tsx ===
-// === app/artists/page.tsx ===
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -4242,7 +4256,7 @@ interface ArtistCardProps {
 
 function ArtistCard({ artist }: ArtistCardProps) {
   return (
-    <Link href={`/artists/${artist.id}`} className="block group"> {/* Removed legacyBehavior */}
+    <Link href={`/artists/${artist.id}`} className="block group">
       <Card className="h-full hover:shadow-lg transition-shadow duration-200">
         <CardHeader className="flex flex-row items-center space-x-4 pb-2">
           <div className="p-3 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
@@ -4285,7 +4299,7 @@ export default function ArtistsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const fetchedArtists = await apiClient.get<Artist[]>('/artists/');
+        const fetchedArtists = await apiClient.get<Artist[]>('/api/artists/');
         setArtists(fetchedArtists || []);
       } catch (err: any) {
         console.error("Failed to fetch artists:", err);
@@ -4395,7 +4409,7 @@ export default function ArtistDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const fetchedArtist = await apiClient.get<ArtistType>(`/artists/${artistId}`, { needsAuth: isAuthenticated });
+          const fetchedArtist = await apiClient.get<ArtistType>(`/api/artists/${artistId}`, { needsAuth: isAuthenticated });
           setArtist(fetchedArtist);
         } catch (err: any) {
           console.error("Failed to fetch artist details:", err);
@@ -4455,7 +4469,7 @@ export default function ArtistDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
-          <Link href={`/admin/artists/`} passHref legacyBehavior> 
+          <Link href={`/admin/artists/`}>
             <Button variant="default" size="sm">
               <Edit className="mr-2 h-4 w-4" /> Manage Artists
             </Button>
@@ -4532,35 +4546,121 @@ export default function ArtistDetailPage() {
 # === app/artworks/page.tsx ===
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Artwork } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { ArtworkCard, ArtworkCardSkeleton } from '@/components/artwork/ArtworkCard';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Palette, Terminal } from "lucide-react";
+import { Palette, Terminal, ListFilter } from "lucide-react";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from '@/components/ui/label';
+
+interface FiltersState {
+  min_price: string;
+  max_price: string;
+  sort_by: 'created_at' | 'price' | 'name';
+  sort_order: 'asc' | 'desc';
+}
+
+const initialFilters: FiltersState = {
+  min_price: '',
+  max_price: '',
+  sort_by: 'created_at',
+  sort_order: 'desc',
+};
 
 export default function ArtworksPage() {
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FiltersState>(initialFilters);
+  const [appliedFilters, setAppliedFilters] = useState<FiltersState>(initialFilters);
+
+  const fetchArtworks = useCallback(async (currentFilters: FiltersState) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.append('sort_by', currentFilters.sort_by);
+      params.append('sort_order', currentFilters.sort_order);
+      
+      if (currentFilters.min_price && !isNaN(parseFloat(currentFilters.min_price))) {
+        params.append('min_price', parseFloat(currentFilters.min_price).toString());
+      }
+      if (currentFilters.max_price && !isNaN(parseFloat(currentFilters.max_price))) {
+         const maxPrice = parseFloat(currentFilters.max_price);
+         const minPrice = currentFilters.min_price ? parseFloat(currentFilters.min_price) : -1;
+         if (maxPrice >= 0 && (minPrice === -1 || maxPrice >= minPrice)) {
+            params.append('max_price', maxPrice.toString());
+         } else if (minPrice !== -1 && maxPrice < minPrice) {
+            setError("Max price cannot be less than min price.");
+         }
+      }
+      
+      const fetchedArtworks = await apiClient.get<Artwork[]>(`/api/artworks/?${params.toString()}`);
+      setArtworks(fetchedArtworks || []);
+
+    } catch (err: any) {
+      console.error("Failed to fetch artworks:", err);
+      setError(err.message || "An unknown error occurred");
+      setArtworks([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []); 
 
   useEffect(() => {
-    const fetchArtworks = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetchedArtworks = await apiClient.get<Artwork[]>('/artworks/');
-        setArtworks(fetchedArtworks || []);
-      } catch (err: any) {
-        console.error("Failed to fetch artworks:", err);
-        setError(err.message || "An unknown error occurred");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    fetchArtworks(appliedFilters);
+  }, [appliedFilters, fetchArtworks]);
 
-    fetchArtworks();
-  }, []);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSortChange = (value: string) => {
+    const [sortBy, sortOrder] = value.split('-');
+    setFilters(prev => ({
+      ...prev,
+      sort_by: sortBy as FiltersState['sort_by'],
+      sort_order: sortOrder as FiltersState['sort_order'],
+    }));
+  };
+  
+  const handleApplyFilters = () => {
+    const min = parseFloat(filters.min_price);
+    const max = parseFloat(filters.max_price);
+    if (filters.min_price && filters.max_price && !isNaN(min) && !isNaN(max) && min > max) {
+        setError("Min price cannot be greater than max price. Filters not applied.");
+        return; 
+    }
+    setError(null);
+    setAppliedFilters(filters);
+  };
+
+  const handleClearFilters = () => {
+    setFilters(initialFilters);
+    setAppliedFilters(initialFilters);
+    setError(null);
+  };
+
+  const sortOptions = useMemo(() => [
+    { value: "created_at-desc", label: "Date: Newest First" },
+    { value: "created_at-asc", label: "Date: Oldest First" },
+    { value: "price-asc", label: "Price: Low to High" },
+    { value: "price-desc", label: "Price: High to Low" },
+    { value: "name-asc", label: "Name: A to Z" },
+    { value: "name-desc", label: "Name: Z to A" },
+  ], []);
+
 
   return (
     <div>
@@ -4568,7 +4668,68 @@ export default function ArtworksPage() {
         Explore Our Artwork
       </h1>
 
-      {error && (
+      <div className="mb-8 p-4 border rounded-lg bg-card shadow">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          <div>
+            <Label htmlFor="sort_by_order" className="text-sm font-medium">Sort By</Label>
+            <Select
+              value={`${filters.sort_by}-${filters.sort_order}`}
+              onValueChange={handleSortChange}
+            >
+              <SelectTrigger id="sort_by_order" aria-label="Sort artworks by">
+                <SelectValue placeholder="Select sort order" />
+              </SelectTrigger>
+              <SelectContent>
+                {sortOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="min_price" className="text-sm font-medium">Min Price (Ksh)</Label>
+            <Input
+              type="number"
+              id="min_price"
+              name="min_price"
+              placeholder="e.g., 500"
+              value={filters.min_price}
+              onChange={handleInputChange}
+              min="0"
+              step="100"
+            />
+          </div>
+          <div>
+            <Label htmlFor="max_price" className="text-sm font-medium">Max Price (Ksh)</Label>
+            <Input
+              type="number"
+              id="max_price"
+              name="max_price"
+              placeholder="e.g., 10000"
+              value={filters.max_price}
+              onChange={handleInputChange}
+              min="0"
+              step="100"
+            />
+          </div>
+          <div className="flex space-x-2 md:col-start-4">
+            <Button onClick={handleApplyFilters} className="w-full">
+              <ListFilter className="mr-2 h-4 w-4" /> Apply
+            </Button>
+            <Button onClick={handleClearFilters} variant="outline" className="w-full">
+              Clear
+            </Button>
+          </div>
+        </div>
+         {error && error.includes("price") && (
+            <p className="text-sm text-destructive mt-2">{error}</p>
+         )}
+      </div>
+      
+
+      {error && !error.includes("price") && (
         <Alert variant="destructive" className="mb-6">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error Fetching Artwork</AlertTitle>
@@ -4589,8 +4750,8 @@ export default function ArtworksPage() {
           !error && (
             <div className="col-span-full text-center py-10 text-muted-foreground">
                 <Palette className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-                <p className="text-xl">No artwork found.</p>
-                <p>Our gallery is currently empty. Please check back soon!</p>
+                <p className="text-xl">No artwork found matching your criteria.</p>
+                <p>Try adjusting your filters or check back soon!</p>
             </div>
           )
         )}
@@ -4664,7 +4825,7 @@ export default function ArtworkDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const fetchedArtwork = await apiClient.get<ArtworkType>(`/artworks/${artworkId}`, { needsAuth: isAuthenticated });
+          const fetchedArtwork = await apiClient.get<ArtworkType>(`/api/artworks/${artworkId}`, { needsAuth: isAuthenticated });
           setArtwork(fetchedArtwork);
         } catch (err: any) {
           console.error("Failed to fetch artwork:", err);
@@ -4737,7 +4898,7 @@ export default function ArtworkDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
-          <Link href={`/admin/artworks?edit=${artwork.id}`} passHref legacyBehavior>
+          <Link href={`/admin/artworks?edit=${artwork.id}`}>
             <Button variant="default" size="sm">
               <Edit className="mr-2 h-4 w-4" /> Edit in Admin Panel
             </Button>
@@ -4817,10 +4978,11 @@ export default function ArtworkDetailPage() {
               </p>
           </div>
           
-          {!artwork.is_active && !isAdmin && (
+          {/* Public facing status badges (if not admin) */}
+          {!isAdmin && !artwork.is_active && (
               <Badge variant="destructive">Currently Unavailable</Badge>
           )}
-          {artwork.artist && !artwork.artist.is_active && !isAdmin && (
+          {!isAdmin && artwork.artist && !artwork.artist.is_active && (
               <Badge variant="destructive">Artist Unavailable</Badge>
           )}
 
@@ -4836,6 +4998,7 @@ export default function ArtworkDetailPage() {
 
           <Separator />
           
+          {/* Add to cart section for non-admins and if item is purchasable */}
           {!isAdmin && isPubliclyVisibleAndPurchaseable && ( 
             <div className="space-y-4">
               {!isOutOfStock ? (
@@ -4859,9 +5022,9 @@ export default function ArtworkDetailPage() {
                    Out of Stock
                 </Button>
               )}
-              {/* Removed the redundant stock message here, it's covered by the one above now */}
             </div>
           )}
+          {/* Message for non-admins if item is not purchasable but visible due to admin override (should not happen based on previous logic) */}
            {!isAdmin && !isPubliclyVisibleAndPurchaseable && ( 
              <p className="text-sm text-yellow-600 font-semibold">
                  This artwork is currently not available for purchase.
@@ -4871,6 +5034,255 @@ export default function ArtworkDetailPage() {
       </div>
     </div>
   );
+  
+}
+
+# === app/search/page.tsx ===
+'use client';
+
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Artwork, Artist, SearchResults } from '@/lib/types';
+import { apiClient } from '@/lib/api';
+import { ArtworkCard, ArtworkCardSkeleton } from '@/components/artwork/ArtworkCard';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; 
+import { UserIcon, Palette, Search as SearchIconLucide, Terminal, Info, Frown } from "lucide-react"; 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from '@/components/ui/skeleton'; 
+import { Button } from '@/components/ui/button';
+
+
+function ArtistSearchResultCard({ artist }: { artist: Artist }) {
+  return (
+    <Link href={`/artists/${artist.id}`} className="block group">
+      <Card className="h-full hover:shadow-lg transition-shadow duration-200">
+        <CardHeader className="flex flex-row items-center space-x-3 pb-2">
+          <div className="p-2 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
+            <UserIcon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+          </div>
+          <CardTitle className="text-lg group-hover:text-primary transition-colors line-clamp-1">{artist.name}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground line-clamp-2 h-[2.5em]">
+            {artist.bio || "No biography available."}
+          </p>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
+function ArtistSearchResultCardSkeleton() {
+    return (
+        <Card>
+            <CardHeader className="flex flex-row items-center space-x-3 pb-2">
+                <Skeleton className="h-9 w-9 rounded-full" />
+                <Skeleton className="h-6 w-3/5" />
+            </CardHeader>
+            <CardContent>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-4/5" />
+            </CardContent>
+        </Card>
+    );
+}
+
+
+function SearchResultsContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const query = searchParams.get('q') || '';
+  const searchContext = searchParams.get('context');
+
+  const [results, setResults] = useState<SearchResults | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (query && query.trim().length >= 2) {
+      setIsLoading(true);
+      setError(null);
+      let apiUrl = `/api/search/?q=${encodeURIComponent(query.trim())}`;
+      if (searchContext) {
+        apiUrl += `&context=${searchContext}`;
+      }
+      apiClient.get<SearchResults>(apiUrl)
+        .then(data => {
+          setResults(data);
+        })
+        .catch(err => {
+          console.error("Search failed:", err);
+          setError(err.message || "An unknown error occurred during search.");
+          setResults(null);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else if (query && query.trim().length > 0 && query.trim().length < 2) {
+        setError("Search query must be at least 2 characters long.");
+        setResults(null);
+        setIsLoading(false);
+    } else if (!query) {
+        setResults(null);
+        setIsLoading(false);
+        setError(null); 
+    }
+  }, [query, searchContext, router]);
+
+  if (!query && !isLoading && !error) {
+    return (
+        <div className="text-center py-10 flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
+            <SearchIconLucide className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Search Artistry Haven</h1>
+            <p className="text-muted-foreground max-w-md">
+                Enter a term in the search bar above to find artwork by title, description, or artist name, as well as artist profiles.
+            </p>
+        </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">
+          Searching for "{query}"...
+        </h1>
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center"><Palette className="mr-2 h-6 w-6"/> Artworks</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 4 }).map((_, index) => <ArtworkCardSkeleton key={`art-skel-${index}`} />)}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold mb-4 flex items-center"><UserIcon className="mr-2 h-6 w-6"/> Artists</h2>
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+             {Array.from({ length: 2 }).map((_, index) => (
+                <ArtistSearchResultCardSkeleton key={`artist-skel-${index}`} />
+             ))}
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="py-10">
+         <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">
+          Search Error for "{query}"
+        </h1>
+        <Alert variant="destructive">
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>Search Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+         <Button variant="outline" onClick={() => router.back()} className="mt-6">
+            Go Back
+        </Button>
+      </div>
+    );
+  }
+  
+  const noResultsFound = !results || (results.artworks.length === 0 && results.artists.length === 0);
+
+  const ArtworksSection = () => (
+    results && results.artworks.length > 0 && (
+        <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-6 flex items-center">
+            <Palette className="mr-3 h-6 w-6 text-primary" />
+            Artworks ({results.artworks.length})
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {results.artworks.map((artwork) => (
+            <ArtworkCard key={artwork.id} artwork={artwork} />
+            ))}
+        </div>
+        </section>
+    )
+  );
+
+  const ArtistsSection = () => (
+    results && results.artists.length > 0 && (
+        <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-6 flex items-center">
+            <UserIcon className="mr-3 h-6 w-6 text-primary" />
+            Artists ({results.artists.length})
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {results.artists.map((artist) => (
+            <ArtistSearchResultCard key={artist.id} artist={artist} />
+            ))}
+        </div>
+        </section>
+    )
+  );
+
+  return (
+    <div>
+      <h1 className="text-3xl font-bold tracking-tight mb-8 font-serif">
+        {noResultsFound ? `No Results Found for "${query}"` : `Search Results for "${results?.query || query}"`}
+      </h1>
+
+      {noResultsFound ? (
+         <div className="text-center py-10 flex flex-col items-center justify-center min-h-[calc(100vh-300px)]">
+            <Frown className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
+            <p className="text-xl text-muted-foreground">We couldn't find anything matching your search.</p>
+            <p className="text-sm text-muted-foreground">Try a different search term or explore our collections.</p>
+            <div className="mt-6 space-x-4">
+                <Button asChild variant="default">
+                    <Link href="/artworks">Explore Artwork</Link>
+                </Button>
+                 <Button asChild variant="outline">
+                    <Link href="/artists">Discover Artists</Link>
+                </Button>
+            </div>
+        </div>
+      ) : (
+        <>
+            {searchContext === 'artists' ? (
+                <>
+                    <ArtistsSection />
+                    <ArtworksSection />
+                </>
+            ) : ( // Default or context=artworks or no context
+                <>
+                    <ArtworksSection />
+                    <ArtistsSection />
+                </>
+            )}
+        
+            {(results && (results.artworks.length > 0 || results.artists.length > 0)) && (
+            <Alert className="mt-12 bg-muted/50">
+                <Info className="h-4 w-4" />
+                <AlertTitle>Search Tip</AlertTitle>
+                <AlertDescription>
+                    Didn't find exactly what you were looking for? Try refining your search terms or browse our <Link href="/artworks" className="font-medium underline hover:text-primary">full artwork collection</Link>.
+                </AlertDescription>
+            </Alert>
+            )}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function SearchPage() {
+    return (
+        <Suspense fallback={
+            <div>
+                <Skeleton className="h-10 w-1/2 mb-8" />
+                <div className="mb-8">
+                    <Skeleton className="h-8 w-1/4 mb-4" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {Array.from({ length: 4 }).map((_, index) => <ArtworkCardSkeleton key={`art-suspense-skel-${index}`} />)}
+                    </div>
+                </div>
+            </div>
+        }>
+            <SearchResultsContent />
+        </Suspense>
+    );
 }
 
 # === contexts/AuthContext.tsx ===
@@ -4970,7 +5382,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setIsLoading(true);
     try {
-       const fetchedUser = await apiClient.get<UserProfile>('/auth/me', { needsAuth: true });
+       const fetchedUser = await apiClient.get<UserProfile>('/api/auth/me', { needsAuth: true });
        if (fetchedUser) {
           setUser(fetchedUser);
           storeAdminStatus(!!fetchedUser.is_admin);
@@ -5008,7 +5420,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
      try {
-         const response = await apiClient.post<LoginResponse>('/auth/login', { email, password });
+         const response = await apiClient.post<LoginResponse>('/api/auth/login', { email, password });
 
          if (response && typeof response.access_token === 'string') {
              setAuthToken(response.access_token);
@@ -5034,7 +5446,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
  const signup = async (userData: Omit<User, 'id'|'created_at'|'is_admin'> & {password: string}) => {
      try {
-         const response = await apiClient.post<SignupResponse>('/auth/signup', userData);
+         const response = await apiClient.post<SignupResponse>('/api/auth/signup', userData);
          if (!response || !response.user) {
             throw new Error("Signup response did not include user data.");
          }
@@ -5048,7 +5460,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
      const currentToken = getAuthToken();
      try {
         if (currentToken) {
-           await apiClient.post('/auth/logout', {}, { needsAuth: true });
+           await apiClient.post('/api/auth/logout', {}, { needsAuth: true });
         }
      } catch (error) {
          console.warn("Logout API call failed (continuing client-side logout):", error);
@@ -5113,15 +5525,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const fetchedCart = await apiClient.get<Cart>('/cart', { needsAuth: true });
+      const fetchedCart = await apiClient.get<Cart>('/api/cart', { needsAuth: true });
       setCart(fetchedCart);
     } catch (error) {
       console.error("Failed to fetch cart:", error);
-      toast.error("Could not load your cart.");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); 
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
@@ -5129,7 +5540,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     } else if (!isAuthLoading && !isAuthenticated) {
       setCart(null);
     }
-  }, [isAuthenticated, isAuthLoading]);
+  }, [isAuthenticated, isAuthLoading, fetchCart]);
 
 
   const updateLocalCart = (updatedCart: Cart | null) => {
@@ -5144,7 +5555,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       try {
           const updatedCart = await apiClient.post<Cart>(
-              '/cart',
+              '/api/cart',
               { artwork_id: artworkId, quantity },
               { needsAuth: true }
           );
@@ -5171,7 +5582,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.put<Cart>(`/cart/items/${itemId}`, { quantity }, { needsAuth: true });
+          const updatedCart = await apiClient.put<Cart>(`/api/cart/items/${itemId}`, { quantity }, { needsAuth: true });
           if (updatedCart) {
               updateLocalCart(updatedCart);
               toast.success("Cart updated.");
@@ -5195,7 +5606,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.delete<Cart | null>(`/cart/items/${itemId}`, { needsAuth: true });
+          const updatedCart = await apiClient.delete<Cart | null>(`/api/cart/items/${itemId}`, { needsAuth: true });
            if (updatedCart) {
                updateLocalCart(updatedCart);
                toast.success("Item removed from cart.");
@@ -5312,7 +5723,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice, cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { ImageOff, ShoppingCartIcon, Edit, DollarSign, PackageCheck, PackageX, EyeOff } from 'lucide-react';
+import { ImageOff, ShoppingCartIcon, DollarSign, PackageCheck, PackageX, EyeOff, Package as PackageIcon } from 'lucide-react';
 
 interface ArtworkCardProps {
   artwork: Artwork;
@@ -5339,8 +5750,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
   return (
     <Card className="overflow-hidden flex flex-col h-full group border shadow-sm hover:shadow-lg transition-shadow duration-300">
        <CardHeader className="p-0 border-b relative">
-         <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn(!isPubliclyAvailableForPurchase && "opacity-60 group-hover:opacity-80 transition-opacity")}>
+         <Link href={`/artworks/${artwork.id}`}>
+           <div className={cn("cursor-pointer",!isPubliclyAvailableForPurchase && "opacity-60 group-hover:opacity-80 transition-opacity")}>
            <AspectRatio ratio={1 / 1} className="bg-muted overflow-hidden">
              <Image
                src={artwork.image_url || placeholderImage}
@@ -5365,13 +5776,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                      <Badge variant="destructive">Unavailable</Badge>
                  </div>
               )}
-               {!isAdmin && isPubliclyAvailableForPurchase && isOutOfStock && (
-                 <div className="absolute bottom-2 right-2 z-10">
-                     <Badge variant="outline" className="bg-background/80 border-orange-500 text-orange-600">Out of Stock</Badge>
-                 </div>
-              )}
            </AspectRatio>
-           </a>
+           </div>
          </Link>
          {isAdmin && (
             <div className="absolute top-2 right-2 z-10 flex flex-col items-end space-y-1">
@@ -5382,20 +5788,24 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
          )}
        </CardHeader>
        <CardContent className="p-4 flex-grow">
-         <Link href={`/artworks/${artwork.id}`} className="block" legacyBehavior>
-           <a className={cn("block", !isPubliclyAvailableForPurchase && "pointer-events-none")}>
+         <Link href={`/artworks/${artwork.id}`}>
+           <div className={cn("cursor-pointer block", !isPubliclyAvailableForPurchase && "pointer-events-none")}>
            <CardTitle className={cn("text-lg font-medium hover:text-primary transition-colors line-clamp-2 mb-1", !isPubliclyAvailableForPurchase && "text-muted-foreground")}>
              {artwork.name}
            </CardTitle>
-           </a>
+           </div>
          </Link>
          <Link href={`/artists/${artwork.artist.id}`} className="text-sm text-muted-foreground hover:text-primary transition-colors">
-           {artwork.artist.name}
+           By {artwork.artist.name}
          </Link>
+         
          {isAdmin ? (
-            <div className="mt-2 text-xs space-y-1">
-                <div className="flex items-center text-muted-foreground">
-                    <DollarSign className="h-3.5 w-3.5 mr-1.5" /> Price: {formatPrice(artwork.price)}
+            <div className="mt-3 text-xs space-y-1.5 text-muted-foreground">
+                <div className="flex items-center">
+                    <DollarSign className="h-3.5 w-3.5 mr-1.5 text-primary/80" /> Price: {formatPrice(artwork.price)}
+                </div>
+                <div className="flex items-center">
+                    <PackageIcon className="h-3.5 w-3.5 mr-1.5 text-primary/80" /> Stock: {artwork.stock_quantity}
                 </div>
             </div>
          ) : (
@@ -5404,19 +5814,11 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
             </p>
          )}
        </CardContent>
-       <CardFooter className="p-4 pt-0 flex justify-between items-center mt-auto">
-        {!isAdmin && (
-            <span className="text-lg font-semibold text-primary">
+       {!isAdmin && (
+         <CardFooter className="p-4 pt-0 flex justify-between items-center mt-auto">
+           <span className="text-lg font-semibold text-primary">
              {formatPrice(artwork.price)}
-            </span>
-        )}
-         {isAdmin ? (
-           <Link href={`/admin/artworks?edit=${artwork.id}`} className="w-full" legacyBehavior>
-             <Button size="sm" variant="outline" className="w-full">
-               <Edit className="mr-2 h-4 w-4" /> Edit Artwork
-             </Button>
-           </Link>
-         ) : (
+           </span>
            <Button
               size="sm"
               variant={(!isPubliclyAvailableForPurchase || isOutOfStock) ? "outline" : "default"}
@@ -5436,8 +5838,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
                   </>
               )}
            </Button>
-         )}
-       </CardFooter>
+         </CardFooter>
+       )}
     </Card>
   );
 }
@@ -5478,9 +5880,10 @@ export function Footer() {
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'; 
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, UserCog, LogOutIcon, Menu } from 'lucide-react';
+import { Input } from '@/components/ui/input'; 
+import { ShoppingCart, UserCog, LogOutIcon, Menu, Search as SearchIcon, X } from 'lucide-react'; 
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
@@ -5491,28 +5894,143 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { Separator } from '../ui/separator';
+import React, { useState, useEffect, useRef, useCallback } from 'react'; 
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 
 export function Navbar() {
    const { isAuthenticated, isLoading, logout, isAdmin } = useAuth();
    const { itemCount } = useCart();
    const pathname = usePathname();
+   const router = useRouter(); 
+   const searchParams = useSearchParams();
+
+   const [searchTerm, setSearchTerm] = useState('');
+   const debouncedSearchTerm = useDebounce(searchTerm, 300); 
+   const [isMobileSearchVisible, setIsMobileSearchVisible] = useState(false);
+   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
+
+
+   useEffect(() => {
+    const currentQuery = searchParams.get('q');
+    if (pathname === '/search') {
+      setSearchTerm(currentQuery || '');
+    }
+   }, [pathname, searchParams]);
+
+
+   useEffect(() => {
+    const trimmedSearchTerm = debouncedSearchTerm.trim();
+    let searchContext = '';
+    if (pathname === '/artworks') {
+        searchContext = 'artworks';
+    } else if (pathname === '/artists') {
+        searchContext = 'artists';
+    }
+
+    if (trimmedSearchTerm.length >= 2) {
+      const currentSearchQuery = searchParams.get('q');
+      const currentSearchContext = searchParams.get('context');
+      
+      if (pathname !== '/search' || currentSearchQuery !== trimmedSearchTerm || (searchContext && currentSearchContext !== searchContext)) {
+        let queryString = `q=${encodeURIComponent(trimmedSearchTerm)}`;
+        if (searchContext) {
+            queryString += `&context=${searchContext}`;
+        }
+        router.push(`/search?${queryString}`);
+      }
+    } else if (trimmedSearchTerm.length === 0 && pathname === '/search') {
+      router.push('/artworks'); 
+    }
+   }, [debouncedSearchTerm, router, pathname, searchParams]);
+
+
+   const handleClearSearch = () => {
+     setSearchTerm('');
+     if (isMobileSearchVisible && mobileSearchInputRef.current) {
+        mobileSearchInputRef.current.focus();
+     } else if (desktopSearchInputRef.current) {
+        desktopSearchInputRef.current.focus();
+     }
+     if (pathname === '/search') {
+       router.push('/artworks');
+     }
+   };
+
 
    const isInAdminSection = pathname.startsWith('/admin');
+   
+   const isArtworkDetailPage = pathname.startsWith('/artworks/') && pathname.length > '/artworks/'.length && pathname !== '/artworks';
+   const isArtistDetailPage = pathname.startsWith('/artists/') && pathname.length > '/artists/'.length && pathname !== '/artists';
+   const isPublicDetailPage = isArtworkDetailPage || isArtistDetailPage;
+
+   const showPublicNavItems = !isInAdminSection && !(isAdmin && isPublicDetailPage);
+
 
    const publicNavLinks = [
      { href: "/artworks", label: "Artwork" },
      { href: "/artists", label: "Artists" },
    ];
+   
+    useEffect(() => {
+        if (isMobileSearchVisible && mobileSearchInputRef.current) {
+            mobileSearchInputRef.current.focus();
+        }
+    }, [isMobileSearchVisible]);
 
   return (
     <nav className="bg-card border-b border-border sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-xl font-bold font-serif text-primary">
+        <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-xl font-bold font-serif text-primary shrink-0">
           Artistry Haven {isInAdminSection && isAdmin && <span className="text-sm font-normal text-muted-foreground">- Admin</span>}
         </Link>
 
         {!isInAdminSection && (
+            <div className="hidden md:flex flex-grow justify-center px-4">
+                <div className="relative w-full max-w-md">
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                    ref={desktopSearchInputRef}
+                    type="search"
+                    placeholder="Search artwork, artists..."
+                    className="w-full pl-10 pr-10" 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                    {searchTerm && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary"
+                            onClick={handleClearSearch}
+                            aria-label="Clear search"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    )}
+                </div>
+            </div>
+        )}
+
+
+        {showPublicNavItems && (
           <div className="hidden md:flex items-center space-x-6">
             {publicNavLinks.map(link => (
                 <Link key={link.href} href={link.href} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
@@ -5522,7 +6040,7 @@ export function Navbar() {
           </div>
         )}
         {isInAdminSection && isAdmin && (
-             <div className="hidden md:flex items-center space-x-6">
+             <div className="hidden md:flex items-center space-x-6 ml-auto">
                 <Link href="/admin/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
                     Artworks
                 </Link>
@@ -5537,7 +6055,7 @@ export function Navbar() {
 
 
         <div className="flex items-center space-x-2 sm:space-x-4">
-          {!isInAdminSection && (
+          {showPublicNavItems && !isMobileSearchVisible && (
             <Link href="/cart" aria-label="View Cart">
                <Button variant="ghost" size="icon" className="relative">
                   <ShoppingCart className="h-5 w-5" />
@@ -5561,7 +6079,7 @@ export function Navbar() {
                   </Button>
                 </Link>
               )}
-              {!isInAdminSection && (
+              {showPublicNavItems && (
                 <Link href="/orders">
                   <Button variant="ghost" size="sm" className="hidden sm:inline-flex">My Orders</Button>
                 </Link>
@@ -5578,55 +6096,89 @@ export function Navbar() {
              </Link>
              </>
           )}
-
+        
           <div className="md:hidden">
+            {!isInAdminSection && (
+                <Button variant="ghost" size="icon" onClick={() => setIsMobileSearchVisible(!isMobileSearchVisible)} aria-label="Toggle search">
+                    <SearchIcon className="h-5 w-5"/>
+                </Button>
+            )}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon"><Menu className="h-5 w-5" /></Button>
+                <Button variant="ghost" size="icon" aria-label="Open menu"><Menu className="h-5 w-5" /></Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[280px] sm:w-[320px]">
+              <SheetContent side="right" className="w-[280px] sm:w-[320px] p-0">
                 <div className="p-4">
-                    <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-lg font-bold font-serif text-primary mb-4 block">
-                      Artistry Haven
-                    </Link>
+                    <SheetClose asChild>
+                        <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-lg font-bold font-serif text-primary mb-4 block">
+                        Artistry Haven
+                        </Link>
+                    </SheetClose>
                     <Separator className="my-3"/>
                     
                     {isInAdminSection && isAdmin ? (
                         <>
-                            <SheetClose asChild><Link href="/admin" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Dashboard</Link></SheetClose>
-                            <SheetClose asChild><Link href="/admin/artworks" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Manage Artworks</Link></SheetClose>
-                            <SheetClose asChild><Link href="/admin/artists" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Manage Artists</Link></SheetClose>
-                            <SheetClose asChild><Link href="/admin/orders" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Manage Orders</Link></SheetClose>
-                            <SheetClose asChild><Link href="/admin/delivery-options" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Delivery Options</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin" className="block py-2 text-sm text-foreground hover:text-primary">Dashboard</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/artworks" className="block py-2 text-sm text-foreground hover:text-primary">Manage Artworks</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/artists" className="block py-2 text-sm text-foreground hover:text-primary">Manage Artists</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/orders" className="block py-2 text-sm text-foreground hover:text-primary">Manage Orders</Link></SheetClose>
+                            <SheetClose asChild><Link href="/admin/delivery-options" className="block py-2 text-sm text-foreground hover:text-primary">Delivery Options</Link></SheetClose>
                             <Separator className="my-3"/>
-                            <SheetClose asChild><Link href="/" className="flex items-center py-2 text-sm text-foreground hover:text-primary">Back to Site</Link></SheetClose>
+                            <SheetClose asChild><Link href="/" className="block py-2 text-sm text-foreground hover:text-primary">Back to Site</Link></SheetClose>
                         </>
                     ) : (
                         <>
-                            {publicNavLinks.map(link => (
-                                <SheetClose asChild key={link.href}><Link href={link.href} className="flex items-center py-2 text-sm text-foreground hover:text-primary">{link.label}</Link></SheetClose>
+                            {showPublicNavItems && publicNavLinks.map(link => (
+                                <SheetClose asChild key={link.href}><Link href={link.href} className="block py-2 text-sm text-foreground hover:text-primary">{link.label}</Link></SheetClose>
                             ))}
-                            {isAuthenticated && (
-                                <SheetClose asChild><Link href="/orders" className="flex items-center py-2 text-sm text-foreground hover:text-primary">My Orders</Link></SheetClose>
+                            {isAuthenticated && showPublicNavItems && (
+                                <SheetClose asChild><Link href="/orders" className="block py-2 text-sm text-foreground hover:text-primary">My Orders</Link></SheetClose>
                             )}
                         </>
                     )}
                     <Separator className="my-3"/>
                     {isAuthenticated ? (
-                        <Button variant="outline" size="sm" onClick={() => {logout();}} className="w-full">Logout</Button>
+                        <SheetClose asChild><Button variant="outline" size="sm" onClick={logout} className="w-full">Logout</Button></SheetClose>
                     ) : (
                         <div className="space-y-2">
-                           <SheetClose asChild><Link href="/login" className="w-full"><Button variant="ghost" className="w-full">Login</Button></Link></SheetClose>
-                           <SheetClose asChild><Link href="/signup" className="w-full"><Button className="w-full">Sign Up</Button></Link></SheetClose>
+                           <SheetClose asChild><Link href="/login" className="w-full block"><Button variant="ghost" className="w-full">Login</Button></Link></SheetClose>
+                           <SheetClose asChild><Link href="/signup" className="w-full block"><Button className="w-full">Sign Up</Button></Link></SheetClose>
                         </div>
                     )}
                 </div>
               </SheetContent>
             </Sheet>
           </div>
-
         </div>
       </div>
+
+      {!isInAdminSection && isMobileSearchVisible && (
+        <div className="md:hidden p-2 border-b bg-card">
+            <div className="relative">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                ref={mobileSearchInputRef}
+                type="search"
+                placeholder="Search artwork, artists..."
+                className="w-full pl-10 pr-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                {searchTerm && (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary"
+                        onClick={handleClearSearch}
+                        aria-label="Clear search"
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
+                )}
+            </div>
+        </div>
+      )}
     </nav>
   );
 }

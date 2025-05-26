@@ -16,7 +16,7 @@ import {
     ApiErrorResponse,
     CartItem as CartItemType,
     StkPushInitiationResponse,
-    DeliveryOption as DeliveryOptionType, 
+    DeliveryOption as DeliveryOptionType,
     PaymentTransactionStatusResponse
 } from '@/lib/types';
 import { apiClient } from '@/lib/api';
@@ -29,9 +29,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
-  FormLabel, 
+  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -121,8 +122,8 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
       </div>
 
       <div className="flex-1 space-y-1 min-w-0">
-        <Link 
-            href={`/artworks/${item.artwork.id}`} 
+        <Link
+            href={`/artworks/${item.artwork.id}`}
             className={cn(
                 "font-medium hover:text-primary transition-colors text-base sm:text-lg line-clamp-2",
                 (!isItemAvailable || isItemOutOfStock) && "text-muted-foreground line-through"
@@ -225,8 +226,8 @@ export default function CartPage() {
   });
 
   const availableCartItems = useMemo(() => {
-    return cart?.items.filter(item => 
-        item.artwork.is_active && 
+    return cart?.items.filter(item =>
+        item.artwork.is_active &&
         item.artwork.artist.is_active &&
         item.artwork.stock_quantity > 0 &&
         item.artwork.stock_quantity >= item.quantity
@@ -234,8 +235,8 @@ export default function CartPage() {
   }, [cart]);
 
   const unavailableCartItems = useMemo(() => {
-    return cart?.items.filter(item => 
-        !item.artwork.is_active || 
+    return cart?.items.filter(item =>
+        !item.artwork.is_active ||
         !item.artwork.artist.is_active ||
         item.artwork.stock_quantity === 0 ||
         item.artwork.stock_quantity < item.quantity
@@ -255,7 +256,7 @@ export default function CartPage() {
       const fetchDeliveryOpts = async () => {
         setIsLoadingDeliveryOptions(true);
         try {
-          const opts = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
+          const opts = await apiClient.get<DeliveryOptionType[]>('/api/delivery/options', { needsAuth: true });
           setDeliveryOptions(opts || []);
           const activePickupOption = opts?.find(opt => opt.is_pickup && opt.active);
           const firstActiveDelivery = opts?.find(opt => !opt.is_pickup && opt.active);
@@ -284,7 +285,7 @@ export default function CartPage() {
 
   useEffect(() => {
     if (user?.address && !isStkFlowActive) {
-      const potentialPhone = user.address.replace(/\D/g, ''); 
+      const potentialPhone = user.address.replace(/\D/g, '');
       if (potentialPhone.startsWith("254") && potentialPhone.length === 12) {
         checkoutForm.setValue("phoneNumber", potentialPhone);
       }
@@ -325,12 +326,12 @@ export default function CartPage() {
 
     setPollingMessage(successMessage);
     toast.success("Order Placed Successfully!", {
-        description: successMessage.replace("Payment successful! Your order has been placed.", ""), 
+        description: successMessage.replace("Payment successful! Your order has been placed.", ""),
         duration: 15000,
         action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } :
                          { label: "My Orders", onClick: () => router.push(`/orders`) },
     });
-    fetchCart(); 
+    fetchCart();
   }, [stopPolling, router, fetchCart, selectedDeliveryOption]);
 
   const handlePaymentFailure = useCallback((message: string, finalStatus?: PaymentTransactionStatusResponse['status']) => {
@@ -356,7 +357,7 @@ export default function CartPage() {
     setPollingMessage(`Checking payment status (attempt ${pollingAttemptsRef.current} of ${MAX_POLLING_ATTEMPTS})...`);
 
     try {
-      const statusResponse = await apiClient.get<PaymentTransactionStatusResponse>(`/orders/status/${checkoutIdToPoll}`, { needsAuth: true });
+      const statusResponse = await apiClient.get<PaymentTransactionStatusResponse>(`/api/orders/status/${checkoutIdToPoll}`, { needsAuth: true });
       if (statusResponse) {
         setPaymentStatus(statusResponse.status);
         if (statusResponse.status === 'successful') {
@@ -399,9 +400,9 @@ export default function CartPage() {
       if (paymentStatus === null || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') {
          setPollingMessage("Waiting for M-Pesa confirmation...");
       }
-      pollPaymentStatus(stkCheckoutId); 
+      pollPaymentStatus(stkCheckoutId);
 
-      if (!pollingIntervalRef.current && stkCheckoutId) { 
+      if (!pollingIntervalRef.current && stkCheckoutId) {
         pollingIntervalRef.current = setInterval(() => {
             if (stkCheckoutId) {
                  pollPaymentStatus(stkCheckoutId);
@@ -440,7 +441,7 @@ export default function CartPage() {
 
     try {
       const response = await apiClient.post<StkPushInitiationResponse>(
-          '/orders/',
+          '/api/orders/',
           {
             phone_number: data.phoneNumber,
             delivery_option_id: selectedDeliveryOptionId,
@@ -464,10 +465,10 @@ export default function CartPage() {
   const handleDeliveryTypeChange = (type: 'pickup' | 'delivery') => {
     setDeliveryType(type);
     setSelectedDeliveryOptionId(null);
-    const relevantOptions = type === 'pickup' 
+    const relevantOptions = type === 'pickup'
         ? deliveryOptions.filter(opt => opt.is_pickup && opt.active)
         : deliveryOptions.filter(opt => !opt.is_pickup && opt.active);
-    
+
     if (relevantOptions.length > 0) {
         setSelectedDeliveryOptionId(relevantOptions[0].id);
     }
@@ -603,8 +604,8 @@ export default function CartPage() {
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Some items are unavailable!</AlertTitle>
           <AlertDescription>
-            One or more items in your cart are currently out of stock or no longer available. 
-            They have been excluded from the total and cannot be purchased. 
+            One or more items in your cart are currently out of stock or no longer available.
+            They have been excluded from the total and cannot be purchased.
             Please review the items below. You can remove them or update quantities if partial stock is available for other items.
           </AlertDescription>
         </Alert>
@@ -731,15 +732,23 @@ export default function CartPage() {
                 <h3 className="text-lg font-semibold">Checkout with M-Pesa</h3>
                  <Form {...checkoutForm}>
                     <form onSubmit={checkoutForm.handleSubmit(handleInitiateCheckout)} className="space-y-4">
-                         <FormField
+                    <FormField
                             control={checkoutForm.control}
                             name="phoneNumber"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>M-Pesa Phone Number</FormLabel>
+                                <FormLabel htmlFor="phoneNumber">M-Pesa Phone Number</FormLabel>
                                 <FormControl>
-                                  <Input type="tel" placeholder="2547XXXXXXXX" {...field} />
+                                  <Input
+                                    id="phoneNumber"
+                                    type="tel"
+                                    placeholder="e.g., 254712345678"
+                                    {...field}
+                                    />
                                 </FormControl>
+                                <FormDescription>
+                                  Enter your M-Pesa registered phone number. It must start with 254 and be 12 digits long.
+                                </FormDescription>
                                 <FormMessage />
                               </FormItem>
                             )}

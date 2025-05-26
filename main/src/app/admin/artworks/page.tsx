@@ -156,8 +156,8 @@ export default function AdminArtworksPage() {
     setIsLoading(true);
     try {
       const [fetchedArtworks, fetchedArtists] = await Promise.all([
-        apiClient.get<ArtworkType[]>('/artworks/', { needsAuth: true }),
-        apiClient.get<ArtistType[]>('/artists/', { needsAuth: true }),
+        apiClient.get<ArtworkType[]>('/api/artworks/', { needsAuth: true }),
+        apiClient.get<ArtistType[]>('/api/artists/', { needsAuth: true }),
       ]);
       setArtworks(fetchedArtworks || []);
       
@@ -242,7 +242,7 @@ export default function AdminArtworksPage() {
     if (values.image_file) {
       formData.append('image_file', values.image_file);
     } else if (editingArtwork && values.current_image_url) {
-      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/media/`;
+      const mediaBase = `${process.env.NEXT_PUBLIC_API_URL}/media/`; 
       let relativePath = values.current_image_url;
       if (values.current_image_url?.startsWith(mediaBase)) {
         relativePath = values.current_image_url.substring(mediaBase.length);
@@ -254,14 +254,14 @@ export default function AdminArtworksPage() {
       let responseArtwork: ArtworkType | null;
       if (editingArtwork) {
         responseArtwork = await apiClient.patch<ArtworkType>(
-          `/artworks/${editingArtwork.id}`,
+          `/api/artworks/${editingArtwork.id}`,
           formData,
           { needsAuth: true, isFormData: true }
         );
         toast.success("Artwork updated successfully!");
       } else {
         responseArtwork = await apiClient.post<ArtworkType>(
-          '/artworks/',
+          '/api/artworks/',
           formData,
           { needsAuth: true, isFormData: true }
         );
@@ -332,7 +332,7 @@ export default function AdminArtworksPage() {
     if (!artworkToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/artworks/${artworkToDelete.id}`, { needsAuth: true });
+      await apiClient.delete(`/api/artworks/${artworkToDelete.id}`, { needsAuth: true });
       toast.success("Artwork deleted successfully!");
       setArtworkToDelete(null);
       fetchArtworksAndArtists();
@@ -449,7 +449,7 @@ export default function AdminArtworksPage() {
         );
       },
     },
-  ], [artists]); 
+  ], [artists]);
 
   const table = useReactTable({
     data: artworks,

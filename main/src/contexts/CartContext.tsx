@@ -33,15 +33,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const fetchedCart = await apiClient.get<Cart>('/cart', { needsAuth: true });
+      const fetchedCart = await apiClient.get<Cart>('/api/cart', { needsAuth: true });
       setCart(fetchedCart);
     } catch (error) {
       console.error("Failed to fetch cart:", error);
-      toast.error("Could not load your cart.");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); 
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
@@ -49,7 +48,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     } else if (!isAuthLoading && !isAuthenticated) {
       setCart(null);
     }
-  }, [isAuthenticated, isAuthLoading]);
+  }, [isAuthenticated, isAuthLoading, fetchCart]);
 
 
   const updateLocalCart = (updatedCart: Cart | null) => {
@@ -64,7 +63,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       try {
           const updatedCart = await apiClient.post<Cart>(
-              '/cart',
+              '/api/cart',
               { artwork_id: artworkId, quantity },
               { needsAuth: true }
           );
@@ -91,7 +90,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.put<Cart>(`/cart/items/${itemId}`, { quantity }, { needsAuth: true });
+          const updatedCart = await apiClient.put<Cart>(`/api/cart/items/${itemId}`, { quantity }, { needsAuth: true });
           if (updatedCart) {
               updateLocalCart(updatedCart);
               toast.success("Cart updated.");
@@ -115,7 +114,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
       setIsLoading(true);
       try {
-          const updatedCart = await apiClient.delete<Cart | null>(`/cart/items/${itemId}`, { needsAuth: true });
+          const updatedCart = await apiClient.delete<Cart | null>(`/api/cart/items/${itemId}`, { needsAuth: true });
            if (updatedCart) {
                updateLocalCart(updatedCart);
                toast.success("Item removed from cart.");

@@ -141,3 +141,9 @@ export interface AdminDashboardStatsData {
   recent_orders: Order[];
   sales_trend: { month: string; revenue: number }[];
 }
+
+export interface SearchResults {
+  artworks: Artwork[];
+  artists: Artist[];
+  query: string;
+}

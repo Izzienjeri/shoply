@@ -118,7 +118,7 @@ export default function AdminDeliveryOptionsPage() {
   const fetchDeliveryOptions = async () => {
     setIsLoading(true);
     try {
-      const fetchedOptions = await apiClient.get<DeliveryOptionType[]>('/delivery/options', { needsAuth: true });
+      const fetchedOptions = await apiClient.get<DeliveryOptionType[]>('/api/delivery/options', { needsAuth: true });
       setDeliveryOptions(fetchedOptions || []);
     } catch (error) {
       console.error("Failed to fetch delivery options:", error);
@@ -142,10 +142,10 @@ export default function AdminDeliveryOptionsPage() {
 
     try {
       if (editingOption) {
-        await apiClient.patch<DeliveryOptionType>(`/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
+        await apiClient.patch<DeliveryOptionType>(`/api/delivery/options/${editingOption.id}`, payload, { needsAuth: true });
         toast.success("Delivery option updated successfully!");
       } else {
-        await apiClient.post<DeliveryOptionType>('/delivery/options', payload, { needsAuth: true });
+        await apiClient.post<DeliveryOptionType>('/api/delivery/options', payload, { needsAuth: true });
         toast.success("Delivery option created successfully!");
       }
       setShowFormDialog(false);
@@ -195,7 +195,7 @@ export default function AdminDeliveryOptionsPage() {
     if (!optionToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/delivery/options/${optionToDelete.id}`, { needsAuth: true });
+      await apiClient.delete(`/api/delivery/options/${optionToDelete.id}`, { needsAuth: true });
       toast.success("Delivery option deleted successfully!");
       fetchDeliveryOptions();
     } catch (error: any) {

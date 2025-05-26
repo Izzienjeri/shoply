@@ -1,10 +1,9 @@
-// === app/orders/page.tsx ===
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types'; // OrderType now includes delivery_option_details
+import { Order as OrderType, OrderItem as OrderItemType } from '@/lib/types'; 
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/lib/utils';
@@ -50,7 +49,7 @@ function OrderItemCard({ item }: { item: OrderItemType }) {
         {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
       </div>
       <div className="flex-1 space-y-1">
-        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-sm"> {/* Added Link */}
+        <Link href={`/artworks/${item.artwork.id}`} className="font-medium hover:underline text-sm">
             {item.artwork.name}
         </Link>
         <p className="text-xs text-muted-foreground">By {item.artwork.artist.name}</p>
@@ -101,7 +100,7 @@ export default function OrdersPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const fetchedOrders = await apiClient.get<OrderType[]>('/orders/', { needsAuth: true });
+        const fetchedOrders = await apiClient.get<OrderType[]>('/api/orders/', { needsAuth: true });
         setOrders(fetchedOrders || []);
       } catch (err: any) {
         console.error("Failed to fetch orders:", err);

@@ -86,16 +86,10 @@ class ArtistDetail(Resource):
         if not is_admin_request and not artist.is_active:
              return {"message": f"Artist with ID {artist_id} not found or not active."}, 404
 
-        if is_admin_request:
-            artist_dump_data = artist_schema.dump(artist)
-        else:
-            active_artworks = [aw for aw in artist.artworks if aw.is_active]
-            artist.artworks_for_display = active_artworks 
-            
-            artist_dump_data = artist_schema.dump(artist)
-            artist_dump_data['artworks'] = ArtworkSchema(many=True, exclude=("artist",)).dump(active_artworks)
-            artist_dump_data['artworks_count'] = len(active_artworks)
+        if not is_admin_request:
+            artist.artworks_for_display = [aw for aw in artist.artworks if aw.is_active]
 
+        artist_dump_data = artist_schema.dump(artist)
 
         return artist_dump_data, 200
 

@@ -55,7 +55,7 @@ class ArtworkSchema(ma.SQLAlchemyAutoSchema):
 class ArtistSchema(ma.SQLAlchemyAutoSchema):
     name = fields.Str(required=True, validate=validate.Length(min=1))
     bio = fields.Str(allow_none=True)
-    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True, exclude=("artist",))
+    artworks = fields.Nested(ArtworkSchema, many=True, dump_only=True)
     artworks_count = fields.Method("get_artworks_count", dump_only=True)
     is_active = fields.Bool(load_default=True)
 

@@ -62,7 +62,7 @@ export default function ArtworkDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const fetchedArtwork = await apiClient.get<ArtworkType>(`/artworks/${artworkId}`, { needsAuth: isAuthenticated });
+          const fetchedArtwork = await apiClient.get<ArtworkType>(`/api/artworks/${artworkId}`, { needsAuth: isAuthenticated });
           setArtwork(fetchedArtwork);
         } catch (err: any) {
           console.error("Failed to fetch artwork:", err);
@@ -135,7 +135,7 @@ export default function ArtworkDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
-          <Link href={`/admin/artworks?edit=${artwork.id}`} passHref legacyBehavior>
+          <Link href={`/admin/artworks?edit=${artwork.id}`}>
             <Button variant="default" size="sm">
               <Edit className="mr-2 h-4 w-4" /> Edit in Admin Panel
             </Button>
@@ -215,10 +215,11 @@ export default function ArtworkDetailPage() {
               </p>
           </div>
           
-          {!artwork.is_active && !isAdmin && (
+          {/* Public facing status badges (if not admin) */}
+          {!isAdmin && !artwork.is_active && (
               <Badge variant="destructive">Currently Unavailable</Badge>
           )}
-          {artwork.artist && !artwork.artist.is_active && !isAdmin && (
+          {!isAdmin && artwork.artist && !artwork.artist.is_active && (
               <Badge variant="destructive">Artist Unavailable</Badge>
           )}
 
@@ -234,6 +235,7 @@ export default function ArtworkDetailPage() {
 
           <Separator />
           
+          {/* Add to cart section for non-admins and if item is purchasable */}
           {!isAdmin && isPubliclyVisibleAndPurchaseable && ( 
             <div className="space-y-4">
               {!isOutOfStock ? (
@@ -257,9 +259,9 @@ export default function ArtworkDetailPage() {
                    Out of Stock
                 </Button>
               )}
-              {/* Removed the redundant stock message here, it's covered by the one above now */}
             </div>
           )}
+          {/* Message for non-admins if item is not purchasable but visible due to admin override (should not happen based on previous logic) */}
            {!isAdmin && !isPubliclyVisibleAndPurchaseable && ( 
              <p className="text-sm text-yellow-600 font-semibold">
                  This artwork is currently not available for purchase.
@@ -269,4 +271,5 @@ export default function ArtworkDetailPage() {
       </div>
     </div>
   );
+  
 }

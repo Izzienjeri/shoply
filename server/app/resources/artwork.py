@@ -2,10 +2,12 @@ from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload
+from sqlalchemy import desc, asc
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from werkzeug.utils import secure_filename
 import os
 import uuid
+from decimal import Decimal
 
 from .. import db
 from ..models import Artwork, Artist, User
@@ -42,25 +44,67 @@ class ArtworkList(Resource):
         is_admin_request = False
         try:
             verify_jwt_in_request(optional=True)
-            user_id = get_jwt_identity()
-            if user_id:
-                user = User.query.get(user_id)
+            user_id_from_token = get_jwt_identity()
+            if user_id_from_token:
+                user = User.query.get(user_id_from_token)
                 if user and user.is_admin:
                     is_admin_request = True
         except Exception:
             pass
 
+        sort_by = request.args.get('sort_by', 'created_at') 
+        sort_order = request.args.get('sort_order', 'desc') 
+        min_price_str = request.args.get('min_price')
+        max_price_str = request.args.get('max_price')
+        
 
         if is_admin_request:
-            current_app.logger.info("Admin request: Fetching all artworks for ArtworkList.")
-            artworks = Artwork.query.options(joinedload(Artwork.artist)).order_by(Artwork.created_at.desc()).all()
+            current_app.logger.info("Admin request: Fetching all artworks for ArtworkList with filters.")
+            query = Artwork.query.options(joinedload(Artwork.artist))
         else:
-            artworks = Artwork.query.options(joinedload(Artwork.artist))\
+            query = Artwork.query.options(joinedload(Artwork.artist))\
                 .join(Artist, Artwork.artist_id == Artist.id)\
-                .filter(Artwork.is_active == True, Artist.is_active == True)\
-                .order_by(Artwork.created_at.desc()).all()
+                .filter(Artwork.is_active == True, Artist.is_active == True)
+        
+        if min_price_str:
+            try:
+                min_price = Decimal(min_price_str)
+                if min_price < 0:
+                    abort(400, message="min_price cannot be negative.")
+                query = query.filter(Artwork.price >= min_price)
+            except (ValueError, TypeError):
+                abort(400, message="Invalid min_price format. Must be a number.")
+        
+        if max_price_str:
+            try:
+                max_price = Decimal(max_price_str)
+                if max_price < 0:
+                     abort(400, message="max_price cannot be negative.")
+                if min_price_str and max_price < Decimal(min_price_str):
+                    abort(400, message="max_price cannot be less than min_price.")
+                query = query.filter(Artwork.price <= max_price)
+            except (ValueError, TypeError):
+                abort(400, message="Invalid max_price format. Must be a number.")
+
+        valid_sort_fields = {
+            'name': Artwork.name,
+            'price': Artwork.price,
+            'created_at': Artwork.created_at
+        }
+        
+        sort_column = valid_sort_fields.get(sort_by, Artwork.created_at)
+        
+        if sort_order.lower() == 'asc':
+            query = query.order_by(asc(sort_column))
+        elif sort_order.lower() == 'desc':
+            query = query.order_by(desc(sort_column))
+        else:
+            query = query.order_by(desc(sort_column))
+        
+        artworks = query.all()
         
         return schemas.artworks_schema.dump(artworks), 200
+
 
     @admin_required
     def post(self):
@@ -108,7 +152,7 @@ class ArtworkList(Resource):
         elif 'image_url' in form_data and form_data['image_url']:
             pass
         else:
-            if not image_file: 
+            if not image_file:
                  return {"message": "image_file is required for new artworks."}, 400
             form_data['image_url'] = None 
 
@@ -138,9 +182,9 @@ class ArtworkDetail(Resource):
         is_admin_request = False
         try:
             verify_jwt_in_request(optional=True)
-            user_id = get_jwt_identity()
-            if user_id:
-                user = User.query.get(user_id)
+            user_id_from_token = get_jwt_identity()
+            if user_id_from_token:
+                user = User.query.get(user_id_from_token)
                 if user and user.is_admin:
                     is_admin_request = True
         except Exception:
@@ -174,7 +218,7 @@ class ArtworkDetail(Resource):
             if not artist:
                 abort(400, message=f"New artist with ID {new_artist_id} not found.")
             if not artist.is_active:
-                payload_is_active_val = form_data.get('is_active', current_artwork_from_db.is_active)
+                payload_is_active_val = form_data.get('is_active', str(current_artwork_from_db.is_active))
                 target_artwork_is_active = str(payload_is_active_val).lower() in ['true', 'on', '1', 'yes']
                 if target_artwork_is_active:
                     abort(400, message=f"Cannot assign active artwork to an inactive artist ('{artist.name}'). Activate the artist first or deactivate the artwork.")
@@ -197,15 +241,10 @@ class ArtworkDetail(Resource):
         else:
             target_is_active = current_artwork_from_db.is_active
         
-        if target_is_active is False:
-            if target_stock_quantity > 0:
-                abort(400, message="Cannot deactivate artwork with stock. Please set stock to 0 first or in the same request.")
-        
         if target_stock_quantity > 0:
-            target_is_active = True
-
-        if not target_is_active and target_stock_quantity > 0:
-            abort(400, message="Internal logic error: Inactive artwork cannot have stock. Please review request or contact support.")
+            target_is_active = True 
+        elif target_is_active is False and target_stock_quantity > 0 :
+             abort(400, message="Cannot deactivate artwork with stock. Please set stock to 0 first or in the same request.")
 
         form_data['is_active'] = target_is_active 
         form_data['stock_quantity'] = target_stock_quantity

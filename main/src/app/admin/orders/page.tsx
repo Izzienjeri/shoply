@@ -1,3 +1,4 @@
+// === app/admin/orders/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -125,7 +126,7 @@ export default function AdminOrdersPage() {
   const fetchOrders = async () => {
     setIsLoading(true);
     try {
-      const fetchedOrders = await apiClient.get<OrderType[]>('/admin/dashboard/orders', { needsAuth: true });
+      const fetchedOrders = await apiClient.get<OrderType[]>('/api/admin/dashboard/orders', { needsAuth: true });
       setOrders(fetchedOrders || []);
     } catch (error) {
       console.error("Failed to fetch orders:", error);
@@ -159,7 +160,7 @@ export default function AdminOrdersPage() {
 
 
     try {
-      await apiClient.patch<OrderType>(`/admin/dashboard/orders/${editingOrder.id}`, payload, { needsAuth: true });
+      await apiClient.patch<OrderType>(`/api/admin/dashboard/orders/${editingOrder.id}`, payload, { needsAuth: true });
       toast.success("Order status updated successfully!");
       setShowEditDialog(false);
       setEditingOrder(null);

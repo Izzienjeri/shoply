@@ -109,7 +109,7 @@ export default function AdminArtistsPage() {
   const fetchArtists = async () => {
     setIsLoading(true);
     try {
-      const fetchedArtists = await apiClient.get<ArtistType[]>('/artists/', { needsAuth: true });
+      const fetchedArtists = await apiClient.get<ArtistType[]>('/api/artists/', { needsAuth: true });
       setArtists(fetchedArtists || []);
     } catch (error) {
       console.error("Failed to fetch artists:", error);
@@ -132,10 +132,10 @@ export default function AdminArtistsPage() {
 
     try {
       if (editingArtist) {
-        await apiClient.patch<ArtistType>(`/artists/${editingArtist.id}`, payload, { needsAuth: true });
+        await apiClient.patch<ArtistType>(`/api/artists/${editingArtist.id}`, payload, { needsAuth: true });
         toast.success("Artist updated successfully!");
       } else {
-        await apiClient.post<ArtistType>('/artists/', payload, { needsAuth: true });
+        await apiClient.post<ArtistType>('/api/artists/', payload, { needsAuth: true });
         toast.success("Artist created successfully!");
       }
       setShowFormDialog(false);
@@ -175,7 +175,7 @@ export default function AdminArtistsPage() {
     if (!artistToDelete) return;
     setIsSubmitting(true);
     try {
-      await apiClient.delete(`/artists/${artistToDelete.id}`, { needsAuth: true });
+      await apiClient.delete(`/api/artists/${artistToDelete.id}`, { needsAuth: true });
       toast.success("Artist deleted successfully! Associated artworks were also deleted.");
       setArtistToDelete(null);
       fetchArtists();
