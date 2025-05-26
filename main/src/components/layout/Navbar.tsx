@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from '../ui/separator';
 import React, { useState, useEffect, useRef, useCallback } from 'react'; 
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -175,30 +176,31 @@ export function Navbar() {
         )}
 
 
-        <div className="flex items-center space-x-2 sm:space-x-4">
+        <div className="flex items-center space-x-1 sm:space-x-2">
           {showPublicNavItems && !isMobileSearchVisible && (
-            <Link href="/cart" aria-label="View Cart">
-               <Button variant="ghost" size="icon" className="relative">
-                  <ShoppingCart className="h-5 w-5" />
-                  {isAuthenticated && itemCount > 0 && (
-                     <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs">
-                        {itemCount > 9 ? '9+' : itemCount}
-                     </Badge>
-                  )}
-               </Button>
-            </Link>
+            <>
+              <Link href="/cart" aria-label="View Cart">
+                 <Button variant="ghost" size="icon" className="relative rounded-full">
+                    <ShoppingCart className="h-5 w-5" />
+                    {isAuthenticated && itemCount > 0 && (
+                       <Badge variant="destructive" className="absolute -top-0.5 -right-0.5 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs rounded-full">
+                          {itemCount > 9 ? '9+' : itemCount}
+                       </Badge>
+                    )}
+                 </Button>
+              </Link>
+              {isAuthenticated && <NotificationBell />}
+            </>
           )}
 
           {isLoading ? (
              <Button variant="ghost" size="sm" disabled>Loading...</Button>
           ) : isAuthenticated ? (
              <>
-              {isAdmin && (
-                <Link href={isInAdminSection ? "/" : "/admin"} title={isInAdminSection ? "Back to Site" : "Admin Dashboard"}>
-                  <Button variant="ghost" size="icon">
-                    {isInAdminSection ? <LogOutIcon className="h-5 w-5 transform rotate-180" /> : <UserCog className="h-5 w-5" />}
-                  </Button>
-                </Link>
+              {isAdmin && !isInAdminSection && (
+                 <Link href="/admin" title="Admin Dashboard">
+                   <Button variant="ghost" size="icon" className="rounded-full"><UserCog className="h-5 w-5" /></Button>
+                 </Link>
               )}
               {showPublicNavItems && (
                 <Link href="/orders">
@@ -220,13 +222,13 @@ export function Navbar() {
         
           <div className="md:hidden">
             {!isInAdminSection && (
-                <Button variant="ghost" size="icon" onClick={() => setIsMobileSearchVisible(!isMobileSearchVisible)} aria-label="Toggle search">
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsMobileSearchVisible(!isMobileSearchVisible)} aria-label="Toggle search">
                     <SearchIcon className="h-5 w-5"/>
                 </Button>
             )}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Open menu"><Menu className="h-5 w-5" /></Button>
+                <Button variant="ghost" size="icon" className="rounded-full" aria-label="Open menu"><Menu className="h-5 w-5" /></Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-[280px] sm:w-[320px] p-0">
                 <div className="p-4">

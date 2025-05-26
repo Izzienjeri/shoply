@@ -3,7 +3,7 @@ from flask import url_for, current_app
 from decimal import Decimal, InvalidOperation
 
 from . import ma, db
-from .models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem, DeliveryOption
+from .models import User, Artist, Artwork, Cart, CartItem, Order, OrderItem, DeliveryOption, Notification
 
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -179,17 +179,30 @@ class OrderSchema(ma.SQLAlchemyAutoSchema):
         load_instance = True
         sqla_session = db.session
 
+class NotificationSchema(ma.SQLAlchemyAutoSchema):
+    user = fields.Nested(UserSchema, only=('id', 'email', 'name'), dump_only=True, allow_none=True)
+    created_at = fields.DateTime(format='%Y-%m-%dT%H:%M:%S.%f')
+
+    class Meta:
+        model = Notification
+        load_instance = True
+        sqla_session = db.session
+        include_fk = True
+
 
 user_schema = UserSchema()
 cart_schema = CartSchema()
 order_schema = OrderSchema()
 artist_schema = ArtistSchema()
 artwork_schema = ArtworkSchema()
+notification_schema = NotificationSchema()
 
 users_schema = UserSchema(many=True)
 artists_schema = ArtistSchema(many=True)
 artworks_schema = ArtworkSchema(many=True)
 orders_schema = OrderSchema(many=True)
+notifications_schema = NotificationSchema(many=True)
+
 
 delivery_option_schema_admin = DeliveryOptionSchema()
 delivery_options_schema_admin = DeliveryOptionSchema(many=True)

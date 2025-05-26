@@ -159,3 +159,31 @@ export interface ArtworkBulkActionPayload {
 export interface ArtworkBulkDeletePayload {
   ids: string[];
 }
+
+export type NotificationMessageType = 
+  | 'info' | 'success' | 'warning' | 'error' 
+  | 'new_order' | 'order_update'
+  | 'artwork_update' | 'artist_update' | 'delivery_option_update';
+
+export interface Notification {
+  id: string;
+  user_id: string | null;
+  message: string;
+  type: NotificationMessageType;
+  read_at: string | null;
+  created_at: string;
+  link: string | null;
+  for_admin_audience: boolean;
+  user?: Pick<User, 'id' | 'email' | 'name'>;
+}
+
+export interface PaginatedNotificationsResponse {
+    notifications: Notification[];
+    total: number;
+    pages: number;
+    current_page: number;
+    per_page: number;
+    has_next: boolean;
+    has_prev: boolean;
+    unread_count: number;
+}

@@ -6,6 +6,7 @@ import { AdminGuard } from '@/components/admin/AdminGuard';
 import { Button } from '@/components/ui/button';
 import { Home, Package, Users, Settings, ShoppingBag, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 
 function AdminSidebar() {
@@ -21,11 +22,12 @@ function AdminSidebar() {
 
     return (
         <aside className="w-64 bg-gray-100 dark:bg-gray-900 p-6 border-r dark:border-gray-700 flex flex-col">
-            <div className="mb-8">
-                <Link href="/admin" className="block text-center md:text-left">
+            <div className="mb-4 flex justify-between items-center">
+                <Link href="/admin" className="block">
                     <h1 className="text-xl font-bold font-serif text-primary">Artistry Haven</h1>
                     <span className="text-sm text-muted-foreground">Admin Panel</span>
                 </Link>
+                <NotificationBell />
             </div>
             <nav className="space-y-2 flex-grow">
                 {navItems.map((item) => (
@@ -40,6 +42,11 @@ function AdminSidebar() {
                 ))}
             </nav>
             <div className="mt-auto pt-4 border-t border-gray-300 dark:border-gray-600 space-y-2">
+                 <Link href="/" className="w-full block mb-2">
+                    <Button variant="outline" className="w-full justify-start text-left">
+                        <LogOut className="mr-3 h-5 w-5 transform rotate-180"/> Back to Site
+                    </Button>
+                 </Link>
                  <Button
                     onClick={async () => {
                         await logout();

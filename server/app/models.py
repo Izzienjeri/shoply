@@ -41,7 +41,6 @@ class User(db.Model):
     orders = db.relationship('Order', back_populates='user', lazy='dynamic', cascade="all, delete-orphan")
     payment_transactions = db.relationship('PaymentTransaction', back_populates='user', lazy='dynamic')
 
-
     def set_password(self, password):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
@@ -214,3 +213,20 @@ class PaymentTransaction(db.Model):
             
     def __repr__(self):
         return f"<PaymentTransaction {self.id} CRID: {self.checkout_request_id} Status: {self.status} Amount: {self.amount}>"
+
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True, index=True)
+    message = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(50), nullable=False, default='info')
+    read_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    link = db.Column(db.String(255), nullable=True)
+    for_admin_audience = db.Column(db.Boolean, default=False, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('notifications', lazy='dynamic', cascade="all, delete-orphan"))
+
+    def __repr__(self):
+        return f"<Notification {self.id} Type: {self.type} User: {self.user_id or 'Broadcast/Admin'}>"

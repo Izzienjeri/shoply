@@ -9,6 +9,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Toaster } from "@/components/ui/sonner";
 import { SocketProvider } from "@/contexts/SocketContext";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -45,12 +46,14 @@ export default function RootLayout({
           <AuthProvider>
             <CartProvider>
               <SocketProvider>
-                <ConditionalNavbarWrapper />
-                <main className="flex-grow container mx-auto px-4 py-8">
-                  {children}
-                </main>
-                <Footer />
-                <Toaster richColors position="top-right" />
+                <NotificationProvider>
+                  <ConditionalNavbarWrapper />
+                  <main className="flex-grow container mx-auto px-4 py-8">
+                    {children}
+                  </main>
+                  <Footer />
+                  <Toaster richColors position="top-right" />
+                </NotificationProvider>
               </SocketProvider>
             </CartProvider>
           </AuthProvider>

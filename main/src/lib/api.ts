@@ -1,19 +1,34 @@
 import { getAuthToken, clearAuthToken } from '../contexts/AuthContext'
+import { PaginatedNotificationsResponse, Notification as NotificationInterface } from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-interface RequestOptions extends RequestInit {
+interface RequestOptions extends Omit<RequestInit, 'body'> {
   needsAuth?: boolean;
   isFormData?: boolean;
+  params?: Record<string, any>; 
+  body?: any; 
 }
 
 async function request<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T | null> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  let url = `${API_BASE_URL}${endpoint}`;
   const headers: HeadersInit = options.isFormData ? {} : { 'Content-Type': 'application/json' };
   let body = options.body;
+
+  if (options.params) {
+    const queryParams = new URLSearchParams();
+    for (const key in options.params) {
+      if (options.params[key] !== undefined && options.params[key] !== null) {
+        queryParams.append(key, String(options.params[key]));
+      }
+    }
+    if (queryParams.toString()) {
+      url += `?${queryParams.toString()}`;
+    }
+  }
 
   if (options.needsAuth) {
     const token = getAuthToken();
@@ -77,4 +92,13 @@ export const apiClient = {
 
   delete: <T = void>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(endpoint, { ...options, method: 'DELETE' }),
+
+  getNotifications: (params: { page?: number; per_page?: number; unread_only?: boolean } = {}) =>
+    apiClient.get<PaginatedNotificationsResponse>('/api/notifications/', { params, needsAuth: true }),
+
+  markNotificationAsRead: (notificationId: string) =>
+    apiClient.post<NotificationInterface>(`/api/notifications/${notificationId}/read`, {}, { needsAuth: true }),
+
+  markAllNotificationsAsRead: () =>
+    apiClient.post<{ message: string, unread_count: number }>(`/api/notifications/read-all`, {}, { needsAuth: true }),
 };
