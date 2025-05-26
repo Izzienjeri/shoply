@@ -22,7 +22,7 @@ import { ArrowLeft, ImageOff, Loader2, ShoppingCart, CheckCircle, Terminal, Edit
 function ArtworkDetailSkeleton() {
   return (
     <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
-      <Skeleton className="w-full">
+      <Skeleton className="w-full rounded-lg">
         <AspectRatio ratio={1 / 1} className="bg-muted" />
       </Skeleton>
       <div className="space-y-6">
@@ -34,7 +34,7 @@ function ArtworkDetailSkeleton() {
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
         </div>
-        <Skeleton className="h-12 w-40" />
+        <Skeleton className="h-12 w-40 rounded-md" />
         <Skeleton className="h-5 w-1/4" />
       </div>
     </div>
@@ -99,12 +99,12 @@ export default function ArtworkDetailPage() {
   if (error || !artwork) {
     return (
       <div className="text-center py-10">
-        <Alert variant="destructive" className="max-w-lg mx-auto">
+        <Alert variant="destructive" className="max-w-lg mx-auto rounded-lg">
           <Terminal className="h-4 w-4" />
-          <AlertTitle>{error ? "Error Fetching Artwork" : "Artwork Not Found"}</AlertTitle>
+          <AlertTitle className="font-serif">{error ? "Error Fetching Artwork" : "Artwork Not Found"}</AlertTitle>
           <AlertDescription>{error || "The artwork you are looking for does not exist or is not active."}</AlertDescription>
         </Alert>
-        <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
+        <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6 rounded-md">
           <ArrowLeft className="mr-2 h-4 w-4" /> Explore Other Artworks
         </Button>
       </div>
@@ -117,10 +117,10 @@ export default function ArtworkDetailPage() {
   if (!isPubliclyVisibleAndPurchaseable && !isAdmin) {
     return (
       <div className="text-center py-10">
-        <ImageOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-        <p className="text-xl text-muted-foreground">Artwork Not Available</p>
+        <ImageOff className="h-16 w-16 mx-auto mb-4 text-muted-foreground/70" />
+        <p className="text-xl text-muted-foreground font-serif">Artwork Not Available</p>
         <p className="text-sm text-muted-foreground">This artwork is currently not available for viewing or purchase.</p>
-         <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6">
+         <Button variant="outline" onClick={() => router.push('/artworks')} className="mt-6 rounded-md">
            Explore Other Artworks
         </Button>
       </div>
@@ -131,12 +131,12 @@ export default function ArtworkDetailPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
-        <Button variant="outline" size="sm" onClick={() => router.back()}>
+        <Button variant="outline" size="sm" onClick={() => router.back()} className="rounded-md">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
           <Link href={`/admin/artworks?edit=${artwork.id}`}>
-            <Button variant="default" size="sm">
+            <Button variant="default" size="sm" className="rounded-md shadow hover:shadow-md">
               <Edit className="mr-2 h-4 w-4" /> Edit in Admin Panel
             </Button>
           </Link>
@@ -144,29 +144,29 @@ export default function ArtworkDetailPage() {
       </div>
       
       {isAdmin && (artwork.is_active === false || artwork.artist?.is_active === false || isOutOfStock) && (
-        <Alert variant="warning" className="mb-6">
+        <Alert variant="warning" className="mb-6 rounded-lg">
             <EyeOff className="h-4 w-4" />
-            <AlertTitle>Admin View: Artwork Status Notes</AlertTitle>
+            <AlertTitle className="font-serif">Admin View: Artwork Status Notes</AlertTitle>
             <AlertDescription>
-              {artwork.is_active === false && <>Artwork status: <Badge variant="destructive">INACTIVE</Badge>. </>}
-              {artwork.artist?.is_active === false && <>Artist status: <Badge variant="destructive">INACTIVE</Badge>. </>}
-              {isOutOfStock && artwork.is_active && <Badge variant="outline" className="border-orange-500 text-orange-600">OUT OF STOCK</Badge>}
+              {artwork.is_active === false && <>Artwork status: <Badge variant="destructive" className="text-xs">INACTIVE</Badge>. </>}
+              {artwork.artist?.is_active === false && <>Artist status: <Badge variant="destructive" className="text-xs">INACTIVE</Badge>. </>}
+              {isOutOfStock && artwork.is_active && <Badge variant="outline" className="border-orange-500 text-orange-600 text-xs">OUT OF STOCK</Badge>}
               <br/>
               If artwork or artist is inactive, it's hidden from public. Inactive artworks must have 0 stock.
             </AlertDescription>
         </Alert>
       )}
        {isAdmin && artwork.is_active === true && artwork.artist?.is_active === true && !isOutOfStock && (
-        <Alert variant="default" className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400">
+        <Alert variant="default" className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400 rounded-lg">
             <InfoIcon className="h-4 w-4" />
-            <AlertTitle>Admin View: Active & Visible Artwork</AlertTitle>
+            <AlertTitle className="font-serif">Admin View: Active & Visible Artwork</AlertTitle>
             <AlertDescription>This artwork and its artist are active, and it is in stock. It is visible and purchaseable by public users.</AlertDescription>
         </Alert>
       )}
 
 
       <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-start">
-        <div className="w-full bg-muted rounded-lg overflow-hidden border">
+        <div className="w-full bg-muted rounded-xl overflow-hidden border shadow-lg">
           <AspectRatio ratio={1 / 1}>
             <Image
               src={artwork.image_url || placeholderImage}
@@ -183,7 +183,7 @@ export default function ArtworkDetailPage() {
             />
              {!artwork.image_url && (
                 <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-                    <ImageOff className="h-24 w-24 text-gray-400" />
+                    <ImageOff className="h-24 w-24 text-foreground/30" />
                 </div>
             )}
           </AspectRatio>
@@ -217,17 +217,17 @@ export default function ArtworkDetailPage() {
           
           {/* Public facing status badges (if not admin) */}
           {!isAdmin && !artwork.is_active && (
-              <Badge variant="destructive">Currently Unavailable</Badge>
+              <Badge variant="destructive" className="text-xs">Currently Unavailable</Badge>
           )}
           {!isAdmin && artwork.artist && !artwork.artist.is_active && (
-              <Badge variant="destructive">Artist Unavailable</Badge>
+              <Badge variant="destructive" className="text-xs">Artist Unavailable</Badge>
           )}
 
 
           <Separator />
 
           <div>
-            <h2 className="text-xl font-semibold mb-2">Description</h2>
+            <h2 className="text-xl font-semibold mb-2 font-serif">Description</h2>
             <p className="text-muted-foreground leading-relaxed">
               {artwork.description || "No description provided."}
             </p>
@@ -241,7 +241,7 @@ export default function ArtworkDetailPage() {
               {!isOutOfStock ? (
                 <Button
                   size="lg"
-                  className="w-full md:w-auto"
+                  className="w-full md:w-auto rounded-md shadow hover:shadow-md"
                   onClick={handleAddToCart}
                   disabled={authIsLoading || cartIsLoading || isAddingToCart || !!isInCart}
                 >
@@ -255,7 +255,7 @@ export default function ArtworkDetailPage() {
                   {isAddingToCart ? 'Adding...' : isInCart ? 'Added to Cart' : 'Add to Cart'}
                 </Button>
               ) : (
-                <Button size="lg" className="w-full md:w-auto" disabled>
+                <Button size="lg" className="w-full md:w-auto rounded-md" disabled>
                    Out of Stock
                 </Button>
               )}

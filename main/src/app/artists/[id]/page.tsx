@@ -81,12 +81,12 @@ export default function ArtistDetailPage() {
   if (error || !artist) {
      return (
       <div className="text-center py-10">
-        <Alert variant="destructive" className="max-w-lg mx-auto">
+        <Alert variant="destructive" className="max-w-lg mx-auto rounded-lg">
           <Terminal className="h-4 w-4" />
-          <AlertTitle>{error ? "Error Fetching Artist" : "Artist Not Found"}</AlertTitle>
+          <AlertTitle className="font-serif">{error ? "Error Fetching Artist" : "Artist Not Found"}</AlertTitle>
           <AlertDescription>{error || "The artist you are looking for does not exist or is not active."}</AlertDescription>
         </Alert>
-        <Button variant="outline" onClick={() => router.push('/artists')} className="mt-6">
+        <Button variant="outline" onClick={() => router.push('/artists')} className="mt-6 rounded-md">
           <ArrowLeft className="mr-2 h-4 w-4" /> View Other Artists
         </Button>
       </div>
@@ -96,10 +96,10 @@ export default function ArtistDetailPage() {
   if (!isAdmin && artist.is_active === false) {
      return (
         <div className="text-center py-10">
-            <UserCircle2 className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <p className="text-xl text-muted-foreground">Artist Not Found</p>
+            <UserCircle2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground/70" />
+            <p className="text-xl text-muted-foreground font-serif">Artist Not Found</p>
             <p className="text-sm text-muted-foreground">This artist is not currently active.</p>
-            <Button variant="outline" onClick={() => router.push('/artists')} className="mt-6">
+            <Button variant="outline" onClick={() => router.push('/artists')} className="mt-6 rounded-md">
                 View Other Artists
             </Button>
         </div>
@@ -113,12 +113,12 @@ export default function ArtistDetailPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
-        <Button variant="outline" size="sm" onClick={() => router.back()}>
+        <Button variant="outline" size="sm" onClick={() => router.back()} className="rounded-md">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         {isAdmin && (
           <Link href={`/admin/artists/`}>
-            <Button variant="default" size="sm">
+            <Button variant="default" size="sm" className="rounded-md shadow hover:shadow-md">
               <Edit className="mr-2 h-4 w-4" /> Manage Artists
             </Button>
           </Link>
@@ -126,19 +126,19 @@ export default function ArtistDetailPage() {
       </div>
 
       {isAdmin && artist.is_active === false && (
-        <Alert variant="warning" className="mb-6">
+        <Alert variant="warning" className="mb-6 rounded-lg">
             <EyeOff className="h-4 w-4" />
-            <AlertTitle>Admin View: Inactive Artist</AlertTitle>
+            <AlertTitle className="font-serif">Admin View: Inactive Artist</AlertTitle>
             <AlertDescription>This artist is currently marked as inactive and is hidden from public view. Their artworks will also be hidden from public view, regardless of individual artwork status.</AlertDescription>
         </Alert>
       )}
        {isAdmin && artist.is_active === true && (
         <Alert 
             variant="default" 
-            className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400"
+            className="mb-6 bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-400 rounded-lg"
         >
             <InfoIcon className="h-4 w-4" />
-            <AlertTitle>Admin View: Active Artist</AlertTitle>
+            <AlertTitle className="font-serif">Admin View: Active Artist</AlertTitle>
             <AlertDescription>This artist is currently active and visible to public users.</AlertDescription>
         </Alert>
       )}
@@ -163,10 +163,10 @@ export default function ArtistDetailPage() {
       <Separator className="my-10"/>
 
       <div>
-        <h2 className="text-3xl font-semibold font-serif mb-8 flex items-center">
+        <h2 className="text-3xl font-semibold font-serif mb-8 flex items-center text-primary/90">
             <Palette className="mr-3 h-7 w-7 text-primary" />
             Artworks by {artist.name}
-            {isAdmin && <Badge variant="outline" className="ml-3">Admin View: Showing {artworksToDisplay.length} artworks ({artist.artworks?.filter(aw => aw.is_active).length} active for public)</Badge>}
+            {isAdmin && <Badge variant="outline" className="ml-3 text-xs">Admin View: Showing {artworksToDisplay.length} artworks ({artist.artworks?.filter(aw => aw.is_active).length} active for public)</Badge>}
         </h2>
         {artworksToDisplay.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8">
@@ -176,8 +176,8 @@ export default function ArtistDetailPage() {
           </div>
         ) : (
           <div className="text-center py-10 text-muted-foreground col-span-full">
-             <Palette className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <p className="text-xl">
+             <Palette className="h-16 w-16 mx-auto mb-4 text-muted-foreground/70" />
+            <p className="text-xl font-serif">
                 {isAdmin && (artist.artworks || []).length > 0 
                     ? `This artist has artworks, but none are currently active for public view.`
                     : "No artworks found for this artist at the moment."}

@@ -67,7 +67,7 @@ import {
 } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Search, ArrowUpDown, Loader2, Settings } from 'lucide-react';
 
 const deliveryOptionFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -100,7 +100,7 @@ export default function AdminDeliveryOptionsPage() {
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [optionToDelete, setOptionToDelete] = useState<DeliveryOptionType | null>(null);
 
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'sort_order', desc: false }]);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const form = useForm<DeliveryOptionFormInput, any, DeliveryOptionFormValues>({
@@ -224,7 +224,7 @@ export default function AdminDeliveryOptionsPage() {
       accessorKey: "is_pickup",
       header: "Type",
       cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
-        <Badge variant={row.original.is_pickup ? "outline" : "default"}>
+        <Badge variant={row.original.is_pickup ? "outline" : "default"} className="text-xs">
           {row.original.is_pickup ? "Pickup" : "Delivery"}
         </Badge>
       ),
@@ -233,7 +233,7 @@ export default function AdminDeliveryOptionsPage() {
       accessorKey: "active",
       header: "Status",
       cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
-        <Badge variant={row.original.active ? "default" : "secondary"}>
+        <Badge variant={row.original.active ? "default" : "secondary"} className="text-xs">
           {row.original.active ? "Active" : "Inactive"}
         </Badge>
       ),
@@ -277,11 +277,11 @@ export default function AdminDeliveryOptionsPage() {
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
-                 <h1 className="text-2xl font-semibold">Manage Delivery Options</h1>
-                <Skeleton className="h-10 w-36" />
+                 <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><Settings className="mr-3 h-7 w-7"/>Manage Delivery Options</h1>
+                <Skeleton className="h-10 w-36 rounded-md" />
             </div>
-            <Skeleton className="h-10 w-full" />
-            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+            <Skeleton className="h-10 w-full rounded-md" />
+            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-md" />)}
         </div>
     );
   }
@@ -289,8 +289,8 @@ export default function AdminDeliveryOptionsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Manage Delivery Options</h1>
-        <Button onClick={openNewDialog}>
+        <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><Settings className="mr-3 h-7 w-7"/>Manage Delivery Options</h1>
+        <Button onClick={openNewDialog} className="rounded-md shadow hover:shadow-md transition-shadow">
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Option
         </Button>
       </div>
@@ -302,18 +302,18 @@ export default function AdminDeliveryOptionsPage() {
             placeholder="Filter by name..."
             value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
             onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
-            className="pl-10"
+            className="pl-10 rounded-md"
           />
         </div>
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-lg border bg-card shadow-md">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup: HeaderGroup<DeliveryOptionType>) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} className="px-3 py-3 text-sm font-semibold text-muted-foreground">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -323,9 +323,9 @@ export default function AdminDeliveryOptionsPage() {
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row: Row<DeliveryOptionType>) => (
-                <TableRow key={row.id}>
+                <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
                   {row.getVisibleCells().map((cell: Cell<DeliveryOptionType, unknown>) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -343,17 +343,17 @@ export default function AdminDeliveryOptionsPage() {
       </div>
 
       <div className="flex items-center justify-end space-x-2 py-4">
-        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="rounded-md">Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="rounded-md">Next</Button>
       </div>
 
       <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
           setShowFormDialog(isOpen);
           if (!isOpen) { form.reset({ name: "", price: 0, description: null, is_pickup: false, active: true, sort_order: 0 }); setEditingOption(null); }
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-lg">
           <DialogHeader>
-            <DialogTitle>{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
+            <DialogTitle className="font-serif text-lg">{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
@@ -363,7 +363,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Option Name</FormLabel>
-                    <FormControl><Input placeholder="e.g., Nairobi CBD Delivery" {...field} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Nairobi CBD Delivery" {...field} className="rounded-md" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -374,7 +374,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Price (Ksh)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 200.00" {...field} /></FormControl>
+                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 200.00" {...field} className="rounded-md" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -385,7 +385,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Description (Optional)</FormLabel>
-                    <FormControl><Textarea placeholder="Details about this option..." {...field} value={field.value || ""} className="min-h-[80px]" /></FormControl>
+                    <FormControl><Textarea placeholder="Details about this option..." {...field} value={field.value || ""} className="min-h-[80px] rounded-md" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -396,7 +396,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Sort Order</FormLabel>
-                    <FormControl><Input type="number" placeholder="0" {...field} /></FormControl>
+                    <FormControl><Input type="number" placeholder="0" {...field} className="rounded-md" /></FormControl>
                     <FormDescription>Lower numbers appear first.</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -425,8 +425,8 @@ export default function AdminDeliveryOptionsPage() {
                 />
               </div>
               <DialogFooter className="pt-4">
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting}>
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting} className="rounded-md shadow hover:shadow-md">
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {editingOption ? 'Save Changes' : 'Create Option'}
                 </Button>
@@ -437,19 +437,19 @@ export default function AdminDeliveryOptionsPage() {
       </Dialog>
 
       <AlertDialog open={!!optionToDelete} onOpenChange={(isOpen) => !isOpen && setOptionToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle className="font-serif">Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setOptionToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setOptionToDelete(null)} className="rounded-md">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteOption}
               disabled={isSubmitting}
-              className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+              className={cn("rounded-md", isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete

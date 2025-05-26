@@ -1,4 +1,4 @@
-
+# === ./app/resources/payment.py ===
 from flask import request, Blueprint, jsonify, current_app
 from flask_restful import Resource, Api, abort
 from decimal import Decimal
@@ -6,8 +6,9 @@ import json
 
 from .. import db
 from ..models import Order, OrderItem, Artwork, Cart, CartItem, User, PaymentTransaction, DeliveryOption
-from ..socket_events import notify_new_order_to_admins, notify_order_status_update
+from ..socket_events import notify_new_order_to_admins, notify_order_status_update, _create_and_emit_notification
 from ..schemas import order_schema
+from sqlalchemy.orm import joinedload
 
 payment_bp = Blueprint('payments', __name__)
 payment_api = Api(payment_bp)
@@ -104,19 +105,22 @@ class DarajaCallback(Resource):
                 new_order = None
                 try:
                     user = User.query.get(transaction.user_id)
-                    
+                    if not user:
+                        current_app.logger.error(f"Transaction {transaction.id}: User {transaction.user_id} not found during order creation.")
+                        raise ValueError("User for transaction not found.")
+
                     chosen_delivery_option = DeliveryOption.query.get(transaction.selected_delivery_option_id)
                     shipping_addr = "Error: Delivery Option details not found."
                     if chosen_delivery_option:
                         if chosen_delivery_option.is_pickup:
                             shipping_addr = chosen_delivery_option.description or "In Store Pick Up: Dynamic Mall, Shop M90, CBD, Nairobi"
                         else:
-                            shipping_addr = user.address if user and user.address else "Delivery Address Not Specified by User"
+                            shipping_addr = user.address if user.address else "Delivery Address Not Specified by User"
                             if not user.address and not chosen_delivery_option.is_pickup:
                                 current_app.logger.warning(f"Transaction {transaction.id}: Delivery option chosen but user has no default address. Shipping address set to generic.")
                     else:
                         current_app.logger.error(f"Transaction {transaction.id}: selected_delivery_option_id {transaction.selected_delivery_option_id} did not resolve to a DeliveryOption.")
-                        shipping_addr = user.address if user and user.address else "Default Pickup: Dynamic Mall, Shop M90, CBD"
+                        shipping_addr = user.address if user.address else "Default Pickup: Dynamic Mall, Shop M90, CBD"
 
 
                     items_to_order_snapshot = transaction.cart_items_snapshot
@@ -132,11 +136,11 @@ class DarajaCallback(Resource):
                         delivery_option_id=transaction.selected_delivery_option_id,
                         delivery_fee=transaction.applied_delivery_fee or Decimal('0.00'),
                         shipping_address=shipping_addr,
-                        billing_address=user.address if user and user.address else shipping_addr,
+                        billing_address=user.address if user.address else shipping_addr,
                         payment_transaction_id=transaction.id
                     )
                     db.session.add(new_order)
-                    db.session.flush() 
+                    db.session.flush()
                     current_app.logger.info(f"Transaction {transaction.id}: Order {new_order.id} flushed. Populating items.")
 
                     for item_data in items_to_order_snapshot:
@@ -172,11 +176,24 @@ class DarajaCallback(Resource):
                     current_app.logger.info(f"Order {new_order.id} created successfully and committed for Transaction {transaction.id} (CRID: {checkout_request_id}).")
 
                     if new_order:
-
-                        order_dump = order_schema.dump(new_order)
+                        fully_loaded_order = Order.query.options(
+                            joinedload(Order.user),
+                            joinedload(Order.items).options(
+                                joinedload(OrderItem.artwork).joinedload(Artwork.artist)
+                            ),
+                            joinedload(Order.delivery_option_details)
+                        ).get(new_order.id)
+                        
+                        order_dump = order_schema.dump(fully_loaded_order)
                         
                         notify_new_order_to_admins(order_dump)
-                        notify_order_status_update(order_dump)
+
+                        user_who_ordered = User.query.get(fully_loaded_order.user_id)
+                        if user_who_ordered:
+                             notify_order_status_update(order_dump, for_user=user_who_ordered, is_initial_payment_confirmation=True)
+                        else:
+                             # This case should ideally not happen if user_id on order is valid
+                             notify_order_status_update(order_dump, is_initial_payment_confirmation=True)
 
 
                 except ValueError as ve:
@@ -207,13 +224,13 @@ class DarajaCallback(Resource):
                     except Exception as update_err:
                         db.session.rollback()
                         current_app.logger.error(f"Transaction {transaction.id}: Further error when trying to mark as 'failed_processing_error' after unexpected Exception: {update_err}", exc_info=True)
-        else: 
+        else:
             current_app.logger.warning(f"Transaction {transaction.id} (CRID: {checkout_request_id}): Payment reported as FAILED/CANCELLED by Daraja. ResultCode: {result_code_from_daraja}, Desc: {daraja_result_desc}")
-            if result_code_from_daraja == "1" or result_code_from_daraja == "1032": 
+            if result_code_from_daraja == "1" or result_code_from_daraja == "1032":
                 transaction.status = 'cancelled_by_user'
-            elif result_code_from_daraja == "1037": 
+            elif result_code_from_daraja == "1037":
                 transaction.status = 'failed_timeout'
-            else: 
+            else:
                 transaction.status = 'failed_daraja'
             
             try:

@@ -24,37 +24,33 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const NotificationProvider = ({ children }: { children: ReactNode }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const { socket } = useSocket();
 
   const [currentPage, setCurrentPage] = useState(1);
   const [showUnreadOnlyInPopover, setShowUnreadOnlyInPopover] = useState(true);
 
-  const badgeQueryKey: QueryKey = ['notificationsBadge', user?.id];
+  const badgeQueryKey: QueryKey = ['notificationsBadge', user?.id, isAdmin];
   const { data: badgeData, isLoading: isLoadingGlobal, refetch: refetchBadge } = useQuery<PaginatedNotificationsResponse, Error>({
     queryKey: badgeQueryKey,
-    queryFn: () => apiClient.getNotifications({ page: 1, per_page: 1, unread_only: true })
-      .then(data => data || { notifications: [], total: 0, pages: 0, current_page: 1, per_page: 1, has_next: false, has_prev: false, unread_count: 0 }),
+    queryFn: () => apiClient.getNotifications({ page: 1, per_page: 1, unread_only: true }),
     enabled: isAuthenticated,
     staleTime: 1000 * 30,
     refetchInterval: 1000 * 60,
   });
   const unreadCountForBadge = badgeData?.unread_count ?? 0;
 
-  const popoverListQueryKey: QueryKey = ['notificationsPopover', currentPage, showUnreadOnlyInPopover, user?.id];
+  const popoverListQueryKey: QueryKey = ['notificationsPopover', currentPage, showUnreadOnlyInPopover, user?.id, isAdmin];
   const { data: paginatedNotificationsResponse, isLoading: isLoadingList, refetch: refetchPopoverList } = useQuery<PaginatedNotificationsResponse, Error>({
     queryKey: popoverListQueryKey,
-    queryFn: () => apiClient.getNotifications({ page: currentPage, per_page: 7, unread_only: showUnreadOnlyInPopover })
-      .then(data => data || { notifications: [], total: 0, pages: 0, current_page: 1, per_page: 7, has_next: false, has_prev: false, unread_count: 0 }),
-    enabled: false,
+    queryFn: () => apiClient.getNotifications({ page: currentPage, per_page: 7, unread_only: showUnreadOnlyInPopover }),
+    enabled: isAuthenticated, 
     placeholderData: (prev) => prev,
   });
   
   const markReadMutation = useMutation<Notification, Error, string>({
-    mutationFn: (notificationId) => apiClient.markNotificationAsRead(notificationId).then(data => {
-      if (!data) throw new Error("Failed to mark as read"); return data;
-    }),
+    mutationFn: apiClient.markNotificationAsRead,
     onSuccess: (updatedNotification) => {
       queryClient.setQueryData<PaginatedNotificationsResponse>(popoverListQueryKey, (oldData) => {
         if (!oldData) return oldData;
@@ -66,13 +62,14 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         };
       });
       refetchBadge();
+      queryClient.invalidateQueries({ queryKey: ['adminNotifications'] });
     },
     onError: () => {
         toast.error("Failed to mark notification as read.");
     }
   });
 
-  const markAllReadMutation = useMutation<{ message: string, unread_count: number }, Error>({
+  const markAllReadMutation = useMutation<{ message: string, unread_count: number }, Error, void>({
     mutationFn: apiClient.markAllNotificationsAsRead,
     onSuccess: (data) => {
       queryClient.setQueryData<PaginatedNotificationsResponse>(popoverListQueryKey, (oldData) => {
@@ -85,6 +82,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       });
       toast.success(data.message || "All notifications marked as read.");
       refetchBadge();
+      queryClient.invalidateQueries({ queryKey: ['adminNotifications'] });
     },
     onError: () => {
         toast.error("Failed to mark all notifications as read.");
@@ -94,14 +92,17 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
      if (socket && isAuthenticated) {
         const handleNewNotification = (notificationData: Notification) => {
-            toast.info(notificationData.message, {
-                description: `Received: ${new Date(notificationData.created_at).toLocaleTimeString()}`,
-                duration: 8000,
-                action: notificationData.link ? { label: "View", onClick: () => window.location.href = notificationData.link! } : undefined
-            });
+            console.log("NotificationContext: Received new_notification_available", notificationData);
             refetchBadge();
-            if (paginatedNotificationsResponse) {
-                 refetchPopoverList();
+            
+            const isForThisUser = notificationData.user_id === user?.id && !notificationData.for_admin_audience;
+            const isForThisAdmin = isAdmin && notificationData.for_admin_audience;
+
+            if (isForThisUser || isForThisAdmin) {
+                refetchPopoverList(); 
+            }
+            if (isAdmin && (notificationData.for_admin_audience || notificationData.user_id === user?.id)) {
+                queryClient.invalidateQueries({ queryKey: ['adminNotifications'] });
             }
         };
         socket.on('new_notification_available', handleNewNotification);
@@ -109,7 +110,22 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
             socket.off('new_notification_available', handleNewNotification);
         };
      }
-  }, [socket, isAuthenticated, refetchBadge, refetchPopoverList, paginatedNotificationsResponse]);
+  }, [socket, isAuthenticated, user?.id, isAdmin, queryClient]);
+
+  const handleMarkAsRead = async (notificationId: string): Promise<void> => {
+    try {
+        await markReadMutation.mutateAsync(notificationId);
+    } catch (error) {
+    }
+  };
+
+  const handleMarkAllAsRead = async (): Promise<void> => {
+    try {
+        await markAllReadMutation.mutateAsync();
+    } catch (error) {
+    }
+  };
+
 
   return (
     <NotificationContext.Provider value={{
@@ -117,8 +133,8 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       unreadCountForBadge,
       isLoadingGlobal,
       isLoadingList,
-      markAsRead: markReadMutation.mutateAsync,
-      markAllAsRead: markAllReadMutation.mutateAsync,
+      markAsRead: handleMarkAsRead,
+      markAllAsRead: handleMarkAllAsRead,
       currentPage,
       setCurrentPage,
       showUnreadOnlyInPopover,

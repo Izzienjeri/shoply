@@ -27,7 +27,7 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon: Icon, href, description, isLoading }: StatCardProps) {
   const cardElement = (
-    <Card className={cn("hover:shadow-lg transition-shadow", href && "cursor-pointer")}>
+    <Card className={cn("hover:shadow-lg transition-shadow rounded-lg", href && "cursor-pointer")}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
         <Icon className="h-5 w-5 text-muted-foreground" />
@@ -108,7 +108,7 @@ export default function AdminDashboardPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold text-destructive">Error Loading Dashboard</h2>
+        <h2 className="text-xl font-semibold text-destructive font-serif">Error Loading Dashboard</h2>
         <p className="text-muted-foreground">{error}</p>
         <Button onClick={() => fetchDashboardData(dateRange)} className="mt-4">Retry</Button>
       </div>
@@ -119,8 +119,8 @@ export default function AdminDashboardPage() {
     <div className="space-y-8">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Admin Dashboard</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Overview of your art store.</p>
+            <h1 className="text-3xl font-bold tracking-tight font-serif text-primary">Admin Dashboard</h1>
+            <p className="text-sm text-muted-foreground">Overview of your art store.</p>
         </div>
         <Popover>
             <PopoverTrigger asChild>
@@ -128,7 +128,7 @@ export default function AdminDashboardPage() {
                     id="date"
                     variant={"outline"}
                     className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal mt-4 sm:mt-0",
+                        "w-full sm:w-[300px] justify-start text-left font-normal mt-4 sm:mt-0 rounded-md",
                         !dateRange && "text-muted-foreground"
                     )}
                 >
@@ -147,7 +147,7 @@ export default function AdminDashboardPage() {
                     )}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
+            <PopoverContent className="w-auto p-0 rounded-lg" align="end">
                 <Calendar
                     initialFocus
                     mode="range"
@@ -175,9 +175,9 @@ export default function AdminDashboardPage() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-lg">
           <CardHeader>
-            <CardTitle>Recent Orders</CardTitle>
+            <CardTitle className="font-serif">Recent Orders</CardTitle>
             <CardDescription>A list of the most recent orders (not date filtered).</CardDescription>
           </CardHeader>
           <CardContent>
@@ -188,13 +188,13 @@ export default function AdminDashboardPage() {
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : statsData && statsData.recent_orders.length > 0 ? (
-              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+              <ul className="divide-y divide-border">
                 {statsData.recent_orders.map((order: OrderType) => (
                   <li key={order.id} className="py-3">
                     <div className="flex justify-between items-center">
                       <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">Order #{order.id.substring(0, 8)}...</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <p className="text-sm font-medium text-foreground">Order #{order.id.substring(0, 8)}...</p>
+                        <p className="text-xs text-muted-foreground">
                           {order.user?.email || 'Unknown User'} - {new Date(order.created_at).toLocaleDateString()}
                         </p>
                       </div>
@@ -207,7 +207,7 @@ export default function AdminDashboardPage() {
                                 order.status === 'shipped' ? 'outline' :
                                 'destructive'
                             } 
-                            className="capitalize mt-1"
+                            className="capitalize mt-1 text-xs"
                          >
                              {order.status.replace('_', ' ')}
                          </Badge>
@@ -226,9 +226,9 @@ export default function AdminDashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-lg">
           <CardHeader>
-            <CardTitle>Sales Analytics</CardTitle>
+            <CardTitle className="font-serif">Sales Analytics</CardTitle>
              <CardDescription>
                 Monthly sales performance for {dateRange?.from && dateRange.to ? `selected range` : `last 6 months`}.
             </CardDescription>
@@ -240,17 +240,21 @@ export default function AdminDashboardPage() {
               <div className="h-64">
                  <ResponsiveContainer width="100%" height="100%">
                      <LineChart data={statsData.sales_trend} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
-                         <CartesianGrid strokeDasharray="3 3" />
-                         <XAxis dataKey="month" fontSize={12} />
-                         <YAxis fontSize={12} tickFormatter={(value) => `Ksh ${value/1000}k`} />
-                         <Tooltip formatter={(value: number) => [formatPrice(value.toString()), "Revenue"]} />
-                         <Legend wrapperStyle={{ fontSize: "12px" }} />
-                         <Line type="monotone" dataKey="revenue" stroke="#8884d8" strokeWidth={2} activeDot={{ r: 6 }} />
+                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                         <XAxis dataKey="month" fontSize={12} tick={{ fill: 'var(--muted-foreground)' }} />
+                         <YAxis fontSize={12} tickFormatter={(value) => `Ksh ${value/1000}k`} tick={{ fill: 'var(--muted-foreground)' }}/>
+                         <Tooltip 
+                            contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)'}} 
+                            labelStyle={{ color: 'var(--popover-foreground)'}}
+                            formatter={(value: number) => [formatPrice(value.toString()), "Revenue"]} 
+                         />
+                         <Legend wrapperStyle={{ fontSize: "12px", color: 'var(--muted-foreground)' }} />
+                         <Line type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={2} activeDot={{ r: 6, fill: 'var(--primary)' }} dot={{fill: 'var(--primary)'}} />
                      </LineChart>
                  </ResponsiveContainer>
               </div>
             ) : (
-              <div className="h-64 bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-md">
+              <div className="h-64 bg-muted/50 flex items-center justify-center rounded-md">
                 <p className="text-muted-foreground">No sales data available for chart in the selected range.</p>
               </div>
             )}
@@ -259,11 +263,11 @@ export default function AdminDashboardPage() {
       </section>
 
       <section>
-          <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Quick Actions</h2>
+          <h2 className="text-xl font-semibold mb-4 font-serif text-foreground/90">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <Link href="/admin/artworks/new">
-                  <Button variant="outline" className="w-full justify-start p-4 h-auto text-left">
-                      <Package className="mr-3 h-5 w-5 flex-shrink-0" />
+                  <Button variant="outline" className="w-full justify-start p-4 h-auto text-left rounded-lg hover:shadow-md transition-shadow">
+                      <Package className="mr-3 h-5 w-5 flex-shrink-0 text-primary" />
                       <div>
                           <p className="font-semibold">Add New Artwork</p>
                           <p className="text-xs text-muted-foreground">Create a new piece for the gallery.</p>
@@ -271,8 +275,8 @@ export default function AdminDashboardPage() {
                   </Button>
               </Link>
               <Link href="/admin/artists/new">
-                   <Button variant="outline" className="w-full justify-start p-4 h-auto text-left">
-                      <Users className="mr-3 h-5 w-5 flex-shrink-0" />
+                   <Button variant="outline" className="w-full justify-start p-4 h-auto text-left rounded-lg hover:shadow-md transition-shadow">
+                      <Users className="mr-3 h-5 w-5 flex-shrink-0 text-primary" />
                        <div>
                           <p className="font-semibold">Add New Artist</p>
                           <p className="text-xs text-muted-foreground">Register a new artist profile.</p>
@@ -280,8 +284,8 @@ export default function AdminDashboardPage() {
                   </Button>
               </Link>
                <Link href="/admin/delivery-options">
-                   <Button variant="outline" className="w-full justify-start p-4 h-auto text-left">
-                      <Settings className="mr-3 h-5 w-5 flex-shrink-0" />
+                   <Button variant="outline" className="w-full justify-start p-4 h-auto text-left rounded-lg hover:shadow-md transition-shadow">
+                      <Settings className="mr-3 h-5 w-5 flex-shrink-0 text-primary" />
                        <div>
                           <p className="font-semibold">Manage Delivery Options</p>
                           <p className="text-xs text-muted-foreground">Update shipping & pickup methods.</p>

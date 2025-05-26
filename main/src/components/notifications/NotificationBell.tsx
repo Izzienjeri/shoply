@@ -123,10 +123,10 @@ export function NotificationBell() {
                     )}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 sm:w-96 p-0 shadow-xl" align="end">
-                <div className="p-3 border-b">
+            <PopoverContent className="w-80 sm:w-96 p-0 shadow-xl rounded-lg" align="end">
+                <div className="p-3 border-b border-border/70">
                     <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-base font-semibold">Notifications</h3>
+                        <h3 className="text-base font-semibold font-serif">Notifications</h3>
                         {currentUnreadInList > 0 && (
                             <Button variant="link" size="sm" onClick={handleMarkAllRead} className="p-0 h-auto text-xs text-primary hover:text-primary/80">
                                 <CheckCheck className="mr-1 h-3 w-3"/> Mark all as read
@@ -137,7 +137,7 @@ export function NotificationBell() {
                          <Button 
                             variant={showUnreadOnlyInPopover ? "secondary" : "ghost"} 
                             size="sm" 
-                            className="text-xs h-7 px-2"
+                            className="text-xs h-7 px-2 rounded-md"
                             onClick={() => { setShowUnreadOnlyInPopover(true); setCurrentPage(1); }}
                          >
                             Unread
@@ -145,7 +145,7 @@ export function NotificationBell() {
                          <Button 
                             variant={!showUnreadOnlyInPopover ? "secondary" : "ghost"} 
                             size="sm"
-                            className="text-xs h-7 px-2"
+                            className="text-xs h-7 px-2 rounded-md"
                             onClick={() => { setShowUnreadOnlyInPopover(false); setCurrentPage(1); }}
                          >
                             All
@@ -153,7 +153,7 @@ export function NotificationBell() {
                          <Button
                             variant="ghost"
                             size="icon"
-                            className="ml-auto h-7 w-7"
+                            className="ml-auto h-7 w-7 rounded-md"
                             onClick={() => queryClient.invalidateQueries({ queryKey: ['notificationsPopover', currentPage, showUnreadOnlyInPopover, user?.id] })}
                             disabled={isPopoverListLoading}
                             title="Refresh notifications"
@@ -185,7 +185,7 @@ export function NotificationBell() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-xs h-7 px-2"
+                                className="text-xs h-7 px-2 rounded-md"
                                 onClick={() => setCurrentPage(currentPage - 1)}
                                 disabled={!paginatedNotificationsResponse.has_prev || isPopoverListLoading}
                             >
@@ -197,7 +197,7 @@ export function NotificationBell() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-xs h-7 px-2"
+                                className="text-xs h-7 px-2 rounded-md"
                                 onClick={() => setCurrentPage(currentPage + 1)}
                                 disabled={!paginatedNotificationsResponse.has_next || isPopoverListLoading}
                             >

@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import "./globals.css";
 import { Playfair_Display, Montserrat } from 'next/font/google';
@@ -10,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { SocketProvider } from "@/contexts/SocketContext";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import MotionMainWrapper from "@/components/layout/MotionMainWrapper";
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -37,7 +39,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
-          "min-h-screen bg-background font-sans antialiased flex flex-col",
+          "min-h-screen font-sans antialiased flex flex-col",
           montserrat.variable,
           playfair.variable
         )}
@@ -48,9 +50,9 @@ export default function RootLayout({
               <SocketProvider>
                 <NotificationProvider>
                   <ConditionalNavbarWrapper />
-                  <main className="flex-grow container mx-auto px-4 py-8">
+                  <MotionMainWrapper>
                     {children}
-                  </main>
+                  </MotionMainWrapper>
                   <Footer />
                   <Toaster richColors position="top-right" />
                 </NotificationProvider>

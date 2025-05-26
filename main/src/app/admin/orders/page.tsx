@@ -64,7 +64,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info, ImageOff } from 'lucide-react';
+import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info, ImageOff, ShoppingBag } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 const orderUpdateFormSchema = z.object({
@@ -78,7 +78,7 @@ const placeholderImage = "/placeholder-image.svg";
 
 function OrderItemDetailsCard({ item }: { item: OrderItemType }) {
   return (
-    <div className="flex items-center space-x-3 py-2 border-b last:border-b-0">
+    <div className="flex items-center space-x-3 py-2 border-b last:border-b-0 border-border/70">
       <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
         <Image
           src={item.artwork.image_url || placeholderImage}
@@ -103,11 +103,11 @@ function OrderTableSkeleton() {
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
-                 <h1 className="text-2xl font-semibold">Manage Orders</h1>
-                <Skeleton className="h-10 w-36" />
+                 <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><ShoppingBag className="mr-3 h-7 w-7"/>Manage Orders</h1>
+                <Skeleton className="h-10 w-36 rounded-md" />
             </div>
-            <Skeleton className="h-10 w-full" />
-            <div className="rounded-md border">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <div className="rounded-lg border">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -277,7 +277,7 @@ export default function AdminOrdersPage() {
             <div className="text-xs">
                 <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
                 { (row.original.is_pickup_order ?? row.original.delivery_option_details?.is_pickup) && 
-                  <Badge variant="outline" className="mt-1">Pickup</Badge>
+                  <Badge variant="outline" className="mt-1 text-xs">Pickup</Badge>
                 }
             </div>
         ),
@@ -297,7 +297,7 @@ export default function AdminOrdersPage() {
             row.original.status === 'shipped' ? 'outline' :
             'destructive'
           }
-          className="capitalize"
+          className="capitalize text-xs"
         >
           {row.original.status.replace('_', ' ')}
         </Badge>
@@ -352,12 +352,12 @@ export default function AdminOrdersPage() {
   }
   
   if (error) {
-    return <div className="text-red-500 p-4">Error loading orders: {error.message} <Button onClick={() => refetch()} className="ml-2">Retry</Button></div>;
+    return <div className="text-red-500 p-4">Error loading orders: {error.message} <Button onClick={() => refetch()} className="ml-2 rounded-md">Retry</Button></div>;
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Manage Orders</h1>
+      <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><ShoppingBag className="mr-3 h-7 w-7"/>Manage Orders</h1>
 
       <div className="flex items-center py-4">
         <div className="relative w-full max-w-sm">
@@ -366,18 +366,18 @@ export default function AdminOrdersPage() {
             placeholder="Filter by Order ID or Customer..."
             value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
-            className="pl-10"
+            className="pl-10 rounded-md"
           />
         </div>
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-lg border bg-card shadow-md">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} className="px-3 py-3 text-sm font-semibold text-muted-foreground">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -387,9 +387,9 @@ export default function AdminOrdersPage() {
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -407,17 +407,17 @@ export default function AdminOrdersPage() {
       </div>
 
       <div className="flex items-center justify-end space-x-2 py-4">
-        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="rounded-md">Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="rounded-md">Next</Button>
       </div>
 
       <Dialog open={showEditDialog} onOpenChange={(isOpen) => {
           setShowEditDialog(isOpen);
           if (!isOpen) { form.reset(); setEditingOrder(null); }
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-lg">
           <DialogHeader>
-            <DialogTitle>Update Order Status</DialogTitle>
+            <DialogTitle className="font-serif">Update Order Status</DialogTitle>
             <DialogDescription>Order ID: {editingOrder?.id.substring(0,8)}... ({ (editingOrder?.is_pickup_order ?? editingOrder?.delivery_option_details?.is_pickup) ? "Pickup Order" : "Delivery Order"})</DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -429,8 +429,8 @@ export default function AdminOrdersPage() {
                   <FormItem>
                     <FormLabel>Status</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
-                      <SelectContent>
+                      <FormControl><SelectTrigger className="rounded-md"><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
+                      <SelectContent className="rounded-md">
                         {availableStatusesForEdit.map(s => (
                           <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
                         ))}
@@ -448,7 +448,7 @@ export default function AdminOrdersPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Picked Up By (Name)</FormLabel>
-                        <FormControl><Input placeholder="Full name of collector" {...field} value={field.value || ''} /></FormControl>
+                        <FormControl><Input placeholder="Full name of collector" {...field} value={field.value || ''} className="rounded-md" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -459,7 +459,7 @@ export default function AdminOrdersPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Picker's ID Number</FormLabel>
-                        <FormControl><Input placeholder="ID or Passport No." {...field} value={field.value || ''} /></FormControl>
+                        <FormControl><Input placeholder="ID or Passport No." {...field} value={field.value || ''} className="rounded-md" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -467,8 +467,8 @@ export default function AdminOrdersPage() {
                 </>
               )}
               <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={updateOrderMutation.isPending}>
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Cancel</Button></DialogClose>
+                <Button type="submit" disabled={updateOrderMutation.isPending} className="rounded-md shadow hover:shadow-md">
                   {updateOrderMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Update Status
                 </Button>
@@ -479,9 +479,9 @@ export default function AdminOrdersPage() {
       </Dialog>
 
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg">
             <DialogHeader>
-                <DialogTitle>Order Details: {viewingOrderDetails?.id.substring(0,8)}...</DialogTitle>
+                <DialogTitle className="font-serif">Order Details: {viewingOrderDetails?.id.substring(0,8)}...</DialogTitle>
             </DialogHeader>
             {viewingOrderDetails && (
                 <div className="py-4 space-y-4">
@@ -489,7 +489,7 @@ export default function AdminOrdersPage() {
                         <div><strong>Order ID:</strong> {viewingOrderDetails.id}</div>
                         <div><strong>Date:</strong> {new Date(viewingOrderDetails.created_at).toLocaleString()}</div>
                         <div><strong>Customer:</strong> {viewingOrderDetails.user?.name || viewingOrderDetails.user?.email || 'N/A'}</div>
-                        <div><strong>Status:</strong> <Badge className="capitalize">{viewingOrderDetails.status.replace('_',' ')}</Badge></div>
+                        <div><strong>Status:</strong> <Badge className="capitalize text-xs">{viewingOrderDetails.status.replace('_',' ')}</Badge></div>
                         <div><strong>Total Amount:</strong> {formatPrice(viewingOrderDetails.total_price)}</div>
                         <div><strong>M-Pesa Ref:</strong> {viewingOrderDetails.payment_gateway_ref || 'N/A'}</div>
                     </div>
@@ -517,7 +517,7 @@ export default function AdminOrdersPage() {
                 </div>
             )}
             <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Close</Button></DialogClose>
             </DialogFooter>
         </DialogContent>
       </Dialog>

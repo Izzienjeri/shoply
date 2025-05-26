@@ -98,7 +98,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
   const placeholderImage = "/placeholder-image.svg";
 
   return (
-    <div className="flex items-start sm:items-center space-x-3 sm:space-x-4 py-4 border-b last:border-b-0 flex-col sm:flex-row">
+    <div className="flex items-start sm:items-center space-x-3 sm:space-x-4 py-4 border-b last:border-b-0 border-border/70 flex-col sm:flex-row">
       <div className="relative h-20 w-20 sm:h-24 sm:w-24 flex-shrink-0 overflow-hidden rounded-md border bg-muted mb-2 sm:mb-0">
         <Image
           src={item.artwork.image_url || placeholderImage}
@@ -145,7 +145,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 sm:h-8 sm:w-8"
+              className="h-7 w-7 sm:h-8 sm:w-8 rounded-r-none"
               onClick={() => handleQuantityChange(item.quantity - 1)}
               disabled={!isItemAvailable || isItemOutOfStock || item.quantity <= 1 || isQuantityUpdating || isUpdating}
               aria-label="Decrease quantity"
@@ -158,7 +158,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 sm:h-8 sm:w-8"
+              className="h-7 w-7 sm:h-8 sm:w-8 rounded-l-none"
               onClick={() => handleQuantityChange(item.quantity + 1)}
               disabled={!isItemAvailable || isItemOutOfStock || isQuantityUpdating || isUpdating || item.quantity >= item.artwork.stock_quantity}
               aria-label="Increase quantity"
@@ -178,7 +178,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem, isUpdating }: CartItem
       <Button
         variant="ghost"
         size="icon"
-        className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-destructive ml-auto sm:ml-0"
+        className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-destructive ml-auto sm:ml-0 rounded-md"
         onClick={handleRemove}
         disabled={isRemoving || isUpdating}
         aria-label="Remove item"
@@ -206,6 +206,8 @@ export default function CartPage() {
   const [stkCheckoutId, setStkCheckoutId] = useState<string | null>(null);
   const [pollingMessage, setPollingMessage] = useState<string>("Please complete the M-Pesa payment on your phone.");
   const [paymentStatus, setPaymentStatus] = useState<PaymentTransactionStatusResponse['status'] | null>(null);
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+
 
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionType[]>([]);
   const [isLoadingDeliveryOptions, setIsLoadingDeliveryOptions] = useState(false);
@@ -317,6 +319,7 @@ export default function CartPage() {
   const handlePaymentSuccess = useCallback((orderId?: string) => {
     stopPolling();
     setPaymentStatus('successful');
+    setConfirmedOrderId(orderId || null); 
     let successMessage = "Payment successful! Your order has been placed.";
     if (selectedDeliveryOption?.is_pickup) {
         successMessage += ` You can pick up your order at: ${selectedDeliveryOption.description || 'our store.'}`;
@@ -326,10 +329,11 @@ export default function CartPage() {
 
     setPollingMessage(successMessage);
     toast.success("Order Placed Successfully!", {
-        description: successMessage.replace("Payment successful! Your order has been placed.", ""),
+        description: successMessage.replace("Payment successful! Your order has been placed.", "").trim(),
         duration: 15000,
-        action: orderId ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } :
-                         { label: "My Orders", onClick: () => router.push(`/orders`) },
+        action: orderId 
+                ? { label: "View Order", onClick: () => router.push(`/orders/${orderId}`) } 
+                : { label: "My Orders", onClick: () => router.push(`/orders`) },
     });
     fetchCart();
   }, [stopPolling, router, fetchCart, selectedDeliveryOption]);
@@ -383,7 +387,7 @@ export default function CartPage() {
         setPollingMessage("Error checking status. Retrying...");
       }
     }
-  }, [handlePaymentSuccess, handlePaymentFailure, router, clearCart]);
+  }, [handlePaymentSuccess, handlePaymentFailure]);
 
 
   useEffect(() => {
@@ -437,6 +441,7 @@ export default function CartPage() {
     setIsStkFlowActive(true);
     setStkCheckoutId(null);
     setPaymentStatus('initiated');
+    setConfirmedOrderId(null);
     setPollingMessage("Initiating M-Pesa payment...");
 
     try {
@@ -482,9 +487,9 @@ export default function CartPage() {
     return (
       <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
-        <h2 className="mt-4 text-xl font-semibold">Your Cart is Empty</h2>
+        <h2 className="mt-4 text-xl font-semibold font-serif">Your Cart is Empty</h2>
         <p className="mt-2 text-muted-foreground">Please log in to view or add items to your cart.</p>
-        <Button asChild className="mt-4">
+        <Button asChild className="mt-4 rounded-md">
           <Link href="/login?redirect=/cart">Log In</Link>
         </Button>
       </div>
@@ -512,12 +517,12 @@ export default function CartPage() {
     return (
         <div className="text-center py-10 flex flex-col items-center space-y-6 min-h-[calc(100vh-200px)] justify-center">
             {statusIcon}
-            <h2 className="text-2xl font-semibold">{statusTitle}</h2>
-            <Alert variant={alertVariantForComponent} className={cn("max-w-md text-left", successAlertClasses)}>
+            <h2 className="text-2xl font-semibold font-serif">{statusTitle}</h2>
+            <Alert variant={alertVariantForComponent} className={cn("max-w-md text-left rounded-lg", successAlertClasses)}>
                 {(paymentStatus === 'successful' && <CheckCircle className="h-4 w-4" />) ||
                  (paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') && <XCircle className="h-4 w-4" />) ||
                  (stkCheckoutId && (paymentStatus === null || paymentStatus === 'pending_confirmation' || paymentStatus === 'initiated' || paymentStatus === 'pending_stk_initiation') && <Loader2 className="h-4 w-4 animate-spin" />)}
-                <AlertTitle className="capitalize">
+                <AlertTitle className="capitalize font-serif">
                     {paymentStatus ? paymentStatus.replace(/_/g, ' ') : "Status"}
                  </AlertTitle>
                 <AlertDescription>
@@ -525,7 +530,7 @@ export default function CartPage() {
                 </AlertDescription>
             </Alert>
             {paymentStatus === 'successful' && selectedDeliveryOption && (
-                <Card className={cn("mt-4 p-4 max-w-lg text-left", successAlertClasses)}>
+                <Card className={cn("mt-4 p-4 max-w-lg text-left rounded-lg", successAlertClasses)}>
                     <div className="flex items-start space-x-3">
                         <Info className={cn("h-5 w-5 flex-shrink-0 mt-0.5", "text-green-700 dark:text-green-400")}/>
                         <div>
@@ -545,17 +550,18 @@ export default function CartPage() {
               {paymentStatus !== 'successful' && (
                   <Button
                     onClick={() => {
-                        stopPolling(); setIsStkFlowActive(false); setPaymentStatus(null); setStkCheckoutId(null);
+                        stopPolling(); setIsStkFlowActive(false); setPaymentStatus(null); setStkCheckoutId(null); setConfirmedOrderId(null);
                         checkoutForm.reset();
                         fetchCart();
                     }}
                     variant="outline"
+                    className="rounded-md"
                   >
                       {paymentStatus && (paymentStatus.startsWith('failed') || paymentStatus === 'cancelled_by_user' || paymentStatus === 'not_found') ? "Try Again / Back to Cart" : "Cancel & Back to Cart"}
                   </Button>
               )}
-              <Button onClick={() => router.push('/orders')}>
-                  {paymentStatus === 'successful' ? 'View My Orders' : 'Check My Orders'}
+              <Button onClick={() => router.push(confirmedOrderId ? `/orders/${confirmedOrderId}` : '/orders')} className="rounded-md shadow hover:shadow-md">
+                  {paymentStatus === 'successful' ? (confirmedOrderId ? 'View This Order' : 'View My Orders') : 'Check My Orders'}
               </Button>
             </div>
         </div>
@@ -565,15 +571,15 @@ export default function CartPage() {
   if ((cartIsLoading || isLoadingDeliveryOptions) && !cart && !isStkFlowActive) {
         return (
         <div>
-             <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart</h1>
+             <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif text-primary">Your Cart</h1>
              <div className="space-y-4">
-                <Skeleton className="h-28 w-full" />
-                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-28 w-full rounded-lg" />
+                <Skeleton className="h-28 w-full rounded-lg" />
              </div>
               <div className="mt-6">
-                  <Skeleton className="h-10 w-1/3 ml-auto" />
-                  <Skeleton className="h-12 w-full mt-4" />
-                  <Skeleton className="h-10 w-full mt-2" />
+                  <Skeleton className="h-10 w-1/3 ml-auto rounded-md" />
+                  <Skeleton className="h-12 w-full mt-4 rounded-md" />
+                  <Skeleton className="h-10 w-full mt-2 rounded-md" />
               </div>
         </div>
     );
@@ -582,9 +588,9 @@ export default function CartPage() {
      return (
       <div className="text-center py-10 min-h-[300px] flex flex-col justify-center items-center">
         <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground" />
-        <h2 className="mt-4 text-xl font-semibold">Your Cart is Empty</h2>
+        <h2 className="mt-4 text-xl font-semibold font-serif">Your Cart is Empty</h2>
         <p className="mt-2 text-muted-foreground">Add some amazing artwork to get started.</p>
-        <Button asChild className="mt-4">
+        <Button asChild className="mt-4 rounded-md">
           <Link href="/artworks">Explore Artwork</Link>
         </Button>
       </div>
@@ -598,11 +604,11 @@ export default function CartPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif">Your Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})</h1>
+      <h1 className="text-3xl font-bold tracking-tight mb-6 font-serif text-primary">Your Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})</h1>
       {unavailableCartItems.length > 0 && (
-        <Alert variant="destructive" className="mb-6">
+        <Alert variant="destructive" className="mb-6 rounded-lg">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Some items are unavailable!</AlertTitle>
+          <AlertTitle className="font-serif">Some items are unavailable!</AlertTitle>
           <AlertDescription>
             One or more items in your cart are currently out of stock or no longer available.
             They have been excluded from the total and cannot be purchased.
@@ -612,12 +618,12 @@ export default function CartPage() {
       )}
       <div className="lg:grid lg:grid-cols-3 lg:gap-8">
         <div className="lg:col-span-2">
-          <Card>
+          <Card className="rounded-xl shadow-lg">
             <CardHeader>
-              <CardTitle>Items in your cart</CardTitle>
+              <CardTitle className="font-serif">Items in your cart</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y">
+              <div className="divide-y divide-border/70">
                  {cart?.items.map((item) => (
                    <div key={item.id} className="px-4 sm:px-6">
                        <CartItem
@@ -634,9 +640,9 @@ export default function CartPage() {
         </div>
 
         <div className="lg:col-span-1 mt-8 lg:mt-0">
-          <Card>
+          <Card className="rounded-xl shadow-lg">
             <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
+              <CardTitle className="font-serif">Order Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between">
@@ -646,7 +652,7 @@ export default function CartPage() {
 
               <Separator />
               <div>
-                <Label className="text-base font-semibold mb-2 block">Shipping Options</Label>
+                <Label className="text-base font-semibold mb-2 block font-serif">Shipping Options</Label>
                 <RadioGroup
                     value={deliveryType}
                     onValueChange={(value: 'pickup' | 'delivery') => handleDeliveryTypeChange(value)}
@@ -654,8 +660,8 @@ export default function CartPage() {
                 >
                     <Label htmlFor="pickup"
                         className={cn(
-                            "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                            deliveryType === 'pickup' && "border-primary"
+                            "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer transition-all",
+                            deliveryType === 'pickup' && "border-primary ring-2 ring-primary/30"
                         )}>
                         <RadioGroupItem value="pickup" id="pickup" className="sr-only" />
                         <Package className="mb-2 h-6 w-6" />
@@ -663,8 +669,8 @@ export default function CartPage() {
                     </Label>
                     <Label htmlFor="delivery"
                         className={cn(
-                            "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                            deliveryType === 'delivery' && "border-primary"
+                            "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer transition-all",
+                            deliveryType === 'delivery' && "border-primary ring-2 ring-primary/30"
                         )}>
                         <RadioGroupItem value="delivery" id="delivery" className="sr-only" />
                         <Truck className="mb-2 h-6 w-6" />
@@ -680,10 +686,10 @@ export default function CartPage() {
                             value={selectedDeliveryOptionId || ""}
                             onValueChange={(value) => setSelectedDeliveryOptionId(value)}
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="rounded-md">
                                 <SelectValue placeholder="Select pickup location" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="rounded-md">
                                 {pickupOptions.map(opt => (
                                     <SelectItem key={opt.id} value={opt.id}>
                                         {opt.name} - ({formatPrice(opt.price)})
@@ -700,10 +706,10 @@ export default function CartPage() {
                             value={selectedDeliveryOptionId || ""}
                             onValueChange={(value) => setSelectedDeliveryOptionId(value)}
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="rounded-md">
                                 <SelectValue placeholder="Select delivery zone" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="rounded-md">
                                 {actualDeliveryOptions.map(opt => (
                                     <SelectItem key={opt.id} value={opt.id}>
                                         {opt.name} - ({formatPrice(opt.price)})
@@ -729,7 +735,7 @@ export default function CartPage() {
               </div>
             </CardContent>
             <CardFooter className="flex-col items-stretch space-y-4">
-                <h3 className="text-lg font-semibold">Checkout with M-Pesa</h3>
+                <h3 className="text-lg font-semibold font-serif">Checkout with M-Pesa</h3>
                  <Form {...checkoutForm}>
                     <form onSubmit={checkoutForm.handleSubmit(handleInitiateCheckout)} className="space-y-4">
                     <FormField
@@ -744,6 +750,7 @@ export default function CartPage() {
                                     type="tel"
                                     placeholder="e.g., 254712345678"
                                     {...field}
+                                    className="rounded-md"
                                     />
                                 </FormControl>
                                 <FormDescription>
@@ -753,7 +760,7 @@ export default function CartPage() {
                               </FormItem>
                             )}
                           />
-                         <Button type="submit" className="w-full"
+                         <Button type="submit" className="w-full rounded-md shadow hover:shadow-md"
                                  disabled={isStkFlowActive || !canProceedToCheckout || cartIsLoading || authIsLoading || grandTotal <=0}>
                             {isStkFlowActive ? (
                                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>

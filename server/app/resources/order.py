@@ -12,6 +12,7 @@ from ..schemas import order_schema, orders_schema
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..utils.daraja_client import initiate_stk_push
+from ..socket_events import notify_order_status_update
 
 order_bp = Blueprint('orders', __name__)
 order_api = Api(order_bp)
@@ -151,7 +152,7 @@ class OrderList(Resource):
             abort(500, message="Payment initiation incomplete. Please contact support if debited.")
         
         transaction.checkout_request_id = checkout_request_id_from_daraja
-        transaction.status = 'pending_confirmation' 
+        transaction.status = 'pending_confirmation'
         transaction.daraja_response_description = stk_response.get("ResponseDescription")
         db.session.commit()
 
@@ -160,7 +161,7 @@ class OrderList(Resource):
         return {
             "message": "STK Push initiated successfully. Please check your phone to authorize payment.",
             "CheckoutRequestID": checkout_request_id_from_daraja,
-            "transaction_id": transaction.id, 
+            "transaction_id": transaction.id,
             "ResponseDescription": stk_response.get("ResponseDescription", "Success")
         }, 200
 

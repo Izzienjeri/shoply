@@ -77,9 +77,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud, Filter, CheckSquare, XSquare, Trash } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, ImageOff, Search, ArrowUpDown, Loader2, ExternalLink, UploadCloud, Filter, CheckSquare, XSquare, Trash, Palette } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-
+import { motion, AnimatePresence } from 'framer-motion';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
@@ -108,7 +108,6 @@ const artworkFormSchema = z.object({
 type ArtworkFormValues = z.infer<typeof artworkFormSchema>;
 type ArtworkFormInput = z.input<typeof artworkFormSchema>;
 
-
 const placeholderImage = "/placeholder-image.svg";
 
 export default function AdminArtworksPage() {
@@ -125,12 +124,10 @@ export default function AdminArtworksPage() {
   const [showArtworkDeactivationConfirmDialog, setShowArtworkDeactivationConfirmDialog] = useState(false);
   const [pendingArtworkData, setPendingArtworkData] = useState<ArtworkFormValues | null>(null);
 
-
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-
 
   const form = useForm<ArtworkFormInput, any, ArtworkFormValues>({
     resolver: zodResolver(artworkFormSchema),
@@ -158,7 +155,6 @@ export default function AdminArtworksPage() {
       clearErrors(["is_active", "stock_quantity"]);
     }
   }, [stockQuantityValue, isActiveValue, setValue, clearErrors]);
-
 
   const fetchArtworksAndArtists = useCallback(async () => {
     setIsLoading(true);
@@ -192,11 +188,12 @@ export default function AdminArtworksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [form, editingArtwork, setValue, columnFilters, globalFilter]);
+  }, [editingArtwork, setValue, columnFilters, globalFilter, form]);
 
   useEffect(() => {
     fetchArtworksAndArtists();
-  }, [columnFilters, globalFilter, fetchArtworksAndArtists]);
+  }, [fetchArtworksAndArtists]);
+
 
   const proceedWithArtworkUpdate = async (values: ArtworkFormValues) => {
     setIsSubmitting(true);
@@ -307,7 +304,6 @@ export default function AdminArtworksPage() {
     }
   };
 
-
   const handleFormSubmit: SubmitHandler<ArtworkFormValues> = async (values) => {
     const intendedIsActive = values.is_active;
     let showDeactivationDialog = false;
@@ -329,7 +325,7 @@ export default function AdminArtworksPage() {
     await proceedWithArtworkUpdate(values);
   };
 
-  const openEditDialog = (artwork: ArtworkType) => {
+  const openEditDialog = useCallback((artwork: ArtworkType) => {
     setEditingArtwork(artwork);
     setPreviewImage(artwork.image_url || null);
     reset({
@@ -343,9 +339,9 @@ export default function AdminArtworksPage() {
       current_image_url: artwork.image_url || null,
     });
     setShowFormDialog(true);
-  };
+  }, [reset, artists]);
 
-  const openNewDialog = () => {
+  const openNewDialog = useCallback(() => {
     setEditingArtwork(null);
     setPreviewImage(null);
     reset({
@@ -359,7 +355,7 @@ export default function AdminArtworksPage() {
         current_image_url: null,
     });
     setShowFormDialog(true);
-  };
+  }, [reset, artists]);
 
   const handleDeleteArtwork = async () => {
     if (!artworkToDelete) return;
@@ -419,34 +415,39 @@ export default function AdminArtworksPage() {
     }
   };
 
-
   const columns: ColumnDef<ArtworkType>[] = useMemo(() => [
     {
       id: 'select',
       header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-        />
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+            className="translate-y-[2px]"
+          />
+        </div>
       ),
       cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-        />
+         <div className="flex items-center justify-center">
+            <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+            className="translate-y-[2px]"
+            />
+        </div>
       ),
       enableSorting: false,
       enableHiding: false,
     },
     {
       accessorKey: "image_url",
-      header: "Image",
+      header: () => <div className="text-center">Image</div>,
       cell: ({ row }: { row: Row<ArtworkType> }) => {
         const artwork = row.original;
         return (
-          <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+          <div className="relative h-16 w-16 mx-auto flex-shrink-0 overflow-hidden rounded-md border bg-muted shadow-inner">
             <Image
               src={artwork.image_url || placeholderImage}
               alt={artwork.name}
@@ -455,7 +456,7 @@ export default function AdminArtworksPage() {
               className="object-cover"
               onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
             />
-            {!artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground" />}
+            {!artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-7 w-7 text-muted-foreground/70" />}
           </div>
         );
       },
@@ -464,13 +465,13 @@ export default function AdminArtworksPage() {
     {
       accessorKey: "name",
       header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2">
           Name <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }: { row: Row<ArtworkType> }) => (
-        <Link href={`/artworks/${row.original.id}`} target="_blank" className="hover:underline font-medium">
-          {row.original.name} <ExternalLink className="inline h-3 w-3 ml-1" />
+        <Link href={`/artworks/${row.original.id}`} target="_blank" className="font-medium text-primary hover:underline hover:text-primary/80 transition-colors">
+          {row.original.name} <ExternalLink className="inline h-3.5 w-3.5 ml-1 opacity-70" />
         </Link>
       ),
     },
@@ -478,17 +479,17 @@ export default function AdminArtworksPage() {
       id: "artist_id_filter",
       accessorKey: "artist.name",
       header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2">
           Artist <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }: { row: Row<ArtworkType> }) => {
         const artistIsActive = row.original.artist?.is_active;
         return (
-            <>
-              {row.original.artist?.name || 'N/A'}
-              {artistIsActive === false && <Badge variant="outline" className="ml-1 text-xs">Artist Inactive</Badge>}
-            </>
+            <span className="text-sm">
+              {row.original.artist?.name || <span className="text-muted-foreground italic">N/A</span>}
+              {artistIsActive === false && <Badge variant="outline" className="ml-1.5 text-xs py-0.5 px-1.5">Artist Inactive</Badge>}
+            </span>
         );
       },
       filterFn: (row, id, value) => {
@@ -499,35 +500,35 @@ export default function AdminArtworksPage() {
     {
       accessorKey: "price",
       header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2">
           Price <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<ArtworkType> }) => formatPrice(row.original.price),
+      cell: ({ row }: { row: Row<ArtworkType> }) => <span className="text-sm">{formatPrice(row.original.price)}</span>,
     },
     {
       accessorKey: "stock_quantity",
       header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2">
          Stock <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }: { row: Row<ArtworkType> }) => {
         if (row.original.stock_quantity === 0 && row.original.is_active) {
-            return <Badge variant="outline" className="text-xs border-orange-500 text-orange-600">Out of Stock</Badge>;
+            return <Badge variant="outline" className="text-xs border-orange-500/70 text-orange-600 dark:text-orange-400 py-0.5 px-1.5">Out of Stock</Badge>;
         }
-        return row.original.stock_quantity;
+        return <span className="text-sm">{row.original.stock_quantity}</span>;
       }
     },
     {
       accessorKey: "is_active",
       header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2">
           Status <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }: { row: Row<ArtworkType> }) => (
-        <Badge variant={row.original.is_active ? "default" : "secondary"}>
+        <Badge variant={row.original.is_active ? "default" : "secondary"} className="py-0.5 px-2 text-xs capitalize shadow-sm">
           {row.original.is_active ? "Active" : "Inactive"}
         </Badge>
       ),
@@ -535,22 +536,22 @@ export default function AdminArtworksPage() {
     },
     {
       id: "actions",
-      header: () => <div className="text-right">Actions</div>,
+      header: () => <div className="text-right pr-2">Actions</div>,
       cell: ({ row }: { row: Row<ArtworkType> }) => {
         const artwork = row.original;
         return (
-          <div className="flex space-x-2 justify-end">
-            <Button variant="ghost" size="icon" onClick={() => openEditDialog(artwork)} title="Edit">
-              <Edit3 className="h-4 w-4" />
+          <div className="flex space-x-1 justify-end">
+            <Button variant="ghost" size="icon" onClick={() => openEditDialog(artwork)} title="Edit" className="h-8 w-8 hover:bg-accent">
+              <Edit3 className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setArtworkToDelete(artwork)} title="Delete">
-              <Trash2 className="h-4 w-4 text-destructive" />
+            <Button variant="ghost" size="icon" onClick={() => setArtworkToDelete(artwork)} title="Delete" className="h-8 w-8 hover:bg-destructive/10">
+              <Trash2 className="h-4 w-4 text-destructive/70 group-hover:text-destructive" />
             </Button>
           </div>
         );
       },
     },
-  ], []);
+  ], [openEditDialog, setArtworkToDelete]);
 
   const table = useReactTable({
     data: artworks,
@@ -579,44 +580,63 @@ export default function AdminArtworksPage() {
   
   const selectedRowCount = Object.keys(rowSelection).length;
 
-  if (isLoading && artworks.length === 0) {
+  const dialogContentVariants = {
+    hidden: { opacity: 0, scale: 0.95, y: -20 },
+    visible: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.3, ease: "circOut" } },
+    exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.2, ease: "circIn" } }
+  };
+
+   if (isLoading && artworks.length === 0) {
     return (
-        <div className="space-y-4">
+        <div className="space-y-6 p-1">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-semibold">Manage Artworks</h1>
-                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-9 w-64" />
+                <Skeleton className="h-10 w-40" />
             </div>
-            <Skeleton className="h-10 w-full" />
-            {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4">
+                <Skeleton className="h-10 w-full sm:max-w-xs" />
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Skeleton className="h-10 w-full sm:w-[180px]" />
+                    <Skeleton className="h-10 w-full sm:w-[160px]" />
+                </div>
+            </div>
+            <Skeleton className="h-96 w-full rounded-md" />
         </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Manage Artworks</h1>
-        <Button onClick={openNewDialog}>
+        <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center">
+          <Palette size={28} className="mr-3" /> Manage Artworks
+        </h1>
+        <Button onClick={openNewDialog} className="shadow hover:shadow-md transition-shadow">
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Artwork
         </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-4 border rounded-lg bg-card shadow-sm">
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="Search by artwork or artist name..."
             value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
-            className="pl-10"
+            className="pl-10 rounded-md"
           />
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <Select
                 value={table.getColumn('artist_id_filter')?.getFilterValue() as string ?? ''}
                 onValueChange={(value) => table.getColumn('artist_id_filter')?.setFilterValue(value === 'all' ? '' : value)}
             >
-                <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectTrigger className="w-full sm:w-[200px] rounded-md">
                     <SelectValue placeholder="Filter by Artist" />
                 </SelectTrigger>
                 <SelectContent>
@@ -630,7 +650,7 @@ export default function AdminArtworksPage() {
                 value={table.getColumn('is_active')?.getFilterValue() as string ?? 'all'}
                 onValueChange={(value) => table.getColumn('is_active')?.setFilterValue(value === 'all' ? '' : value)}
             >
-                <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectTrigger className="w-full sm:w-[180px] rounded-md">
                     <SelectValue placeholder="Filter by Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -642,45 +662,52 @@ export default function AdminArtworksPage() {
         </div>
       </div>
 
-      {selectedRowCount > 0 && (
-        <div className="mb-4 flex items-center space-x-2">
-            <span className="text-sm text-muted-foreground">{selectedRowCount} row(s) selected.</span>
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" disabled={isBulkSubmitting}>
-                        Bulk Actions {isBulkSubmitting && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                    <DropdownMenuLabel>Apply to selected</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleBulkAction('activate')} disabled={isBulkSubmitting}>
-                        <CheckSquare className="mr-2 h-4 w-4" /> Activate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleBulkAction('deactivate')} disabled={isBulkSubmitting}>
-                        <XSquare className="mr-2 h-4 w-4" /> Deactivate
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                        onClick={() => handleBulkAction('delete')}
-                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                        disabled={isBulkSubmitting}
-                    >
-                        <Trash className="mr-2 h-4 w-4" /> Delete
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-      )}
+      <AnimatePresence>
+        {selectedRowCount > 0 && (
+            <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="mb-4 flex items-center space-x-3 p-3 bg-accent/50 rounded-md border border-accent"
+            >
+                <span className="text-sm font-medium text-accent-foreground">{selectedRowCount} row(s) selected.</span>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={isBulkSubmitting} className="bg-background hover:bg-muted shadow-sm">
+                            Bulk Actions {isBulkSubmitting && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="shadow-lg">
+                        <DropdownMenuLabel>Apply to selected</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleBulkAction('activate')} disabled={isBulkSubmitting}>
+                            <CheckSquare className="mr-2 h-4 w-4" /> Activate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleBulkAction('deactivate')} disabled={isBulkSubmitting}>
+                            <XSquare className="mr-2 h-4 w-4" /> Deactivate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                            onClick={() => handleBulkAction('delete')}
+                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                            disabled={isBulkSubmitting}
+                        >
+                            <Trash className="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </motion.div>
+        )}
+      </AnimatePresence>
 
-
-      <div className="rounded-md border bg-card">
+      <div className="rounded-lg border bg-card shadow-md overflow-hidden">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtworkType>) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
+                  <TableHead key={header.id} className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-muted-foreground">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -690,9 +717,13 @@ export default function AdminArtworksPage() {
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row: Row<ArtworkType>) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                <TableRow 
+                    key={row.id} 
+                    data-state={row.getIsSelected() && "selected"}
+                    className="hover:bg-muted/30 transition-colors"
+                >
                   {row.getVisibleCells().map((cell: Cell<ArtworkType, unknown>) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -700,7 +731,7 @@ export default function AdminArtworksPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
                   No artworks found {globalFilter && `for query "${globalFilter}"`}.
                 </TableCell>
               </TableRow>
@@ -710,294 +741,181 @@ export default function AdminArtworksPage() {
       </div>
 
       <div className="flex items-center justify-end space-x-2 py-4">
-        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="rounded-md">Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="rounded-md">Next</Button>
       </div>
 
-      <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
-          setShowFormDialog(isOpen);
-          if (!isOpen) {
-              reset({
-                name: "", artist_id: artists.length > 0 ? (artists.find(a => a.is_active !== false)?.id || artists[0].id) : "", price: 0,
-                stock_quantity: 0, description: null, is_active: true,
-                image_file: null, current_image_url: null,
-              });
-              setEditingArtwork(null);
-              setPreviewImage(null);
-          }
-      }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingArtwork ? 'Edit Artwork' : 'Add New Artwork'}</DialogTitle>
-            <DialogDescription>
-              {editingArtwork ? 'Update the details of the artwork.' : 'Fill in the details for the new artwork.'}
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
-              <FormField
-                control={control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl><Input placeholder="Artwork Title" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Controller
-                control={control}
-                name="artist_id"
-                render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
-                  <FormItem>
-                    <FormLabel>Artist</FormLabel>
-                    <Select
-                      onValueChange={onChange}
-                      value={value || ""}
-                    >
-                      <FormControl>
-                        <SelectTrigger ref={ref} className={cn(error && "border-destructive")}>
-                          <SelectValue placeholder="Select an artist" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {artists.length === 0 && !isLoading && <SelectItem value="no-artists" disabled>No artists loaded</SelectItem>}
-                        {isLoading && artists.length === 0 && <SelectItem value="loading" disabled>Loading artists...</SelectItem>}
-                        {artists.map((artist) => (
-                          <SelectItem key={artist.id} value={artist.id}>
-                            {artist.name} {artist.is_active === false && "(Inactive)"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>Only active artists can be assigned to active artworks.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                    control={control}
-                    name="price"
-                    render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Price (Ksh)</FormLabel>
-                        <FormControl><Input type="number" step="0.01" placeholder="e.g., 1500.00" {...field} /></FormControl>
-                        <FormMessage />
-                    </FormItem>
-                    )}
-                />
-                <FormField
-                    control={control}
-                    name="stock_quantity"
-                    render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Stock Quantity</FormLabel>
-                        <FormControl><Input type="number" placeholder="e.g., 10" {...field} /></FormControl>
-                        <FormDescription>{'Setting stock > 0 will auto-activate artwork.'}</FormDescription>
-                        <FormMessage />
-                    </FormItem>
-                    )}
-                />
-              </div>
-              <FormField
-                control={control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl><Textarea placeholder="Describe the artwork..." {...field} value={field.value || ""} className="min-h-[100px]" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={control}
-                name="image_file"
-                render={({ field: { onChange: onFileChange, value: fileValue, ...restFieldProps } }) => {
-                  const currentImageDisplay = editingArtwork && form.getValues('current_image_url') && !fileValue;
-                  return (
-                    <FormItem>
-                      <FormLabel>Artwork Image</FormLabel>
-                      <FormControl>
-                        <div className="flex items-center space-x-3">
-                          <label htmlFor="image-upload" className={cn(
-                              "flex-grow cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
-                              "file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground",
-                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                              "disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent hover:text-accent-foreground",
-                              errors.image_file && "border-destructive"
-                          )}>
-                            <div className="flex items-center">
-                              <UploadCloud className="mr-2 h-4 w-4" />
-                              <span>{fileValue ? fileValue.name : (currentImageDisplay ? 'Change image' : 'Upload image')}</span>
-                            </div>
-                            <Input
-                              id="image-upload"
-                              type="file"
-                              className="sr-only"
-                              accept={ACCEPTED_IMAGE_TYPES.join(",")}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0] || null;
-                                onFileChange(file);
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onloadend = () => {
-                                    setPreviewImage(reader.result as string);
-                                  };
-                                  reader.readAsDataURL(file);
-                                } else {
-                                  setPreviewImage(form.getValues('current_image_url') || null);
-                                }
-                              }}
-                              {...restFieldProps}
-                            />
-                          </label>
-                        </div>
-                      </FormControl>
-                     <FormDescription>
-                        {editingArtwork && currentImageDisplay ? "Upload a new file to replace the current image." :
-                         !editingArtwork ? "Image is required for new artworks. " : ""}
-                        Max 5MB. JPG, PNG, GIF.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                  );
-                }}
-              />
-
-            {(previewImage) && (
-              <div className="mt-2 space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  {form.watch('image_file') ? "New image preview:" : (editingArtwork ? "Current image:" : "Image preview:")}
-                </p>
-                <Image
-                  src={previewImage || placeholderImage}
-                  alt="Artwork image preview"
-                  width={128}
-                  height={128}
-                  className="rounded border object-cover h-32 w-32"
-                  onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
-                />
-              </div>
-            )}
-
-
-               <FormField
-                control={control}
-                name="is_active"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Active</FormLabel>
-                      <FormDescription>
-                       {'Artwork with stock > 0 will be active. To make inactive, stock must be 0.'}
-                      </FormDescription>
-                       <FormMessage />
+      <AnimatePresence>
+        {showFormDialog && (
+          <Dialog open={showFormDialog} onOpenChange={(isOpen) => { 
+              setShowFormDialog(isOpen);
+              if (!isOpen) {
+                  reset({ name: "", artist_id: artists.length > 0 ? (artists.find(a => a.is_active !== false)?.id || artists[0].id) : "", price: 0, stock_quantity: 0, description: null, is_active: true, image_file: null, current_image_url: null, });
+                  setEditingArtwork(null); setPreviewImage(null);
+              }
+          }}>
+            <motion.div
+              key="artworkFormDialog"
+              variants={dialogContentVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <DialogContent className="sm:max-w-lg rounded-xl shadow-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-serif text-primary">{editingArtwork ? 'Edit Artwork' : 'Add New Artwork'}</DialogTitle>
+                  <DialogDescription>
+                    {editingArtwork ? 'Update the details of the artwork.' : 'Fill in the details for the new artwork.'}
+                  </DialogDescription>
+                </DialogHeader>
+                <Form {...form}>
+                  <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5 py-4 max-h-[70vh] overflow-y-auto pr-3 pl-1">
+                    <FormField control={control} name="name" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="text-sm font-medium">Name</FormLabel>
+                            <FormControl><Input placeholder="Artwork Title" {...field} className="rounded-md" /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}/>
+                     <Controller
+                        control={control}
+                        name="artist_id"
+                        render={({ field: { onChange, value, ref }, fieldState: { error } }) => (
+                        <FormItem>
+                            <FormLabel className="text-sm font-medium">Artist</FormLabel>
+                            <Select onValueChange={onChange} value={value || ""}>
+                            <FormControl>
+                                <SelectTrigger ref={ref} className={cn("rounded-md", error && "border-destructive")}>
+                                <SelectValue placeholder="Select an artist" />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                {artists.length === 0 && !isLoading && <SelectItem value="no-artists" disabled>No artists loaded</SelectItem>}
+                                {isLoading && artists.length === 0 && <SelectItem value="loading" disabled>Loading artists...</SelectItem>}
+                                {artists.map((artist) => (
+                                <SelectItem key={artist.id} value={artist.id}>
+                                    {artist.name} {artist.is_active === false && "(Inactive)"}
+                                </SelectItem>
+                                ))}
+                            </SelectContent>
+                            </Select>
+                            <FormDescription className="text-xs">Only active artists can be assigned to active artworks.</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField control={control} name="price" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-sm font-medium">Price (Ksh)</FormLabel>
+                                <FormControl><Input type="number" step="0.01" placeholder="e.g., 1500.00" {...field} className="rounded-md" /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}/>
+                        <FormField control={control} name="stock_quantity" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-sm font-medium">Stock</FormLabel>
+                                <FormControl><Input type="number" placeholder="e.g., 10" {...field} className="rounded-md" /></FormControl>
+                                <FormDescription className="text-xs">{'Stock > 0 will auto-activate.'}</FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}/>
                     </div>
-                  </FormItem>
-                )}
-              />
-              <DialogFooter className="pt-4">
-                <DialogClose asChild>
-                    <Button type="button" variant="outline">Cancel</Button>
-                </DialogClose>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {editingArtwork ? 'Save Changes' : 'Create Artwork'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+                    <FormField control={control} name="description" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="text-sm font-medium">Description</FormLabel>
+                            <FormControl><Textarea placeholder="Describe the artwork..." {...field} value={field.value || ""} className="min-h-[100px] rounded-md" /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}/>
+                    <FormField
+                        control={control} name="image_file"
+                        render={({ field: { onChange: onFileChange, value: fileValue, ...restFieldProps } }) => {
+                        const currentImageDisplay = editingArtwork && form.getValues('current_image_url') && !fileValue;
+                        return (
+                            <FormItem>
+                            <FormLabel className="text-sm font-medium">Artwork Image</FormLabel>
+                            <FormControl>
+                                <label htmlFor="image-upload" className={cn( "flex items-center w-full cursor-pointer rounded-md border border-input bg-background px-3.5 py-2.5 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent hover:text-accent-foreground", errors.image_file && "border-destructive" )}>
+                                <UploadCloud className="mr-2.5 h-4 w-4" />
+                                <span>{fileValue ? fileValue.name : (currentImageDisplay ? 'Change image' : 'Upload image')}</span>
+                                <Input id="image-upload" type="file" className="sr-only" accept={ACCEPTED_IMAGE_TYPES.join(",")}
+                                    onChange={(e) => { 
+                                        const file = e.target.files?.[0] || null;
+                                        onFileChange(file);
+                                        if (file) {
+                                          const reader = new FileReader();
+                                          reader.onloadend = () => { setPreviewImage(reader.result as string); };
+                                          reader.readAsDataURL(file);
+                                        } else {
+                                          setPreviewImage(form.getValues('current_image_url') || null);
+                                        }
+                                    }}
+                                    {...restFieldProps} />
+                                </label>
+                            </FormControl>
+                            <FormDescription className="text-xs">
+                                {editingArtwork && currentImageDisplay ? "Upload new to replace." : !editingArtwork ? "Required. " : ""}
+                                Max 5MB. JPG, PNG, GIF.
+                            </FormDescription>
+                            <FormMessage />
+                            </FormItem>
+                        );}}
+                    />
+                    {previewImage && (
+                        <div className="mt-2 space-y-1.5">
+                            <p className="text-xs text-muted-foreground">
+                            {form.watch('image_file') ? "New image preview:" : (editingArtwork ? "Current image:" : "Image preview:")}
+                            </p>
+                            <Image src={previewImage || placeholderImage} alt="Preview" width={128} height={128} className="rounded-md border object-cover h-32 w-32 shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }} />
+                        </div>
+                    )}
+                    <FormField control={control} name="is_active" render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3.5 shadow-sm bg-muted/30">
+                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                            <div className="space-y-0.5 leading-none">
+                            <FormLabel className="text-sm font-medium">Active</FormLabel>
+                            <FormDescription className="text-xs">{'Artwork with stock > 0 will be active.'}</FormDescription>
+                            <FormMessage />
+                            </div>
+                        </FormItem>
+                    )}/>
+                    <DialogFooter className="pt-5">
+                        <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Cancel</Button></DialogClose>
+                        <Button type="submit" disabled={isSubmitting} className="rounded-md shadow hover:shadow-md">
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {editingArtwork ? 'Save Changes' : 'Create Artwork'}
+                        </Button>
+                    </DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </motion.div>
+          </Dialog>
+        )}
+      </AnimatePresence>
 
       <AlertDialog open={!!artworkToDelete} onOpenChange={(isOpen) => !isOpen && setArtworkToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the artwork
-              "{artworkToDelete?.name}".
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setArtworkToDelete(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteArtwork}
-              disabled={isSubmitting}
-              className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
+        <AlertDialogContent className="rounded-xl shadow-xl">
+          <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the artwork "{artworkToDelete?.name}".</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel className="rounded-md">Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDeleteArtwork} disabled={isSubmitting} className={cn("rounded-md", isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Delete</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={artworksToBulkDelete.length > 0} onOpenChange={(isOpen) => !isOpen && setArtworksToBulkDelete([])}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Bulk Delete</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to permanently delete {artworksToBulkDelete.length} selected artwork(s)? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setArtworksToBulkDelete([])} disabled={isBulkSubmitting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmBulkDelete}
-              disabled={isBulkSubmitting}
-              className={cn(isBulkSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
-            >
-              {isBulkSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Selected
-            </AlertDialogAction>
-          </AlertDialogFooter>
+         <AlertDialogContent className="rounded-xl shadow-xl">
+          <AlertDialogHeader><AlertDialogTitle>Confirm Bulk Delete</AlertDialogTitle><AlertDialogDescription>Are you sure you want to permanently delete {artworksToBulkDelete.length} selected artwork(s)? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel className="rounded-md" onClick={() => setArtworksToBulkDelete([])} disabled={isBulkSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmBulkDelete} disabled={isBulkSubmitting} className={cn("rounded-md",isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}>{isBulkSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Delete Selected</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showArtworkDeactivationConfirmDialog} onOpenChange={(isOpen) => {
-          if (!isOpen) {
-              setShowArtworkDeactivationConfirmDialog(false);
-              setPendingArtworkData(null);
-          }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Artwork Deactivation</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are about to mark the artwork "{pendingArtworkData?.name || 'this artwork'}" as inactive.
-              If it currently has stock, its stock quantity will be set to 0.
-              Are you sure you want to proceed?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {setShowArtworkDeactivationConfirmDialog(false); setPendingArtworkData(null);}}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={async () => {
-                  if (pendingArtworkData) {
-                      await proceedWithArtworkUpdate(pendingArtworkData);
-                  }
-                  setShowArtworkDeactivationConfirmDialog(false);
-                  setPendingArtworkData(null);
-              }} 
-              disabled={isSubmitting}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Yes, Deactivate Artwork
-            </AlertDialogAction>
-          </AlertDialogFooter>
+      <AlertDialog open={showArtworkDeactivationConfirmDialog} onOpenChange={(isOpen) => {if (!isOpen) {setShowArtworkDeactivationConfirmDialog(false);setPendingArtworkData(null);}}}>
+         <AlertDialogContent className="rounded-xl shadow-xl">
+          <AlertDialogHeader><AlertDialogTitle>Confirm Artwork Deactivation</AlertDialogTitle><AlertDialogDescription>You are about to mark the artwork "{pendingArtworkData?.name || 'this artwork'}" as inactive. If it currently has stock, its stock quantity will be set to 0. Are you sure you want to proceed?</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel className="rounded-md" onClick={() => {setShowArtworkDeactivationConfirmDialog(false); setPendingArtworkData(null);}}>Cancel</AlertDialogCancel><AlertDialogAction onClick={async () => {if (pendingArtworkData) {await proceedWithArtworkUpdate(pendingArtworkData);}setShowArtworkDeactivationConfirmDialog(false);setPendingArtworkData(null);}} disabled={isSubmitting} className="rounded-md bg-destructive hover:bg-destructive/90">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Yes, Deactivate Artwork</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+
+    </motion.div>
   );
 }

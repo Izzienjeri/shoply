@@ -62,6 +62,9 @@ def _create_and_emit_notification(
     for_admin_audience: bool = False,
     socket_emit: bool = True
 ):
+    """
+    Creates a notification in the database and optionally emits it via Socket.IO.
+    """
     try:
         new_notification = Notification(
             user_id=user_id_target,
@@ -93,9 +96,9 @@ def _create_and_emit_notification(
             if new_notification.user_id:
                 target_user_for_notif = User.query.get(new_notification.user_id)
                 if target_user_for_notif:
-                    if not new_notification.for_admin_audience or (new_notification.for_admin_audience and not target_user_for_notif.is_admin):
-                        socketio.emit('new_notification_available', notification_payload, room=f'user_{new_notification.user_id}')
-                        current_app.logger.info(f"Emitted 'new_notification_available' to user_room user_{new_notification.user_id} for Notif ID {new_notification.id}")
+                    if not new_notification.for_admin_audience:
+                         socketio.emit('new_notification_available', notification_payload, room=f'user_{new_notification.user_id}')
+                         current_app.logger.info(f"Emitted 'new_notification_available' to user_room user_{new_notification.user_id} for Notif ID {new_notification.id}")
                 else:
                     current_app.logger.warning(f"Notification {new_notification.id} has user_id {new_notification.user_id} but user not found.")
             
@@ -105,9 +108,7 @@ def _create_and_emit_notification(
 
 
 def notify_new_order_to_admins(order_data_dict):
-    """Notifies admins about a new order."""
-    socketio.emit('new_order_admin', order_data_dict, room='admin_room')
-    current_app.logger.info(f"Original 'new_order_admin' socket emitted. Order ID: {order_data_dict.get('id')}")
+    """Notifies admins about a new order via in-app notification system."""
 
     _create_and_emit_notification(
         message=f"New Order #{order_data_dict.get('id', '')[:8]} placed by {order_data_dict.get('user', {}).get('email', 'N/A')}.",
@@ -116,15 +117,11 @@ def notify_new_order_to_admins(order_data_dict):
         for_admin_audience=True
     )
 
-def notify_order_status_update(order_data_dict):
-    """Notifies relevant user and admins about an order status update."""
+def notify_order_status_update(order_data_dict, for_user: User = None, is_initial_payment_confirmation: bool = False):
+    """Notifies relevant user and admins about an order status update via in-app notification system."""
     user_id = order_data_dict.get('user_id')
     order_id_short = order_data_dict.get('id', '')[:8]
     status = order_data_dict.get('status', 'updated').replace('_', ' ')
-    
-    socketio.emit('order_update_user', order_data_dict, room=f'user_{user_id}')
-    socketio.emit('order_update_admin', order_data_dict, room='admin_room')
-    current_app.logger.info(f"Original 'order_update_user/admin' sockets emitted for Order ID: {order_id_short}")
     
     _create_and_emit_notification(
         message=f"Your order #{order_id_short} status is now: {status}.",
@@ -136,19 +133,24 @@ def notify_order_status_update(order_data_dict):
     _create_and_emit_notification(
         message=f"Order #{order_id_short} (User: {order_data_dict.get('user', {}).get('email', 'N/A')}) status changed to: {status}.",
         type='order_update',
-        user_id_target=user_id,
         link=f'/admin/orders?view={order_data_dict.get("id")}',
         for_admin_audience=True
     )
+    
+    if for_user and for_user.id == user_id:
+        if not (order_data_dict.get('status') == 'paid' and is_initial_payment_confirmation):
+            socketio.emit('order_update_user_toast', order_data_dict, room=f'user_{user_id}')
+            current_app.logger.info(f"Emitted 'order_update_user_toast' to user {user_id} for Order ID: {order_id_short}, Status: {order_data_dict.get('status')}")
+        else:
+            current_app.logger.info(f"Skipped 'order_update_user_toast' for initial 'paid' status for Order ID: {order_id_short}, Status: {order_data_dict.get('status')}")
+
 
 def notify_artwork_update_globally(artwork_data_dict):
+    """Notifies admins about an artwork update or deletion."""
     artwork_id = artwork_data_dict.get('id', 'Unknown ID')
     artwork_name = artwork_data_dict.get('name', 'Unknown Artwork')
     is_deleted = artwork_data_dict.get('is_deleted', False)
     
-    socketio.emit('artwork_update_global', artwork_data_dict, broadcast=True)
-    current_app.logger.info(f"Original 'artwork_update_global' socket emitted for Artwork ID: {artwork_id}")
-
     message = f"Artwork '{artwork_name}' has been deleted." if is_deleted \
               else f"Artwork '{artwork_name}' has been updated."
     
@@ -160,12 +162,10 @@ def notify_artwork_update_globally(artwork_data_dict):
     )
 
 def notify_artist_update_globally(artist_data_dict):
+    """Notifies admins about an artist update or deletion."""
     artist_id = artist_data_dict.get('id', 'Unknown ID')
     artist_name = artist_data_dict.get('name', 'Unknown Artist')
     is_deleted = artist_data_dict.get('is_deleted', False)
-
-    socketio.emit('artist_update_global', artist_data_dict, broadcast=True)
-    current_app.logger.info(f"Original 'artist_update_global' socket emitted for Artist ID: {artist_id}")
 
     message = f"Artist '{artist_name}' has been deleted." if is_deleted \
               else f"Artist '{artist_name}' has been updated."
@@ -178,11 +178,9 @@ def notify_artist_update_globally(artist_data_dict):
     )
 
 def notify_delivery_option_update_globally(delivery_option_data_dict):
+    """Notifies admins about a delivery option update or deletion."""
     option_name = delivery_option_data_dict.get('name', 'Unknown Option')
     is_deleted = delivery_option_data_dict.get('is_deleted', False)
-
-    socketio.emit('delivery_option_update_global', delivery_option_data_dict, broadcast=True)
-    current_app.logger.info(f"Original 'delivery_option_update_global' socket emitted for Option: {option_name}")
 
     message = f"Delivery Option '{option_name}' has been deleted." if is_deleted \
               else f"Delivery Option '{option_name}' has been updated."

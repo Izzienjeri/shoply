@@ -117,7 +117,7 @@ export function Navbar() {
     }, [isMobileSearchVisible]);
 
   return (
-    <nav className="bg-card border-b border-border sticky top-0 z-50">
+    <nav className="bg-card/80 border-b border-border/70 sticky top-0 z-50 backdrop-blur-md">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-xl font-bold font-serif text-primary shrink-0">
           Artistry Haven {isInAdminSection && isAdmin && <span className="text-sm font-normal text-muted-foreground">- Admin</span>}
@@ -131,7 +131,7 @@ export function Navbar() {
                     ref={desktopSearchInputRef}
                     type="search"
                     placeholder="Search artwork, artists..."
-                    className="w-full pl-10 pr-10" 
+                    className="w-full pl-10 pr-10 rounded-md bg-background/70 focus:bg-background" 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -161,20 +161,6 @@ export function Navbar() {
             ))}
           </div>
         )}
-        {isInAdminSection && isAdmin && (
-             <div className="hidden md:flex items-center space-x-6 ml-auto">
-                <Link href="/admin/artworks" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-                    Artworks
-                </Link>
-                <Link href="/admin/artists" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-                    Artists
-                </Link>
-                 <Link href="/admin/orders" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-                    Orders
-                </Link>
-             </div>
-        )}
-
 
         <div className="flex items-center space-x-1 sm:space-x-2">
           {showPublicNavItems && !isMobileSearchVisible && (
@@ -189,12 +175,12 @@ export function Navbar() {
                     )}
                  </Button>
               </Link>
-              {isAuthenticated && <NotificationBell />}
+              {isAuthenticated && !isAdmin && <NotificationBell />}
             </>
           )}
 
           {isLoading ? (
-             <Button variant="ghost" size="sm" disabled>Loading...</Button>
+             <Button variant="ghost" size="sm" disabled className="rounded-md">Loading...</Button>
           ) : isAuthenticated ? (
              <>
               {isAdmin && !isInAdminSection && (
@@ -204,18 +190,18 @@ export function Navbar() {
               )}
               {showPublicNavItems && (
                 <Link href="/orders">
-                  <Button variant="ghost" size="sm" className="hidden sm:inline-flex">My Orders</Button>
+                  <Button variant="ghost" size="sm" className="hidden sm:inline-flex rounded-md">My Orders</Button>
                 </Link>
               )}
-              <Button variant="outline" size="sm" onClick={logout} className="hidden sm:inline-flex">Logout</Button>
+              <Button variant="outline" size="sm" onClick={logout} className="hidden sm:inline-flex rounded-md">Logout</Button>
              </>
           ) : (
              <>
              <Link href="/login">
-                <Button variant="ghost" size="sm">Login</Button>
+                <Button variant="ghost" size="sm" className="rounded-md">Login</Button>
              </Link>
              <Link href="/signup">
-                <Button size="sm">Sign Up</Button>
+                <Button size="sm" className="rounded-md shadow hover:shadow-md">Sign Up</Button>
              </Link>
              </>
           )}
@@ -223,14 +209,14 @@ export function Navbar() {
           <div className="md:hidden">
             {!isInAdminSection && (
                 <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsMobileSearchVisible(!isMobileSearchVisible)} aria-label="Toggle search">
-                    <SearchIcon className="h-5 w-5"/>
+                    {isMobileSearchVisible ? <X className="h-5 w-5" /> : <SearchIcon className="h-5 w-5"/>}
                 </Button>
             )}
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full" aria-label="Open menu"><Menu className="h-5 w-5" /></Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[280px] sm:w-[320px] p-0">
+              <SheetContent side="right" className="w-[280px] sm:w-[320px] p-0 bg-card/95 backdrop-blur-md">
                 <div className="p-4">
                     <SheetClose asChild>
                         <Link href={isAdmin && isInAdminSection ? "/admin" : "/"} className="text-lg font-bold font-serif text-primary mb-4 block">
@@ -261,11 +247,11 @@ export function Navbar() {
                     )}
                     <Separator className="my-3"/>
                     {isAuthenticated ? (
-                        <SheetClose asChild><Button variant="outline" size="sm" onClick={logout} className="w-full">Logout</Button></SheetClose>
+                        <SheetClose asChild><Button variant="outline" size="sm" onClick={logout} className="w-full rounded-md">Logout</Button></SheetClose>
                     ) : (
                         <div className="space-y-2">
-                           <SheetClose asChild><Link href="/login" className="w-full block"><Button variant="ghost" className="w-full">Login</Button></Link></SheetClose>
-                           <SheetClose asChild><Link href="/signup" className="w-full block"><Button className="w-full">Sign Up</Button></Link></SheetClose>
+                           <SheetClose asChild><Link href="/login" className="w-full block"><Button variant="ghost" className="w-full rounded-md">Login</Button></Link></SheetClose>
+                           <SheetClose asChild><Link href="/signup" className="w-full block"><Button className="w-full rounded-md">Sign Up</Button></Link></SheetClose>
                         </div>
                     )}
                 </div>
@@ -276,14 +262,14 @@ export function Navbar() {
       </div>
 
       {!isInAdminSection && isMobileSearchVisible && (
-        <div className="md:hidden p-2 border-b bg-card">
+        <div className="md:hidden p-2 border-b border-border/70 bg-card">
             <div className="relative">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                 ref={mobileSearchInputRef}
                 type="search"
                 placeholder="Search artwork, artists..."
-                className="w-full pl-10 pr-10"
+                className="w-full pl-10 pr-10 rounded-md bg-background/70 focus:bg-background"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 />

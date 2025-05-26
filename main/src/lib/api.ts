@@ -68,8 +68,15 @@ async function request<T>(
     if (response.status === 204) {
       return null;
     }
+    
+    try {
+        const jsonData = await response.json();
+        return jsonData as T;
+    } catch (e) {
+        console.warn(`Request to ${endpoint} was OK but response body was not valid JSON or empty.`)
+        return null;
+    }
 
-    return await response.json() as T;
 
   } catch (error) {
     console.error('Network or API request error:', error);
@@ -93,12 +100,27 @@ export const apiClient = {
   delete: <T = void>(endpoint: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(endpoint, { ...options, method: 'DELETE' }),
 
-  getNotifications: (params: { page?: number; per_page?: number; unread_only?: boolean } = {}) =>
-    apiClient.get<PaginatedNotificationsResponse>('/api/notifications/', { params, needsAuth: true }),
+  getNotifications: async (params: { page?: number; per_page?: number; unread_only?: boolean } = {}): Promise<PaginatedNotificationsResponse> => {
+    const result = await apiClient.get<PaginatedNotificationsResponse>('/api/notifications/', { params, needsAuth: true });
+    if (result === null) {
+        throw new Error("API returned null when PaginatedNotificationsResponse was expected for getNotifications.");
+    }
+    return result;
+  },
 
-  markNotificationAsRead: (notificationId: string) =>
-    apiClient.post<NotificationInterface>(`/api/notifications/${notificationId}/read`, {}, { needsAuth: true }),
+  markNotificationAsRead: async (notificationId: string): Promise<NotificationInterface> => {
+    const result = await apiClient.post<NotificationInterface>(`/api/notifications/${notificationId}/read`, {}, { needsAuth: true });
+    if (result === null) {
+        throw new Error("API returned null when Notification was expected for markNotificationAsRead.");
+    }
+    return result;
+  },
 
-  markAllNotificationsAsRead: () =>
-    apiClient.post<{ message: string, unread_count: number }>(`/api/notifications/read-all`, {}, { needsAuth: true }),
+  markAllNotificationsAsRead: async (): Promise<{ message: string, unread_count: number }> => {
+    const result = await apiClient.post<{ message: string, unread_count: number }>(`/api/notifications/read-all`, {}, { needsAuth: true });
+    if (result === null) {
+        throw new Error("API returned null when {message, unread_count} was expected for markAllNotificationsAsRead.");
+    }
+    return result;
+  },
 };
