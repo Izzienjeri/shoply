@@ -40,8 +40,8 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
     initial: { opacity: 0, y: 30, scale: 0.98 },
     animate: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] } },
     hover: { 
-      scale: 1.03, 
-      boxShadow: "0 10px 15px -3px oklch(var(--primary-raw) / 0.1), 0 4px 6px -4px oklch(var(--primary-raw) / 0.1)",
+      y: -4,
+      boxShadow: "0 10px 20px -5px oklch(var(--primary-raw) / 0.12), 0 6px 10px -6px oklch(var(--primary-raw) / 0.1)",
       transition: { type: "spring", stiffness: 300, damping: 20, duration: 0.2 }
     }
   };
@@ -54,7 +54,7 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
       whileHover={isPubliclyAvailableForPurchase || isAdmin ? "hover" : undefined}
       className="h-full flex flex-col"
     >
-      <Card className="overflow-hidden flex flex-col h-full group border-border/60 shadow-sm rounded-xl transition-all duration-300 ease-out hover:border-primary/30">
+      <Card className="overflow-hidden flex flex-col h-full group border-border/60 shadow-lg rounded-xl transition-all duration-300 ease-out hover:border-primary/30">
         <CardHeader className="p-0 border-b border-border/60 relative">
           <Link 
             href={`/artworks/${artwork.id}`}
@@ -169,7 +169,7 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
 
 export function ArtworkCardSkeleton() {
   return (
-    <Card className="overflow-hidden flex flex-col h-full rounded-xl border-border/60 shadow-sm">
+    <Card className="overflow-hidden flex flex-col h-full rounded-xl border-border/60 shadow-lg">
       <AspectRatio ratio={1 / 1} className="bg-muted/70 animate-pulse rounded-t-xl" />
       <CardContent className="p-4 flex-grow space-y-2">
         <Skeleton className="h-5 w-4/5 bg-muted/70 rounded" />

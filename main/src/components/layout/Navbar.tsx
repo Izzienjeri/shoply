@@ -48,23 +48,30 @@ export function Navbar() {
    const mobileSearchInputRef = useRef<HTMLInputElement>(null);
    const desktopSearchInputRef = useRef<HTMLInputElement>(null);
 
+   const isHomePage = pathname === '/';
+
 
    useEffect(() => {
     const currentQuery = searchParams.get('q');
     if (pathname === '/search') {
       setSearchTerm(currentQuery || '');
+    } else {
+        if (!isHomePage) setSearchTerm(''); 
     }
-   }, [pathname, searchParams]);
+   }, [pathname, searchParams, isHomePage]);
 
 
    useEffect(() => {
     const trimmedSearchTerm = debouncedSearchTerm.trim();
     let searchContext = '';
-    if (pathname === '/artworks') {
-        searchContext = 'artworks';
-    } else if (pathname === '/artists') {
-        searchContext = 'artists';
+    if (!isHomePage) {
+        if (pathname === '/artworks') {
+            searchContext = 'artworks';
+        } else if (pathname === '/artists') {
+            searchContext = 'artists';
+        }
     }
+
 
     if (trimmedSearchTerm.length >= 2) {
       const currentSearchQuery = searchParams.get('q');
@@ -77,10 +84,10 @@ export function Navbar() {
         }
         router.push(`/search?${queryString}`);
       }
-    } else if (trimmedSearchTerm.length === 0 && pathname === '/search') {
+    } else if (trimmedSearchTerm.length === 0 && pathname === '/search' && !isHomePage) {
       router.push('/artworks'); 
     }
-   }, [debouncedSearchTerm, router, pathname, searchParams]);
+   }, [debouncedSearchTerm, router, pathname, searchParams, isHomePage]);
 
 
    const handleClearSearch = () => {
@@ -115,6 +122,12 @@ export function Navbar() {
             mobileSearchInputRef.current.focus();
         }
     }, [isMobileSearchVisible]);
+    
+    useEffect(() => {
+        if(isMobileSearchVisible && pathname !== '/search' && isHomePage){
+            setIsMobileSearchVisible(false);
+        }
+    },[pathname, isMobileSearchVisible, isHomePage]);
 
   return (
     <nav className="bg-card/80 border-b border-border/70 sticky top-0 z-50 backdrop-blur-md">
@@ -123,7 +136,7 @@ export function Navbar() {
           Artistry Haven {isInAdminSection && isAdmin && <span className="text-sm font-normal text-muted-foreground">- Admin</span>}
         </Link>
 
-        {!isInAdminSection && (
+        {!isHomePage && !isInAdminSection && (
             <div className="hidden md:flex flex-grow justify-center px-4">
                 <div className="relative w-full max-w-md">
                     <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -207,7 +220,7 @@ export function Navbar() {
           )}
         
           <div className="md:hidden">
-            {!isInAdminSection && (
+            {!isHomePage && !isInAdminSection && (
                 <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsMobileSearchVisible(!isMobileSearchVisible)} aria-label="Toggle search">
                     {isMobileSearchVisible ? <X className="h-5 w-5" /> : <SearchIcon className="h-5 w-5"/>}
                 </Button>
@@ -232,6 +245,7 @@ export function Navbar() {
                             <SheetClose asChild><Link href="/admin/artists" className="block py-2 text-sm text-foreground hover:text-primary">Manage Artists</Link></SheetClose>
                             <SheetClose asChild><Link href="/admin/orders" className="block py-2 text-sm text-foreground hover:text-primary">Manage Orders</Link></SheetClose>
                             <SheetClose asChild><Link href="/admin/delivery-options" className="block py-2 text-sm text-foreground hover:text-primary">Delivery Options</Link></SheetClose>
+                             <SheetClose asChild><Link href="/admin/notifications" className="block py-2 text-sm text-foreground hover:text-primary">Notifications</Link></SheetClose>
                             <Separator className="my-3"/>
                             <SheetClose asChild><Link href="/" className="block py-2 text-sm text-foreground hover:text-primary">Back to Site</Link></SheetClose>
                         </>
@@ -261,7 +275,7 @@ export function Navbar() {
         </div>
       </div>
 
-      {!isInAdminSection && isMobileSearchVisible && (
+      {!isHomePage && !isInAdminSection && isMobileSearchVisible && (
         <div className="md:hidden p-2 border-b border-border/70 bg-card">
             <div className="relative">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
