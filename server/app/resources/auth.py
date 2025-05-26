@@ -1,4 +1,4 @@
-from flask import request, jsonify, Blueprint
+from flask import request, jsonify, Blueprint, make_response
 from flask_restful import Resource, Api
 from marshmallow import ValidationError
 
@@ -6,7 +6,15 @@ from .. import db, bcrypt
 from ..models import User
 from ..schemas import user_schema
 
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt, get_jwt_identity
+from flask_jwt_extended import (
+    create_access_token, 
+    create_refresh_token,
+    jwt_required, 
+    get_jwt, 
+    get_jwt_identity,
+    set_refresh_cookies,
+    unset_jwt_cookies
+)
 from .. import BLOCKLIST
 
 auth_bp = Blueprint('auth', __name__)
@@ -65,7 +73,9 @@ class UserLogin(Resource):
 
         if user and user.check_password(password):
             access_token = create_access_token(identity=user.id)
-            return {
+            refresh_token = create_refresh_token(identity=user.id)
+            
+            response_data = {
                 "message": "Login successful",
                 "access_token": access_token,
                 "user": {
@@ -74,17 +84,29 @@ class UserLogin(Resource):
                     "name": user.name,
                     "is_admin": user.is_admin 
                 }
-            }, 200
+            }
+            resp = make_response(jsonify(response_data), 200)
+            set_refresh_cookies(resp, refresh_token) 
+            return resp
         else:
             return {"message": "Invalid credentials"}, 401
 
+class TokenRefresh(Resource):
+    @jwt_required(refresh=True, locations=["cookies"])
+    def post(self):
+        current_user_id = get_jwt_identity()
+        new_access_token = create_access_token(identity=current_user_id)
+        return {"access_token": new_access_token}, 200
 
 class UserLogout(Resource):
     @jwt_required()
     def post(self):
         jti = get_jwt()["jti"]
         BLOCKLIST.add(jti)
-        return {"message": "Successfully logged out"}, 200
+        
+        resp = make_response(jsonify({"message": "Successfully logged out"}), 200)
+        unset_jwt_cookies(resp)
+        return resp
 
 class UserProfile(Resource):
     @jwt_required()
@@ -98,5 +120,6 @@ class UserProfile(Resource):
 
 auth_api.add_resource(UserRegistration, '/signup')
 auth_api.add_resource(UserLogin, '/login')
+auth_api.add_resource(TokenRefresh, '/refresh')
 auth_api.add_resource(UserLogout, '/logout')
 auth_api.add_resource(UserProfile, '/me')

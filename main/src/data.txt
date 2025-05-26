@@ -1,5 +1,5 @@
 # Extracted Code (.ts, .tsx, .css)
-# Date and Time: 2025-05-26 02:34:32
+# Date and Time: 2025-05-26 03:06:13
 # Files Included: 28
 
 # === lib/utils.ts ===
@@ -495,12 +495,6 @@ function AdminSidebar() {
                 ))}
             </nav>
             <div className="mt-auto pt-4 border-t border-gray-300 dark:border-gray-600 space-y-2">
-                 <Link href="/"
-                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
-                 >
-                    <Home className="mr-3 h-5 w-5" />
-                    Back to Site
-                 </Link>
                  <Button
                     onClick={async () => {
                         await logout();
@@ -1234,7 +1228,7 @@ export default function AdminDeliveryOptionsPage() {
 # === app/admin/orders/page.tsx ===
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useForm, SubmitHandler } from 'react-hook-form';
@@ -1297,7 +1291,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck } from 'lucide-react';
+import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -1350,6 +1344,7 @@ export default function AdminOrdersPage() {
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   const form = useForm<OrderUpdateFormValues>({
     resolver: zodResolver(orderUpdateFormSchema),
@@ -1406,7 +1401,7 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const openEditDialog = (order: OrderType) => {
+  const openEditDialog = useCallback((order: OrderType) => {
     setEditingOrder(order);
     form.reset({
       status: order.status,
@@ -1414,12 +1409,12 @@ export default function AdminOrdersPage() {
       picked_up_by_id_no: order.picked_up_by_id_no || "",
     });
     setShowEditDialog(true);
-  };
+  }, [form]);
 
-  const openDetailsDialog = (order: OrderType) => {
+  const openDetailsDialog = useCallback((order: OrderType) => {
     setViewingOrderDetails(order);
     setShowDetailsDialog(true);
-  };
+  }, []);
 
   const currentStatus = form.watch('status');
 
@@ -1434,9 +1429,10 @@ export default function AdminOrdersPage() {
       cell: ({ row }: { row: Row<OrderType> }) => <span className="font-mono text-xs">{row.original.id.substring(0,8)}...</span>,
     },
     {
-      accessorKey: "user.email",
+      id: 'customerInfo',
       header: "Customer",
-      cell: ({ row }: { row: Row<OrderType> }) => row.original.user?.email || row.original.user_id.substring(0,8)+'...',
+      accessorFn: (row: OrderType) => row.user?.name || row.user?.email || row.user_id.substring(0,8)+'...',
+      cell: ({ getValue }) => getValue() as string,
     },
     {
       accessorKey: "created_at",
@@ -1449,8 +1445,9 @@ export default function AdminOrdersPage() {
       cell: ({ row }: { row: Row<OrderType> }) => formatPrice(row.original.total_price),
     },
     {
-        accessorKey: "delivery_option_details.name",
+        id: 'deliveryMethod',
         header: "Delivery",
+        accessorFn: (row: OrderType) => row.delivery_option_details?.name || 'N/A',
         cell: ({ row }: { row: Row<OrderType> }) => (
             <div className="text-xs">
                 <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
@@ -1490,7 +1487,7 @@ export default function AdminOrdersPage() {
         </div>
       ),
     },
-  ], []);
+  ], [openDetailsDialog, openEditDialog]);
 
   const table = useReactTable({
     data: orders,
@@ -1501,9 +1498,21 @@ export default function AdminOrdersPage() {
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row: Row<OrderType>, columnId: string, filterValue: string) => {
+        const orderId = row.original.id.toLowerCase();
+        const customerName = row.original.user?.name?.toLowerCase() || '';
+        const customerEmail = row.original.user?.email?.toLowerCase() || '';
+        const searchTerm = filterValue.toLowerCase();
+
+        return orderId.includes(searchTerm) ||
+               customerName.includes(searchTerm) ||
+               customerEmail.includes(searchTerm);
+    },
     state: {
       sorting,
       columnFilters,
+      globalFilter,
     },
   });
 
@@ -1526,11 +1535,8 @@ export default function AdminOrdersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Filter by Order ID or Customer..."
-            value={(table.getColumn("id")?.getFilterValue() as string) ?? (table.getColumn("user.email")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => {
-                const value = event.target.value;
-                table.getColumn("id")?.setFilterValue(value);
-            }}
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-10"
           />
         </div>
@@ -2116,7 +2122,6 @@ export default function AdminArtistsPage() {
 }
 
 # === app/admin/artworks/page.tsx ===
-// === app/admin/artworks/page.tsx ===
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -2259,12 +2264,10 @@ export default function AdminArtworksPage() {
   const { control, handleSubmit, watch, setValue, reset, setError: setFormError, clearErrors, formState: { errors } } = form;
 
   const stockQuantityValue = watch('stock_quantity');
-  const isActiveValue = watch('is_active'); // This is the current value in the form, controlled by RHF
+  const isActiveValue = watch('is_active');
 
   useEffect(() => {
     const stock = Number(stockQuantityValue);
-    // This effect automatically sets 'is_active' to true if stock becomes > 0
-    // AND the form's current 'is_active' value is false.
     if (stock > 0 && !isActiveValue) {
       setValue('is_active', true, { shouldValidate: true, shouldDirty: true });
       toast.info("Artwork automatically set to active due to positive stock quantity.", { duration: 4000 });
@@ -2306,42 +2309,25 @@ export default function AdminArtworksPage() {
     clearErrors();
 
     const currentStock = Number(values.stock_quantity);
-    // payload_is_active_val captures the user's *intent* for is_active from the form submission
     const payload_is_active_val = values.is_active; 
     
-    let finalIsActive = payload_is_active_val; // Start with user's intent
+    let finalIsActive = payload_is_active_val; 
 
-    // Rule: Non-zero stock forces active state, overriding user's intent if they tried to make it inactive with stock
     if (currentStock > 0) {
         finalIsActive = true;
     }
 
-    // Rule: Cannot make an item inactive if it has stock.
-    // This checks if user *intended* to make it inactive (payload_is_active_val is false)
-    // while the stock (currentStock) is positive.
     if (payload_is_active_val === false && currentStock > 0) {
-       toast.error("Cannot set artwork as inactive if stock is greater than 0. Please set stock to 0 first. Artwork will be saved as active due to positive stock.");
-       // No need to setFormError here if we are proceeding with finalIsActive = true,
-       // but it's good to inform the user. The backend will ultimately enforce this.
-       // If we wanted to block submission:
-       // setFormError("is_active", { type: "manual", message: "Must be active if stock > 0." });
-       // setFormError("stock_quantity", { type: "manual", message: "Must be 0 if inactive." });
-       // setIsSubmitting(false);
-       // return;
+       toast.error("Cannot set artwork as inactive if stock is greater than 0. Artwork will be saved as active.");
     }
     
-    // Rule: An item that is ultimately going to be inactive *must* have zero stock.
-    // This is a final sanity check. If finalIsActive is false, currentStock must be 0.
     if (finalIsActive === false && currentStock > 0) {
-        // This state should ideally not be reached if previous logic is correct,
-        // or if backend is primary enforcer. This acts as a safeguard.
         toast.error("Internal validation error: An inactive artwork cannot have stock. Please correct and try again.");
         setFormError("is_active", { type: "manual", message: "Inactive artwork must have 0 stock." });
         setFormError("stock_quantity", { type: "manual", message: "Must be 0 if inactive." });
         setIsSubmitting(false);
         return;
     }
-
 
     if (!editingArtwork && !values.image_file) {
       setFormError("image_file", { type: "manual", message: "Artwork image is required for new artworks." });
@@ -2372,7 +2358,7 @@ export default function AdminArtworksPage() {
     formData.append('artist_id', values.artist_id); 
     formData.append('price', values.price.toString());
     formData.append('stock_quantity', String(currentStock)); 
-    formData.append('is_active', String(finalIsActive)); // Send the resolved active state
+    formData.append('is_active', String(finalIsActive));
     if (values.description) {
       formData.append('description', values.description);
     }
@@ -2406,7 +2392,6 @@ export default function AdminArtworksPage() {
         toast.success("Artwork created successfully!");
       }
 
-      // If backend forced active (finalIsActive became true due to stock, but user's intent was false)
       if (responseArtwork && responseArtwork.is_active && !payload_is_active_val && Number(responseArtwork.stock_quantity) > 0) {
           toast.info("Artwork was set to active by the server because stock is greater than 0.", { duration: 5000 });
       }
@@ -2475,8 +2460,7 @@ export default function AdminArtworksPage() {
       toast.success("Artwork deleted successfully!");
       setArtworkToDelete(null);
       fetchArtworksAndArtists();
-    } catch (error: any)
-       {
+    } catch (error: any) {
       toast.error(error.message || "Failed to delete artwork.");
     } finally {
       setIsSubmitting(false);
@@ -2546,19 +2530,25 @@ export default function AdminArtworksPage() {
     },
     {
       accessorKey: "stock_quantity",
-      header: "Stock",
-      cell: ({ row }: { row: Row<ArtworkType> }) => (
-        <div className="flex flex-col items-center">
-            <span>{row.original.stock_quantity}</span>
-            {row.original.stock_quantity === 0 && row.original.is_active && (
-                <Badge variant="outline" className="mt-1 text-xs border-orange-500 text-orange-600">Out of Stock</Badge>
-            )}
-        </div>
-      )
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+         Stock <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }: { row: Row<ArtworkType> }) => {
+        if (row.original.stock_quantity === 0 && row.original.is_active) {
+            return <Badge variant="outline" className="text-xs border-orange-500 text-orange-600">Out of Stock</Badge>;
+        }
+        return row.original.stock_quantity;
+      }
     },
     {
       accessorKey: "is_active",
-      header: "Status",
+      header: ({ column }: { column: Column<ArtworkType, unknown> }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Status <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }: { row: Row<ArtworkType> }) => (
         <Badge variant={row.original.is_active ? "default" : "secondary"}>
           {row.original.is_active ? "Active" : "Inactive"}
@@ -4821,11 +4811,17 @@ export default function ArtworkDetailPage() {
           <div className="flex items-center space-x-2">
               {isOutOfStock ? <PackageX className="h-5 w-5 text-orange-600" /> : <PackageCheck className="h-5 w-5 text-green-600" />}
               <p className={cn("text-sm font-medium", isOutOfStock ? "text-orange-600" : "text-green-700")}>
-                  {isOutOfStock ? "Out of Stock" : `In Stock (${artwork.stock_quantity} available)`}
+                  {isOutOfStock ? "Out of Stock" : 
+                   (artwork.stock_quantity < 5 ? `Only ${artwork.stock_quantity} left in stock!` : `In Stock (${artwork.stock_quantity} available)`)
+                  }
               </p>
           </div>
-          {!artwork.is_active && ( // Public user sees this if somehow landed on an inactive item page (should be rare)
+          
+          {!artwork.is_active && !isAdmin && (
               <Badge variant="destructive">Currently Unavailable</Badge>
+          )}
+          {artwork.artist && !artwork.artist.is_active && !isAdmin && (
+              <Badge variant="destructive">Artist Unavailable</Badge>
           )}
 
 
@@ -4863,11 +4859,7 @@ export default function ArtworkDetailPage() {
                    Out of Stock
                 </Button>
               )}
-              {!isOutOfStock && artwork.stock_quantity < 5 && (
-                <p className="text-sm text-orange-600">
-                  Only {artwork.stock_quantity} left in stock!
-                </p>
-              )}
+              {/* Removed the redundant stock message here, it's covered by the one above now */}
             </div>
           )}
            {!isAdmin && !isPubliclyVisibleAndPurchaseable && ( 

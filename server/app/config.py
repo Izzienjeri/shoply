@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from datetime import timedelta
 
 load_dotenv()
 
@@ -17,8 +18,17 @@ class Config:
         f"mysql+pymysql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}"
     )
 
+    JWT_TOKEN_LOCATION = ["headers"]
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
+
+    JWT_REFRESH_COOKIE_PATH = "/api/auth/refresh"
+    JWT_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'
+    JWT_COOKIE_SAMESITE = "Lax"
+    JWT_COOKIE_HTTPONLY = True
+
     JWT_BLACKLIST_ENABLED = True
-    JWT_BLACKLIST_TOKEN_CHECKS = ['access']
+    JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
 
     DARAJA_ENVIRONMENT = os.getenv('DARAJA_ENVIRONMENT', 'sandbox')
     DARAJA_CONSUMER_KEY = os.getenv('DARAJA_CONSUMER_KEY')

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useForm, SubmitHandler } from 'react-hook-form';
@@ -63,7 +63,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck } from 'lucide-react';
+import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -116,6 +116,7 @@ export default function AdminOrdersPage() {
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   const form = useForm<OrderUpdateFormValues>({
     resolver: zodResolver(orderUpdateFormSchema),
@@ -172,7 +173,7 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const openEditDialog = (order: OrderType) => {
+  const openEditDialog = useCallback((order: OrderType) => {
     setEditingOrder(order);
     form.reset({
       status: order.status,
@@ -180,12 +181,12 @@ export default function AdminOrdersPage() {
       picked_up_by_id_no: order.picked_up_by_id_no || "",
     });
     setShowEditDialog(true);
-  };
+  }, [form]);
 
-  const openDetailsDialog = (order: OrderType) => {
+  const openDetailsDialog = useCallback((order: OrderType) => {
     setViewingOrderDetails(order);
     setShowDetailsDialog(true);
-  };
+  }, []);
 
   const currentStatus = form.watch('status');
 
@@ -200,9 +201,10 @@ export default function AdminOrdersPage() {
       cell: ({ row }: { row: Row<OrderType> }) => <span className="font-mono text-xs">{row.original.id.substring(0,8)}...</span>,
     },
     {
-      accessorKey: "user.email",
+      id: 'customerInfo',
       header: "Customer",
-      cell: ({ row }: { row: Row<OrderType> }) => row.original.user?.email || row.original.user_id.substring(0,8)+'...',
+      accessorFn: (row: OrderType) => row.user?.name || row.user?.email || row.user_id.substring(0,8)+'...',
+      cell: ({ getValue }) => getValue() as string,
     },
     {
       accessorKey: "created_at",
@@ -215,8 +217,9 @@ export default function AdminOrdersPage() {
       cell: ({ row }: { row: Row<OrderType> }) => formatPrice(row.original.total_price),
     },
     {
-        accessorKey: "delivery_option_details.name",
+        id: 'deliveryMethod',
         header: "Delivery",
+        accessorFn: (row: OrderType) => row.delivery_option_details?.name || 'N/A',
         cell: ({ row }: { row: Row<OrderType> }) => (
             <div className="text-xs">
                 <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
@@ -256,7 +259,7 @@ export default function AdminOrdersPage() {
         </div>
       ),
     },
-  ], []);
+  ], [openDetailsDialog, openEditDialog]);
 
   const table = useReactTable({
     data: orders,
@@ -267,9 +270,21 @@ export default function AdminOrdersPage() {
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row: Row<OrderType>, columnId: string, filterValue: string) => {
+        const orderId = row.original.id.toLowerCase();
+        const customerName = row.original.user?.name?.toLowerCase() || '';
+        const customerEmail = row.original.user?.email?.toLowerCase() || '';
+        const searchTerm = filterValue.toLowerCase();
+
+        return orderId.includes(searchTerm) ||
+               customerName.includes(searchTerm) ||
+               customerEmail.includes(searchTerm);
+    },
     state: {
       sorting,
       columnFilters,
+      globalFilter,
     },
   });
 
@@ -292,11 +307,8 @@ export default function AdminOrdersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Filter by Order ID or Customer..."
-            value={(table.getColumn("id")?.getFilterValue() as string) ?? (table.getColumn("user.email")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => {
-                const value = event.target.value;
-                table.getColumn("id")?.setFilterValue(value);
-            }}
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-10"
           />
         </div>
