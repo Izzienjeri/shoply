@@ -18,9 +18,6 @@ import {
   SortingState,
   ColumnFiltersState,
   Row,
-  Column,
-  HeaderGroup,
-  Cell,
 } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -64,7 +61,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Edit3, Eye, Search, ArrowUpDown, Loader2, Truck, PackageCheck, XOctagon, History, ShieldCheck, Info, ImageOff, ShoppingBag } from 'lucide-react';
+import { Edit3, Eye, Search, ArrowUpDown, Loader2, ShoppingBag, ImageOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 const orderUpdateFormSchema = z.object({
@@ -74,11 +71,11 @@ const orderUpdateFormSchema = z.object({
 });
 type OrderUpdateFormValues = z.infer<typeof orderUpdateFormSchema>;
 
-const placeholderImage = "/placeholder-image.svg";
+const placeholderImage = "/images/placeholder-artwork.png";
 
 function OrderItemDetailsCard({ item }: { item: OrderItemType }) {
   return (
-    <div className="flex items-center space-x-3 py-2 border-b last:border-b-0 border-border/70">
+    <div className="flex items-center space-x-3 py-2 border-b last:border-b-0 border-border/70 dark:border-border/50">
       <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
         <Image
           src={item.artwork.image_url || placeholderImage}
@@ -91,33 +88,32 @@ function OrderItemDetailsCard({ item }: { item: OrderItemType }) {
          {!item.artwork.image_url && <ImageOff className="absolute inset-0 m-auto h-5 w-5 text-muted-foreground" />}
       </div>
       <div className="flex-1 space-y-0.5">
-        <p className="text-sm font-medium">{item.artwork.name}</p>
+        <p className="text-sm font-medium text-foreground">{item.artwork.name}</p>
         <p className="text-xs text-muted-foreground">Qty: {item.quantity} @ {formatPrice(item.price_at_purchase)}</p>
       </div>
-      <div className="text-sm font-medium">{formatPrice(parseFloat(item.price_at_purchase) * item.quantity)}</div>
+      <div className="text-sm font-medium text-foreground">{formatPrice(parseFloat(item.price_at_purchase) * item.quantity)}</div>
     </div>
   );
 }
 
 function OrderTableSkeleton() {
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <div className="flex justify-between items-center">
-                 <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><ShoppingBag className="mr-3 h-7 w-7"/>Manage Orders</h1>
-                <Skeleton className="h-10 w-36 rounded-md" />
+                 <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><ShoppingBag className="mr-3 h-7 w-7"/>Manage Orders</h1>
             </div>
-            <Skeleton className="h-10 w-full rounded-md" />
-            <div className="rounded-lg border">
+            <Skeleton className="h-10 w-full max-w-sm rounded-md bg-muted" />
+            <div className="rounded-lg border bg-card shadow-md">
                 <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-muted/50">
                         <TableRow>
-                            {Array.from({length: 7}).map((_, i) => <TableHead key={i}><Skeleton className="h-5 w-20" /></TableHead>)}
+                            {Array.from({length: 7}).map((_, i) => <TableHead key={i}><Skeleton className="h-5 w-20 bg-muted" /></TableHead>)}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {Array.from({length: 5}).map((_, i) => (
                             <TableRow key={i}>
-                                {Array.from({length: 7}).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>)}
+                                {Array.from({length: 7}).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full bg-muted" /></TableCell>)}
                             </TableRow>
                         ))}
                     </TableBody>
@@ -239,35 +235,35 @@ export default function AdminOrdersPage() {
     {
       accessorKey: "id",
       header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Order ID <ArrowUpDown className="ml-2 h-4 w-4" />
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+          Order ID <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
-      cell: ({ row }) => <span className="font-mono text-xs">{row.original.id.substring(0,8)}...</span>,
+      cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.id.substring(0,8)}...</span>,
     },
     {
       id: 'customerInfo',
       header: "Customer",
       accessorFn: (row) => row.user?.name || row.user?.email || row.user_id.substring(0,8)+'...',
-      cell: ({ getValue }) => <span className="text-xs">{getValue() as string}</span>,
+      cell: ({ getValue }) => <span className="text-xs text-foreground">{getValue() as string}</span>,
     },
     {
       accessorKey: "created_at",
       header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-            Date Placed <ArrowUpDown className="ml-2 h-4 w-4" />
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+            Date <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
-      cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
+      cell: ({ row }) => <span className="text-xs">{new Date(row.original.created_at).toLocaleDateString()}</span>,
     },
     {
       accessorKey: "total_price",
       header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-            Total <ArrowUpDown className="ml-2 h-4 w-4" />
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+            Total <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
-      cell: ({ row }) => formatPrice(row.original.total_price),
+      cell: ({ row }) => <span className="text-xs font-medium">{formatPrice(row.original.total_price)}</span>,
     },
     {
         id: 'deliveryMethod',
@@ -275,9 +271,9 @@ export default function AdminOrdersPage() {
         accessorFn: (row) => row.delivery_option_details?.name || 'N/A',
         cell: ({ row }) => (
             <div className="text-xs">
-                <p>{row.original.delivery_option_details?.name || 'N/A'}</p>
+                <p className="text-foreground">{row.original.delivery_option_details?.name || 'N/A'}</p>
                 { (row.original.is_pickup_order ?? row.original.delivery_option_details?.is_pickup) && 
-                  <Badge variant="outline" className="mt-1 text-xs">Pickup</Badge>
+                  <Badge variant="outline" className="mt-1 text-xs border-purple-500 text-purple-600 dark:border-purple-400 dark:text-purple-400">Pickup</Badge>
                 }
             </div>
         ),
@@ -285,19 +281,18 @@ export default function AdminOrdersPage() {
     {
       accessorKey: "status",
       header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-            Status <ArrowUpDown className="ml-2 h-4 w-4" />
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+            Status <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
       cell: ({ row }) => (
         <Badge
-          variant={
-            row.original.status === 'paid' || row.original.status === 'delivered' || row.original.status === 'picked_up' ? 'default' :
-            row.original.status === 'pending' ? 'secondary' :
-            row.original.status === 'shipped' ? 'outline' :
-            'destructive'
-          }
-          className="capitalize text-xs"
+          className={cn("capitalize text-xs px-2 py-0.5 shadow-sm",
+            (row.original.status === 'paid' || row.original.status === 'delivered' || row.original.status === 'picked_up') && "bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-700",
+            row.original.status === 'shipped' && "border-blue-500/80 text-blue-600 dark:text-blue-400 dark:border-blue-400/80 bg-blue-500/10",
+            row.original.status === 'pending' && "bg-yellow-500/80 hover:bg-yellow-600 text-yellow-900 dark:text-yellow-100 dark:bg-yellow-600 dark:hover:bg-yellow-700",
+            row.original.status === 'cancelled' && "bg-red-500 hover:bg-red-600 text-white dark:bg-red-600 dark:hover:bg-red-700"
+          )}
         >
           {row.original.status.replace('_', ' ')}
         </Badge>
@@ -306,14 +301,14 @@ export default function AdminOrdersPage() {
     },
     {
       id: "actions",
-      header: () => <div className="text-right">Actions</div>,
+      header: () => <div className="text-right text-xs sm:text-sm">Actions</div>,
       cell: ({ row }) => (
         <div className="flex space-x-1 justify-end">
-          <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(row.original)} title="View Details">
-            <Eye className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(row.original)} title="View Details" className="h-8 w-8 hover:bg-accent group">
+            <Eye className="h-4 w-4 text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit Status">
-            <Edit3 className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit Status" className="h-8 w-8 hover:bg-accent group">
+            <Edit3 className="h-4 w-4 text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400" />
           </Button>
         </div>
       ),
@@ -352,12 +347,12 @@ export default function AdminOrdersPage() {
   }
   
   if (error) {
-    return <div className="text-red-500 p-4">Error loading orders: {error.message} <Button onClick={() => refetch()} className="ml-2 rounded-md">Retry</Button></div>;
+    return <div className="text-red-500 p-4">Error loading orders: {error.message} <Button onClick={() => refetch()} className="ml-2 rounded-md bg-destructive hover:bg-destructive/90 text-destructive-foreground">Retry</Button></div>;
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><ShoppingBag className="mr-3 h-7 w-7"/>Manage Orders</h1>
+      <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><ShoppingBag className="mr-3 h-7 w-7"/>Manage Orders</h1>
 
       <div className="flex items-center py-4">
         <div className="relative w-full max-w-sm">
@@ -366,7 +361,7 @@ export default function AdminOrdersPage() {
             placeholder="Filter by Order ID or Customer..."
             value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
-            className="pl-10 rounded-md"
+            className="pl-10 rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600"
           />
         </div>
       </div>
@@ -377,7 +372,7 @@ export default function AdminOrdersPage() {
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="px-3 py-3 text-sm font-semibold text-muted-foreground">
+                  <TableHead key={header.id} className="px-3 py-3 text-sm font-semibold text-muted-foreground whitespace-nowrap">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -387,9 +382,9 @@ export default function AdminOrdersPage() {
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
+                <TableRow key={row.id} className="hover:bg-muted/30 dark:hover:bg-muted/20 transition-colors">
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle">
+                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle text-xs">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -397,7 +392,7 @@ export default function AdminOrdersPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
                   No orders found.
                 </TableCell>
               </TableRow>
@@ -417,8 +412,8 @@ export default function AdminOrdersPage() {
       }}>
         <DialogContent className="sm:max-w-md rounded-lg">
           <DialogHeader>
-            <DialogTitle className="font-serif">Update Order Status</DialogTitle>
-            <DialogDescription>Order ID: {editingOrder?.id.substring(0,8)}... ({ (editingOrder?.is_pickup_order ?? editingOrder?.delivery_option_details?.is_pickup) ? "Pickup Order" : "Delivery Order"})</DialogDescription>
+            <DialogTitle className="font-serif text-purple-600 dark:text-purple-400">Update Order Status</DialogTitle>
+            <DialogDescription>Order ID: <span className="font-mono">{editingOrder?.id.substring(0,8)}...</span> ({ (editingOrder?.is_pickup_order ?? editingOrder?.delivery_option_details?.is_pickup) ? "Pickup Order" : "Delivery Order"})</DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleUpdateSubmit)} className="space-y-4 py-4">
@@ -429,7 +424,7 @@ export default function AdminOrdersPage() {
                   <FormItem>
                     <FormLabel>Status</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl><SelectTrigger className="rounded-md"><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600"><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
                       <SelectContent className="rounded-md">
                         {availableStatusesForEdit.map(s => (
                           <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
@@ -448,7 +443,7 @@ export default function AdminOrdersPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Picked Up By (Name)</FormLabel>
-                        <FormControl><Input placeholder="Full name of collector" {...field} value={field.value || ''} className="rounded-md" /></FormControl>
+                        <FormControl><Input placeholder="Full name of collector" {...field} value={field.value || ''} className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -459,16 +454,20 @@ export default function AdminOrdersPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Picker's ID Number</FormLabel>
-                        <FormControl><Input placeholder="ID or Passport No." {...field} value={field.value || ''} className="rounded-md" /></FormControl>
+                        <FormControl><Input placeholder="ID or Passport No." {...field} value={field.value || ''} className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </>
               )}
-              <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={updateOrderMutation.isPending} className="rounded-md shadow hover:shadow-md">
+              <DialogFooter className="pt-4">
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md border-purple-500/70 text-purple-600 hover:bg-purple-500/10 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-400/10">Cancel</Button></DialogClose>
+                <Button 
+                    type="submit" 
+                    disabled={updateOrderMutation.isPending} 
+                    className="rounded-md bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:from-purple-700 hover:via-fuchsia-600 hover:to-pink-600 text-white shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:scale-[1.02] active:scale-95"
+                >
                   {updateOrderMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Update Status
                 </Button>
@@ -479,45 +478,45 @@ export default function AdminOrdersPage() {
       </Dialog>
 
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg">
-            <DialogHeader>
-                <DialogTitle className="font-serif">Order Details: {viewingOrderDetails?.id.substring(0,8)}...</DialogTitle>
+        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg p-0">
+            <DialogHeader className="p-6 pb-4 border-b border-border/70 dark:border-border/50">
+                <DialogTitle className="font-serif text-purple-600 dark:text-purple-400 text-xl">Order Details: <span className="font-mono text-muted-foreground">{viewingOrderDetails?.id.substring(0,8)}...</span></DialogTitle>
             </DialogHeader>
             {viewingOrderDetails && (
-                <div className="py-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div><strong>Order ID:</strong> {viewingOrderDetails.id}</div>
-                        <div><strong>Date:</strong> {new Date(viewingOrderDetails.created_at).toLocaleString()}</div>
-                        <div><strong>Customer:</strong> {viewingOrderDetails.user?.name || viewingOrderDetails.user?.email || 'N/A'}</div>
-                        <div><strong>Status:</strong> <Badge className="capitalize text-xs">{viewingOrderDetails.status.replace('_',' ')}</Badge></div>
-                        <div><strong>Total Amount:</strong> {formatPrice(viewingOrderDetails.total_price)}</div>
-                        <div><strong>M-Pesa Ref:</strong> {viewingOrderDetails.payment_gateway_ref || 'N/A'}</div>
+                <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                        <div className="space-y-0.5"><strong className="text-muted-foreground">Order ID:</strong> <span className="font-mono text-foreground">{viewingOrderDetails.id}</span></div>
+                        <div className="space-y-0.5"><strong className="text-muted-foreground">Date:</strong> <span className="text-foreground">{new Date(viewingOrderDetails.created_at).toLocaleString()}</span></div>
+                        <div className="space-y-0.5"><strong className="text-muted-foreground">Customer:</strong> <span className="text-foreground">{viewingOrderDetails.user?.name || viewingOrderDetails.user?.email || 'N/A'}</span></div>
+                        <div className="space-y-0.5"><strong className="text-muted-foreground">Status:</strong> <Badge className={cn("capitalize text-xs px-2 py-0.5 shadow-sm", (viewingOrderDetails.status === 'paid' || viewingOrderDetails.status === 'delivered' || viewingOrderDetails.status === 'picked_up') && "bg-green-500 text-white", viewingOrderDetails.status === 'shipped' && "border-blue-500/80 text-blue-600 bg-blue-500/10", viewingOrderDetails.status === 'pending' && "bg-yellow-500/80 text-yellow-900", viewingOrderDetails.status === 'cancelled' && "bg-red-500 text-white" )}>{viewingOrderDetails.status.replace('_',' ')}</Badge></div>
+                        <div className="space-y-0.5"><strong className="text-muted-foreground">Total Amount:</strong> <span className="font-semibold text-foreground">{formatPrice(viewingOrderDetails.total_price)}</span></div>
+                        <div className="space-y-0.5"><strong className="text-muted-foreground">M-Pesa Ref:</strong> <span className="text-foreground">{viewingOrderDetails.payment_gateway_ref || 'N/A'}</span></div>
                     </div>
-                    <Separator />
+                    <Separator className="my-3 dark:bg-border/40" />
                     <div>
-                        <h4 className="font-semibold mb-1">Delivery Details:</h4>
-                        <p className="text-sm"><strong>Method:</strong> {viewingOrderDetails.delivery_option_details?.name || 'N/A'}</p>
-                        <p className="text-sm"><strong>Fee:</strong> {formatPrice(viewingOrderDetails.delivery_fee || '0')}</p>
-                        <p className="text-sm"><strong>Address:</strong> {viewingOrderDetails.shipping_address || 'N/A'}</p>
+                        <h4 className="font-semibold mb-1.5 text-foreground">Delivery Details:</h4>
+                        <p className="text-sm text-muted-foreground"><strong>Method:</strong> {viewingOrderDetails.delivery_option_details?.name || 'N/A'} {(viewingOrderDetails.is_pickup_order || viewingOrderDetails.delivery_option_details?.is_pickup) && <Badge variant="outline" className="ml-1 text-xs border-purple-500 text-purple-600 dark:border-purple-400 dark:text-purple-400">Pickup</Badge>}</p>
+                        <p className="text-sm text-muted-foreground"><strong>Fee:</strong> {formatPrice(viewingOrderDetails.delivery_fee || '0')}</p>
+                        <p className="text-sm text-muted-foreground"><strong>Address:</strong> {viewingOrderDetails.shipping_address || 'N/A'}</p>
                          { (viewingOrderDetails.is_pickup_order ?? viewingOrderDetails.delivery_option_details?.is_pickup) && viewingOrderDetails.status === 'picked_up' && (
                             <>
-                                <p className="text-sm mt-1"><strong>Picked Up By:</strong> {viewingOrderDetails.picked_up_by_name || 'N/A'}</p>
-                                <p className="text-sm"><strong>Picker's ID:</strong> {viewingOrderDetails.picked_up_by_id_no || 'N/A'}</p>
-                                <p className="text-sm"><strong>Picked Up At:</strong> {viewingOrderDetails.picked_up_at ? new Date(viewingOrderDetails.picked_up_at).toLocaleString() : 'N/A'}</p>
+                                <p className="text-sm mt-1 text-muted-foreground"><strong>Picked Up By:</strong> {viewingOrderDetails.picked_up_by_name || 'N/A'}</p>
+                                <p className="text-sm text-muted-foreground"><strong>Picker's ID:</strong> {viewingOrderDetails.picked_up_by_id_no || 'N/A'}</p>
+                                <p className="text-sm text-muted-foreground"><strong>Picked Up At:</strong> {viewingOrderDetails.picked_up_at ? new Date(viewingOrderDetails.picked_up_at).toLocaleString() : 'N/A'}</p>
                             </>
                          )}
                     </div>
-                     <Separator />
+                     <Separator className="my-3 dark:bg-border/40" />
                     <div>
-                        <h4 className="font-semibold mb-2">Items:</h4>
-                        <div className="space-y-2">
+                        <h4 className="font-semibold mb-2 text-foreground">Items:</h4>
+                        <div className="space-y-1">
                             {viewingOrderDetails.items.map(item => <OrderItemDetailsCard key={item.id} item={item} />)}
                         </div>
                     </div>
                 </div>
             )}
-            <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Close</Button></DialogClose>
+            <DialogFooter className="p-4 border-t border-border/70 dark:border-border/50 bg-muted/30 dark:bg-muted/20">
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md border-purple-500/70 text-purple-600 hover:bg-purple-500/10 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-400/10">Close</Button></DialogClose>
             </DialogFooter>
         </DialogContent>
       </Dialog>

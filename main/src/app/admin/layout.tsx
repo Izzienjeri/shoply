@@ -77,7 +77,7 @@ function AdminSidebar({ isMobile, onLinkClick }: { isMobile: boolean, onLinkClic
     return (
         <motion.aside 
             className={cn(
-                "bg-sidebar dark:bg-gray-900 p-5 border-r border-sidebar-border dark:border-gray-700/60 flex flex-col shadow-lg",
+                "bg-sidebar dark:bg-sidebar p-5 border-r border-sidebar-border dark:border-sidebar-border flex flex-col shadow-lg",
                 isMobile ? "fixed inset-y-0 left-0 z-50 w-64" : "w-64 sticky top-0 h-screen"
             )}
             variants={sidebarVariants}
@@ -99,19 +99,19 @@ function AdminSidebar({ isMobile, onLinkClick }: { isMobile: boolean, onLinkClic
                             key={item.label}
                             variants={navItemVariants}
                             whileHover="hover"
-                            animate={isActive ? "active" : "visible"}
+                            animate={isActive ? "active" : "visible"} 
                         >
                             <Link 
                                 href={item.href}
                                 onClick={handleLinkClick}
                                 className={cn(
-                                    "flex items-center px-3.5 py-2.5 text-sm font-medium rounded-md transition-all duration-150 ease-out",
+                                    "flex items-center px-3.5 py-2.5 text-sm font-medium rounded-md transition-all duration-150 ease-out group",
                                     isActive 
-                                        ? "font-semibold"
-                                        : "text-sidebar-foreground/80"
+                                        ? "font-semibold" 
+                                        : "text-sidebar-foreground/80" 
                                 )}
                             >
-                                <item.icon className={cn("mr-3 h-5 w-5 flex-shrink-0", isActive ? "text-inherit" : "text-sidebar-foreground/60 group-hover:text-inherit")} />
+                                <item.icon className={cn("mr-3 h-5 w-5 flex-shrink-0", isActive ? "text-inherit" : "text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground transition-colors duration-150")} />
                                 <span className="flex-grow">{item.label}</span>
                                 {item.badgeCount === -1 && (
                                     <Badge variant="secondary" className="ml-auto h-5 w-5 animate-pulse bg-muted-foreground/20 p-0" />
@@ -130,7 +130,7 @@ function AdminSidebar({ isMobile, onLinkClick }: { isMobile: boolean, onLinkClic
                 initial={{ opacity: 0}} 
                 animate={{ opacity: 1}} 
                 transition={{ delay: 0.3 + navItems.length * 0.05}}
-                className="mt-auto pt-5 border-t border-sidebar-border/50 dark:border-gray-600/50"
+                className="mt-auto pt-5 border-t border-sidebar-border/50 dark:border-sidebar-border/50"
             >
                  <Button
                     onClick={async () => { 
@@ -157,11 +157,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <AdminGuard>
-      <div className="min-h-screen flex flex-col bg-muted/30 dark:bg-gray-950 relative">
+      <div className="min-h-screen flex flex-col bg-background relative">
         {isMobile && (
           <header className="sticky top-0 z-40 flex items-center justify-between p-4 bg-card border-b border-border md:hidden">
             <Link href="/admin" onClick={closeSidebar}>
-                <h1 className="text-lg font-bold font-serif text-primary">Artistry Haven Admin</h1>
+                <h1 className="text-lg font-bold font-serif text-purple-600 dark:text-purple-400">Artistry Haven Admin</h1>
             </Link>
             <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Toggle sidebar">
               {isSidebarOpen ? <XIcon className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -182,8 +182,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               />
             )}
           <main className={cn(
-            "flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto",
-            isMobile && "pt-4"
+            "flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto overflow-x-hidden",
+            isMobile && "pt-4" 
           )}>
             {children}
           </main>

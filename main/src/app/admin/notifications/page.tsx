@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
@@ -15,21 +15,20 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 
 const getNotificationIcon = (type: NotificationMessageType, className?: string) => {
     const baseClasses = "h-5 w-5 flex-shrink-0";
     switch (type) {
-        case 'new_order': return <ShoppingCart className={cn(baseClasses, "text-blue-500", className)} />;
-        case 'order_update': return <Edit className={cn(baseClasses, "text-green-500", className)} />;
-        case 'artwork_update': return <Package className={cn(baseClasses, "text-purple-500", className)} />;
-        case 'artist_update': return <User className={cn(baseClasses, "text-indigo-500", className)} />;
-        case 'delivery_option_update': return <SettingsIcon className={cn(baseClasses, "text-teal-500", className)} />;
-        case 'success': return <MailCheck className={cn(baseClasses, "text-green-500", className)} />;
-        case 'warning': return <AlertTriangle className={cn(baseClasses, "text-yellow-500", className)} />;
-        case 'error': return <CircleAlert className={cn(baseClasses, "text-red-500", className)} />;
-        default: return <Info className={cn(baseClasses, "text-gray-500", className)} />;
+        case 'new_order': return <ShoppingCart className={cn(baseClasses, "text-blue-500 dark:text-blue-400", className)} />;
+        case 'order_update': return <Edit className={cn(baseClasses, "text-green-500 dark:text-green-400", className)} />;
+        case 'artwork_update': return <Package className={cn(baseClasses, "text-purple-500 dark:text-purple-400", className)} />;
+        case 'artist_update': return <User className={cn(baseClasses, "text-indigo-500 dark:text-indigo-400", className)} />;
+        case 'delivery_option_update': return <SettingsIcon className={cn(baseClasses, "text-teal-500 dark:text-teal-400", className)} />;
+        case 'success': return <MailCheck className={cn(baseClasses, "text-green-500 dark:text-green-400", className)} />;
+        case 'warning': return <AlertTriangle className={cn(baseClasses, "text-yellow-500 dark:text-yellow-400", className)} />;
+        case 'error': return <CircleAlert className={cn(baseClasses, "text-red-500 dark:text-red-400", className)} />;
+        default: return <Info className={cn(baseClasses, "text-gray-500 dark:text-gray-400", className)} />;
     }
 };
 
@@ -49,24 +48,24 @@ function NotificationItemRow({ notification, onMarkRead }: { notification: Notif
     
     const itemContent = (
         <div className={cn(
-            "flex items-start space-x-4 p-4 border-b last:border-b-0 border-border/70 hover:bg-muted/50 transition-colors",
-            !notification.read_at && "bg-primary/5 hover:bg-primary/10"
+            "flex items-start space-x-4 p-4 border-b last:border-b-0 border-border/70 dark:border-border/50 hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors",
+            !notification.read_at && "bg-purple-500/5 dark:bg-purple-400/10 hover:bg-purple-500/10 dark:hover:bg-purple-400/15"
         )}>
             <div className="mt-1">{getNotificationIcon(notification.type)}</div>
             <div className="flex-1 min-w-0">
-                <p className={cn("text-sm break-words", !notification.read_at && "font-semibold")}>{notification.message}</p>
+                <p className={cn("text-sm break-words text-foreground", !notification.read_at && "font-semibold")}>{notification.message}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                     {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
                 </p>
             </div>
             <div className="flex-shrink-0">
                 {!notification.read_at ? (
-                    <Button variant="ghost" size="sm" onClick={handleMarkReadClick} disabled={isMarkingRead} className="text-xs h-7 px-2 rounded-md">
+                    <Button variant="ghost" size="sm" onClick={handleMarkReadClick} disabled={isMarkingRead} className="text-xs h-7 px-2 rounded-md text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 dark:hover:bg-purple-400/10 hover:text-purple-700 dark:hover:text-purple-300">
                         {isMarkingRead ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCheck className="h-3 w-3 mr-1" />}
                         Mark Read
                     </Button>
                 ) : (
-                    <Badge variant="outline" className="text-xs">Read</Badge>
+                    <Badge variant="outline" className="text-xs border-border text-muted-foreground">Read</Badge>
                 )}
             </div>
         </div>
@@ -74,12 +73,12 @@ function NotificationItemRow({ notification, onMarkRead }: { notification: Notif
 
     if (notification.link) {
         return (
-            <Link href={notification.link} className="block focus:outline-none focus:ring-1 focus:ring-ring rounded-md">
+            <Link href={notification.link} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded-md">
                 {itemContent}
             </Link>
         );
     }
-    return <div className="block focus:outline-none focus:ring-1 focus:ring-ring rounded-md">{itemContent}</div>;
+    return <div className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded-md">{itemContent}</div>;
 }
 
 
@@ -130,7 +129,7 @@ export default function AdminNotificationsPage() {
     });
     
     const notifications = paginatedResponse?.notifications || [];
-    const totalUnreadInScope = paginatedResponse?.unread_count ?? 0;
+    const currentUnreadInScope = paginatedResponse?.unread_count ?? 0;
 
     const handleMarkNotificationAsRead = async (id: string): Promise<void> => {
         try {
@@ -144,17 +143,17 @@ export default function AdminNotificationsPage() {
         return (
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <Skeleton className="h-8 w-48" />
-                    <div className="flex space-x-2"><Skeleton className="h-9 w-20 rounded-md" /><Skeleton className="h-9 w-20 rounded-md" /></div>
+                     <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><Bell className="mr-3 h-7 w-7"/>Notifications</h1>
+                    <div className="flex space-x-2"><Skeleton className="h-9 w-24 rounded-md bg-muted" /><Skeleton className="h-9 w-24 rounded-md bg-muted" /><Skeleton className="h-9 w-9 rounded-md bg-muted"/></div>
                 </div>
-                <Card className="rounded-lg">
-                    <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+                <Card className="rounded-lg shadow-md">
+                    <CardHeader className="border-b border-border/70 dark:border-border/50"><Skeleton className="h-6 w-1/3 bg-muted" /></CardHeader>
                     <CardContent className="p-0">
                         {[...Array(5)].map((_, i) => (
-                            <div key={i} className="flex items-start space-x-4 p-4 border-b border-border/70">
-                                <Skeleton className="h-6 w-6 rounded-full mt-1" />
-                                <div className="flex-1 space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div>
-                                <Skeleton className="h-7 w-20 rounded-md" />
+                            <div key={i} className="flex items-start space-x-4 p-4 border-b border-border/70 dark:border-border/50">
+                                <Skeleton className="h-6 w-6 rounded-full mt-1 bg-muted" />
+                                <div className="flex-1 space-y-2"><Skeleton className="h-4 w-3/4 bg-muted" /><Skeleton className="h-3 w-1/2 bg-muted" /></div>
+                                <Skeleton className="h-7 w-20 rounded-md bg-muted" />
                             </div>
                         ))}
                     </CardContent>
@@ -164,29 +163,29 @@ export default function AdminNotificationsPage() {
     }
     
     if (error) {
-        return <div className="text-red-500">Error loading notifications: {error.message}</div>;
+        return <div className="text-red-500 p-4">Error loading notifications: {error.message} <Button onClick={() => refetch()} className="ml-2 rounded-md bg-destructive hover:bg-destructive/90 text-destructive-foreground">Retry</Button></div>;
     }
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                <h1 className="text-3xl font-bold tracking-tight font-serif text-primary mb-4 sm:mb-0 flex items-center"><Bell className="mr-3 h-7 w-7"/>Notifications</h1>
+                <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 mb-4 sm:mb-0 flex items-center"><Bell className="mr-3 h-7 w-7"/>Notifications</h1>
                 <div className="flex items-center space-x-2">
                     <Button 
                         variant={showUnreadOnly ? "default" : "outline"} 
                         size="sm" 
                         onClick={() => { setShowUnreadOnly(true); setCurrentPage(1); }}
                         disabled={isFetching}
-                        className="rounded-md"
+                        className={cn("rounded-md shadow-sm", showUnreadOnly && "bg-purple-600 hover:bg-purple-700 text-white dark:bg-purple-500 dark:hover:bg-purple-600")}
                     >
-                        Unread {totalUnreadInScope > 0 && <Badge variant="secondary" className="ml-1.5 text-xs">{totalUnreadInScope}</Badge>}
+                        Unread {currentUnreadInScope > 0 && <Badge variant={showUnreadOnly ? "secondary": "default"} className="ml-1.5 text-xs">{currentUnreadInScope}</Badge>}
                     </Button>
                     <Button 
                         variant={!showUnreadOnly ? "default" : "outline"} 
                         size="sm"
                         onClick={() => { setShowUnreadOnly(false); setCurrentPage(1); }}
                         disabled={isFetching}
-                        className="rounded-md"
+                        className={cn("rounded-md shadow-sm", !showUnreadOnly && "bg-purple-600 hover:bg-purple-700 text-white dark:bg-purple-500 dark:hover:bg-purple-600")}
                     >
                         All
                     </Button>
@@ -194,29 +193,30 @@ export default function AdminNotificationsPage() {
                         variant="outline"
                         size="icon"
                         onClick={() => refetch()}
-                        disabled={isFetching}
+                        disabled={isFetching || isLoading}
                         title="Refresh notifications"
-                        className="rounded-md"
+                        className="rounded-md shadow-sm"
                      >
-                        {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        {isFetching || isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                      </Button>
                 </div>
             </div>
 
             <Card className="rounded-lg shadow-md">
-                <CardHeader className="flex flex-row justify-between items-center">
+                <CardHeader className="flex flex-row justify-between items-center border-b border-border/70 dark:border-border/50">
                     <div>
-                        <CardTitle className="font-serif">Notification List</CardTitle>
-                        <CardDescription>
+                        <CardTitle className="font-serif text-purple-600 dark:text-purple-400">Notification List</CardTitle>
+                        <CardDescription className="text-muted-foreground">
                             {showUnreadOnly ? `Showing unread notifications.` : `Showing all notifications.`}
                         </CardDescription>
                     </div>
-                    {totalUnreadInScope > 0 && (
+                    {currentUnreadInScope > 0 && (
                         <Button 
                             variant="link" 
                             size="sm" 
                             onClick={() => markAllReadMutation.mutate()}
                             disabled={markAllReadMutation.isPending || isFetching}
+                            className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 px-0"
                         >
                             {markAllReadMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
                             Mark all as read

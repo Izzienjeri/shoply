@@ -16,9 +16,6 @@ import {
   SortingState,
   ColumnFiltersState,
   Row,
-  Column,
-  HeaderGroup,
-  Cell,
 } from '@tanstack/react-table';
 
 import Link from 'next/link';
@@ -216,16 +213,16 @@ export default function AdminArtistsPage() {
   const columns: ColumnDef<ArtistType>[] = useMemo(() => [
     {
       accessorKey: "name",
-      header: ({ column }: { column: Column<ArtistType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Name <ArrowUpDown className="ml-2 h-4 w-4" />
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+          Name <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<ArtistType> }) => {
+      cell: ({ row }) => {
         const artist = row.original;
         return (
-          <Link href={`/admin/artists/${artist.id}`} className="font-medium hover:text-primary hover:underline">
-            {artist.name} <ExternalLink className="inline h-3 w-3 ml-1 text-muted-foreground group-hover:text-primary" />
+          <Link href={`/admin/artists/${artist.id}`} className="font-medium text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 hover:underline transition-colors text-sm group">
+            {artist.name} <ExternalLink className="inline h-3.5 w-3.5 ml-1 text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400" />
           </Link>
         )
       },
@@ -234,21 +231,21 @@ export default function AdminArtistsPage() {
     {
       accessorKey: "bio",
       header: "Bio",
-      cell: ({ row }: { row: Row<ArtistType> }) => (
+      cell: ({ row }) => (
         <p className="truncate max-w-xs text-sm text-muted-foreground">{row.original.bio || "N/A"}</p>
       ),
       enableGlobalFilter: true,
     },
     {
       accessorKey: "artworks_count",
-      header: ({ column }: { column: Column<ArtistType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Artworks <ArrowUpDown className="ml-2 h-4 w-4" />
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+          Artworks <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
-      cell: ({ row }: { row: Row<ArtistType> }) => (
-        <div className="flex items-center justify-center">
-            <PackageIcon className="h-4 w-4 mr-1.5 text-muted-foreground"/>
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center text-sm text-muted-foreground">
+            <PackageIcon className="h-4 w-4 mr-1.5"/>
             {row.original.artworks_count !== undefined ? row.original.artworks_count : (row.original.artworks?.length || 0)}
         </div>
       ),
@@ -257,23 +254,25 @@ export default function AdminArtistsPage() {
     {
       accessorKey: "is_active",
       header: "Status",
-      cell: ({ row }: { row: Row<ArtistType> }) => (
-        <Badge variant={row.original.is_active ? "default" : "secondary"}>
+      cell: ({ row }) => (
+        <Badge className={cn("text-xs capitalize shadow-sm",
+                row.original.is_active ? "bg-green-500 dark:bg-green-600 text-white dark:text-green-50" : "bg-muted text-muted-foreground"
+               )}>
           {row.original.is_active ? "Active" : "Inactive"}
         </Badge>
       ),
-       filterFn: (row: Row<ArtistType>, id: string, value: any) => value.includes(row.getValue(id)),
+       filterFn: (row, id, value) => value.includes(row.getValue(id)),
     },
     {
       id: "actions",
-      header: () => <div className="text-right">Actions</div>,
-      cell: ({ row }: { row: Row<ArtistType> }) => (
-        <div className="flex space-x-2 justify-end">
-          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
-            <Edit3 className="h-4 w-4" />
+      header: () => <div className="text-right text-xs sm:text-sm">Actions</div>,
+      cell: ({ row }) => (
+        <div className="flex space-x-1 justify-end">
+          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit" className="h-8 w-8 hover:bg-accent group">
+            <Edit3 className="h-4 w-4 text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setArtistToDelete(row.original)} title="Delete">
-            <Trash2 className="h-4 w-4 text-destructive" />
+          <Button variant="ghost" size="icon" onClick={() => setArtistToDelete(row.original)} title="Delete" className="h-8 w-8 hover:bg-destructive/10 group">
+            <Trash2 className="h-4 w-4 text-destructive/70 group-hover:text-destructive" />
           </Button>
         </div>
       ),
@@ -290,7 +289,7 @@ export default function AdminArtistsPage() {
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: (row: Row<ArtistType>, columnId: string, filterValue: string) => {
+    globalFilterFn: (row, columnId, filterValue) => {
         const artistName = row.original.name.toLowerCase();
         const artistBio = row.original.bio?.toLowerCase() || '';
         const searchTerm = filterValue.toLowerCase();
@@ -307,13 +306,15 @@ export default function AdminArtistsPage() {
 
    if (isLoading && artists.length === 0) {
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <div className="flex justify-between items-center">
-                 <h1 className="text-2xl font-semibold">Manage Artists</h1>
-                <Skeleton className="h-10 w-36" />
+                 <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><Users className="mr-3 h-7 w-7"/>Manage Artists</h1>
+                <Skeleton className="h-10 w-40 rounded-md bg-muted" />
             </div>
-            <Skeleton className="h-10 w-full" />
-            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+            <Skeleton className="h-10 w-full max-w-sm rounded-md bg-muted" />
+             <div className="rounded-lg border bg-card">
+                 {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full border-b border-border/70 bg-card" />)}
+            </div>
         </div>
     );
   }
@@ -321,8 +322,11 @@ export default function AdminArtistsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight flex items-center"><Users className="mr-3 h-6 w-6"/>Manage Artists</h1>
-        <Button onClick={openNewDialog}>
+        <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><Users className="mr-3 h-7 w-7"/>Manage Artists</h1>
+        <Button 
+            onClick={openNewDialog}
+            className="rounded-md bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:from-purple-700 hover:via-fuchsia-600 hover:to-pink-600 text-white shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:scale-[1.02] active:scale-95"
+        >
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Artist
         </Button>
       </div>
@@ -334,18 +338,18 @@ export default function AdminArtistsPage() {
             placeholder="Search artists by name or bio..."
             value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
-            className="pl-10"
+            className="pl-10 rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600"
           />
         </div>
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-lg border bg-card shadow-md">
         <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup: HeaderGroup<ArtistType>) => (
+          <TableHeader className="bg-muted/50">
+            {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
+                  <TableHead key={header.id} className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-muted-foreground">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -354,10 +358,10 @@ export default function AdminArtistsPage() {
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row: Row<ArtistType>) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell: Cell<ArtistType, unknown>) => (
-                    <TableCell key={cell.id}>
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} className="hover:bg-muted/30 dark:hover:bg-muted/20 transition-colors">
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle text-sm">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -365,7 +369,7 @@ export default function AdminArtistsPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
                   No artists found.
                 </TableCell>
               </TableRow>
@@ -375,17 +379,17 @@ export default function AdminArtistsPage() {
       </div>
 
       <div className="flex items-center justify-end space-x-2 py-4">
-        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
-        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="rounded-md">Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="rounded-md">Next</Button>
       </div>
 
       <Dialog open={showFormDialog} onOpenChange={(isOpen) => {
           setShowFormDialog(isOpen);
           if (!isOpen) { form.reset({ name: "", bio: null, is_active: true }); setEditingArtist(null); }
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-lg">
           <DialogHeader>
-            <DialogTitle>{editingArtist ? 'Edit Artist' : 'Add New Artist'}</DialogTitle>
+            <DialogTitle className="font-serif text-lg text-purple-600 dark:text-purple-400">{editingArtist ? 'Edit Artist' : 'Add New Artist'}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
@@ -395,7 +399,7 @@ export default function AdminArtistsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Artist Name</FormLabel>
-                    <FormControl><Input placeholder="e.g., Leonardo da Vinci" {...field} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Leonardo da Vinci" {...field} className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -406,7 +410,7 @@ export default function AdminArtistsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Biography (Optional)</FormLabel>
-                    <FormControl><Textarea placeholder="Brief bio of the artist..." {...field} value={field.value || ""} className="min-h-[100px]" /></FormControl>
+                    <FormControl><Textarea placeholder="Brief bio of the artist..." {...field} value={field.value || ""} className="min-h-[100px] rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -415,18 +419,22 @@ export default function AdminArtistsPage() {
                   control={form.control}
                   name="is_active"
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
-                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm bg-muted/30 dark:bg-muted/20">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} id={`is_active_artist_${editingArtist?.id || 'new'}`} /></FormControl>
                         <div className="space-y-1 leading-none">
-                            <FormLabel className="font-normal">Active</FormLabel>
-                            <FormDescription>Uncheck to hide this artist and their artworks from public view.</FormDescription>
+                            <FormLabel htmlFor={`is_active_artist_${editingArtist?.id || 'new'}`} className="font-normal cursor-pointer">Active</FormLabel>
+                            <FormDescription className="text-xs">Uncheck to hide this artist and their artworks from public view.</FormDescription>
                         </div>
                     </FormItem>
                   )}
                 />
               <DialogFooter className="pt-4">
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting}>
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md border-purple-500/70 text-purple-600 hover:bg-purple-500/10 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-400/10">Cancel</Button></DialogClose>
+                <Button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    className="rounded-md bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:from-purple-700 hover:via-fuchsia-600 hover:to-pink-600 text-white shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:scale-[1.02] active:scale-95"
+                >
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {editingArtist ? 'Save Changes' : 'Create Artist'}
                 </Button>
@@ -437,20 +445,20 @@ export default function AdminArtistsPage() {
       </Dialog>
 
       <AlertDialog open={!!artistToDelete} onOpenChange={(isOpen) => !isOpen && setArtistToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle className="font-serif text-destructive">Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the artist "{artistToDelete?.name}".
               Associated artworks will also be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setArtistToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setArtistToDelete(null)} className="rounded-md">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteArtist}
               disabled={isSubmitting}
-              className={cn(isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+              className={cn("rounded-md bg-destructive hover:bg-destructive/90 text-destructive-foreground", isSubmitting && "opacity-50 cursor-not-allowed")}
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
@@ -465,20 +473,24 @@ export default function AdminArtistsPage() {
               setPendingArtistData(null);
           }
       }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Artwork Reactivation</AlertDialogTitle>
+            <AlertDialogTitle className="font-serif text-purple-600 dark:text-purple-400">Confirm Artwork Reactivation</AlertDialogTitle>
             <AlertDialogDescription>
               You are reactivating the artist "{pendingArtistData?.name}".
               Do you also want to reactivate all their currently inactive artworks?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {setShowReactivationConfirmDialog(false); setPendingArtistData(null);}}>Cancel</AlertDialogCancel>
-            <Button variant="outline" onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, false)} disabled={isSubmitting}>
+            <AlertDialogCancel onClick={() => {setShowReactivationConfirmDialog(false); setPendingArtistData(null);}} className="rounded-md">Cancel</AlertDialogCancel>
+            <Button variant="outline" onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, false)} disabled={isSubmitting} className="rounded-md">
                 No, Just Artist
             </Button>
-            <AlertDialogAction onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, true)} disabled={isSubmitting}>
+            <AlertDialogAction 
+                onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, true)} 
+                disabled={isSubmitting}
+                className="rounded-md bg-purple-600 hover:bg-purple-700 text-white dark:bg-purple-500 dark:hover:bg-purple-600"
+            >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Reactivate Artworks
             </AlertDialogAction>
@@ -492,9 +504,9 @@ export default function AdminArtistsPage() {
               setPendingArtistData(null);
           }
       }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Artist Deactivation</AlertDialogTitle>
+            <AlertDialogTitle className="font-serif text-amber-600 dark:text-yellow-400">Confirm Artist Deactivation</AlertDialogTitle>
             <AlertDialogDescription>
               You are about to deactivate the artist "{pendingArtistData?.name}".
               This will also deactivate all their artworks and set their stock quantities to 0.
@@ -503,11 +515,11 @@ export default function AdminArtistsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {setShowArtistDeactivationConfirmDialog(false); setPendingArtistData(null);}}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => {setShowArtistDeactivationConfirmDialog(false); setPendingArtistData(null);}} className="rounded-md">Cancel</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => pendingArtistData && proceedWithArtistUpdate(pendingArtistData, false)} 
               disabled={isSubmitting}
-              className="bg-destructive hover:bg-destructive/90"
+              className="rounded-md bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Deactivate Artist

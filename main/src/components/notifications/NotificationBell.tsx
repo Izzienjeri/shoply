@@ -77,8 +77,11 @@ function NotificationListSkeleton() {
     );
 }
 
+interface NotificationBellProps {
+  isHomePageTop: boolean; // Changed prop name for clarity
+}
 
-export function NotificationBell() {
+export function NotificationBell({ isHomePageTop }: NotificationBellProps) { // Updated prop name
     const { 
         paginatedNotificationsResponse, 
         unreadCountForBadge,
@@ -110,14 +113,33 @@ export function NotificationBell() {
 
     if (!isAuthenticated) return null;
 
+    // Define high-contrast colors similar to Navbar
+    const highContrastPurple = "text-purple-600 dark:text-purple-400";
+    const iconColorScrolledOrNotHome = "text-muted-foreground dark:text-neutral-300 group-hover:text-pink-500 dark:group-hover:text-pink-400";
+
+
     return (
         <Popover open={isOpen} onOpenChange={setIsOpen}>
             <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative rounded-full">
-                    <Bell className="h-5 w-5" />
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className={cn(
+                        "relative rounded-full transition-colors duration-300 group", // Added group for potential icon hover
+                        isHomePageTop // Use the passed prop
+                            ? `hover:bg-purple-500/10` 
+                            : "hover:bg-primary/10 dark:hover:bg-neutral-700/60"
+                    )}
+                >
+                    <Bell className={cn("h-5 w-5", isHomePageTop ? highContrastPurple : iconColorScrolledOrNotHome)} />
                     { isBadgeLoading && unreadCountForBadge === 0 ? <Skeleton className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full" />
                       : unreadCountForBadge > 0 && (
-                        <Badge variant="destructive" className="absolute -top-0.5 -right-0.5 h-4 w-4 min-w-4 p-0 flex items-center justify-center text-xs rounded-full">
+                        <Badge 
+                            className={cn(
+                                "absolute -top-1 -right-1 h-4.5 w-4.5 min-w-[1.125rem] p-0 flex items-center justify-center text-xs rounded-full bg-pink-500 text-white border-2 shadow",
+                                isHomePageTop ? "border-white/50" : "border-background dark:border-neutral-800"
+                            )}
+                        >
                             {unreadCountForBadge > 9 ? '9+' : unreadCountForBadge}
                         </Badge>
                     )}

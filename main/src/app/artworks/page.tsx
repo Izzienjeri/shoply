@@ -18,31 +18,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-
-const FloatingBlob = ({ className, animateProps, transitionProps, gradientClass }: {
-  className?: string;
-  animateProps: any;
-  transitionProps?: any;
-  gradientClass: string;
-}) => (
-  <motion.div
-    className={cn(
-      "absolute rounded-full opacity-20 md:opacity-25 mix-blend-multiply dark:mix-blend-screen filter blur-3xl -z-10",
-      gradientClass,
-      className
-    )}
-    initial={{ scale: 0.8, opacity: 0 }}
-    animate={{ ...animateProps, opacity: [0.05, 0.25, 0.1, 0.25, 0.05] }}
-    transition={{
-      duration: 30 + Math.random() * 20,
-      repeat: Infinity,
-      repeatType: "mirror",
-      ease: "easeInOut",
-      ...transitionProps,
-    }}
-  />
-);
-
+import { FloatingBlob } from '@/components/ui/effects';
 
 interface FiltersState {
   min_price: string;
@@ -171,122 +147,114 @@ export default function ArtworksPage() {
       className="space-y-10 py-8 md:py-12 relative isolate"
     >
       <FloatingBlob
-        className="w-[500px] h-[500px] md:w-[700px] md:h-[700px] top-[-10%] left-[-20%] opacity-20 md:opacity-25"
+        className="w-[500px] h-[500px] md:w-[700px] md:h-[700px] top-[-10%] left-[-20%] opacity-20 md:opacity-25 -z-10"
         gradientClass="bg-gradient-to-br from-pink-400/70 to-purple-500/70 dark:from-pink-600/50 dark:to-purple-700/50"
         animateProps={{ x: [0, 60, -40, 0], y: [0, -50, 70, 0], scale: [1, 1.1, 0.9, 1], rotate: [0, 20, -15, 0] }}
       />
       <FloatingBlob
-        className="w-[400px] h-[400px] md:w-[600px] md:h-[600px] bottom-[-5%] right-[-15%] opacity-20 md:opacity-25"
+        className="w-[400px] h-[400px] md:w-[600px] md:h-[600px] bottom-[-5%] right-[-15%] opacity-20 md:opacity-25 -z-10"
         gradientClass="bg-gradient-to-tr from-sky-400/70 to-lime-300/70 dark:from-sky-600/50 dark:to-lime-500/50"
         animateProps={{ x: [0, -70, 50, 0], y: [0, 60, -40, 0], scale: [1, 0.9, 1.1, 1], rotate: [0, -25, 10, 0] }}
         transitionProps={{ duration: 35 }}
       />
        <FloatingBlob
-        className="hidden lg:block w-[350px] h-[350px] top-[20%] right-[10%] opacity-15 md:opacity-20"
+        className="hidden lg:block w-[350px] h-[350px] top-[20%] right-[10%] opacity-15 md:opacity-20 -z-10"
         gradientClass="bg-gradient-to-tl from-yellow-300/60 to-red-400/60 dark:from-yellow-500/40 dark:to-red-600/40"
         animateProps={{ x: [0, 40, -30, 0], y: [0, -30, 50, 0], scale: [1, 1.1, 0.95, 1] }}
         transitionProps={{ duration: 40 }}
       />
 
-      <motion.h1
-        initial={{ opacity: 0, y: -30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1, type: "spring", stiffness:100 }}
-        className="text-4xl sm:text-5xl font-bold tracking-tight font-serif text-center relative"
-      >
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-fuchsia-500 to-indigo-600
-                         dark:from-rose-400 dark:via-fuchsia-400 dark:to-indigo-500">
-          Explore Our Artwork
-        </span>
-        <Palette className="inline-block ml-3 h-9 w-9 text-pink-500 dark:text-pink-400 transform -translate-y-1" />
-      </motion.h1>
+      <div className="p-6 md:p-8 rounded-xl 
+                      bg-card/80 dark:bg-neutral-800/70 backdrop-blur-md 
+                      shadow-2xl shadow-fuchsia-500/10 dark:shadow-fuchsia-400/10
+                      border border-pink-500/20 dark:border-pink-400/20
+                      mx-auto max-w-5xl relative z-0 space-y-8">
+        <motion.h1
+          initial={{ opacity: 0, y: -30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1, type: "spring", stiffness:100 }}
+          className="text-4xl sm:text-5xl font-bold tracking-tight font-serif text-center relative"
+        >
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-fuchsia-500 to-indigo-600
+                          dark:from-rose-400 dark:via-fuchsia-400 dark:to-indigo-500">
+            Explore Our Artwork
+          </span>
+          <Palette className="inline-block ml-3 h-9 w-9 text-pink-500 dark:text-pink-400 transform -translate-y-1" />
+        </motion.h1>
 
-      <motion.div
-        initial={{ opacity: 0, y: -20, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.25 }}
-        className="p-6 border border-pink-500/20 dark:border-pink-400/20 rounded-xl 
-                   bg-card/70 dark:bg-neutral-800/60 backdrop-blur-md shadow-xl shadow-fuchsia-500/10 dark:shadow-fuchsia-600/10
-                   mx-auto max-w-4xl" 
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-5 items-end">
-          <div className="lg:col-span-1">
-            <Label htmlFor="sort_by_order" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Sort By</Label>
-            <Select
-              value={`${filters.sort_by}-${filters.sort_order}`}
-              onValueChange={handleSortChange}
-            >
-              <SelectTrigger 
-                id="sort_by_order" 
-                aria-label="Sort artworks by" 
-                className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 
-                           focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
+        <motion.div
+          initial={{ opacity: 0, y: -20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.25 }}
+          className="p-4 sm:p-6 bg-card/50 dark:bg-neutral-800/40 rounded-lg border border-border/50 dark:border-neutral-700/50"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-5 items-end">
+            <div className="lg:col-span-1">
+              <Label htmlFor="sort_by_order" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Sort By</Label>
+              <Select
+                value={`${filters.sort_by}-${filters.sort_order}`}
+                onValueChange={handleSortChange}
               >
-                <SelectValue placeholder="Select sort order" />
-              </SelectTrigger>
-              <SelectContent className="rounded-md bg-popover/90 dark:bg-neutral-800/90 backdrop-blur-sm border-border/80 dark:border-neutral-700">
-                {sortOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value} className="focus:bg-pink-500/10 dark:focus:bg-pink-400/10">
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                <SelectTrigger 
+                  id="sort_by_order" 
+                  aria-label="Sort artworks by" 
+                  className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 
+                            focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
+                >
+                  <SelectValue placeholder="Select sort order" />
+                </SelectTrigger>
+                <SelectContent className="rounded-md bg-popover/90 dark:bg-neutral-800/90 backdrop-blur-sm border-border/80 dark:border-neutral-700">
+                  {sortOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value} className="focus:bg-pink-500/10 dark:focus:bg-pink-400/10">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="lg:col-span-1">
-            <Label htmlFor="min_price" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Min Price (Ksh)</Label>
-            <Input
-              type="number"
-              id="min_price"
-              name="min_price"
-              placeholder="e.g., 500"
-              value={filters.min_price}
-              onChange={handleInputChange}
-              min="0"
-              step="100"
-              className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
-            />
-          </div>
+            <div className="lg:col-span-1">
+              <Label htmlFor="min_price" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Min Price (Ksh)</Label>
+              <Input
+                type="number" id="min_price" name="min_price" placeholder="e.g., 500"
+                value={filters.min_price} onChange={handleInputChange} min="0" step="100"
+                className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
+              />
+            </div>
 
-          <div className="lg:col-span-1">
-            <Label htmlFor="max_price" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Max Price (Ksh)</Label>
-            <Input
-              type="number"
-              id="max_price"
-              name="max_price"
-              placeholder="e.g., 10000"
-              value={filters.max_price}
-              onChange={handleInputChange}
-              min="0"
-              step="100"
-              className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
-            />
+            <div className="lg:col-span-1">
+              <Label htmlFor="max_price" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Max Price (Ksh)</Label>
+              <Input
+                type="number" id="max_price" name="max_price" placeholder="e.g., 10000"
+                value={filters.max_price} onChange={handleInputChange} min="0" step="100"
+                className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
+              />
+            </div>
+            
+            <div className="flex space-x-2.5 w-full md:col-span-3 lg:col-span-1 md:pt-4 lg:pt-0 items-end">
+              <Button 
+                  onClick={handleApplyFilters} 
+                  className="flex-1 transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-md shadow-lg hover:shadow-pink-500/30
+                            bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 hover:from-purple-600 hover:via-pink-600 hover:to-red-600
+                            text-white font-semibold"
+              >
+                <ListFilter className="mr-2 h-4 w-4" /> Apply
+              </Button>
+              <Button 
+                  onClick={handleClearFilters} 
+                  variant="outline" 
+                  className="flex-1 transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-md shadow-sm hover:shadow-md
+                            border-pink-500/80 text-pink-600 hover:bg-pink-500/10 dark:border-pink-400/80 dark:text-pink-400 dark:hover:bg-pink-400/10"
+              >
+                Clear
+              </Button>
+            </div>
           </div>
-          
-          <div className="flex space-x-2.5 w-full md:col-span-3 lg:col-span-1 md:pt-4 lg:pt-0 items-end">
-            <Button 
-                onClick={handleApplyFilters} 
-                className="flex-1 transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-md shadow-lg hover:shadow-pink-500/30
-                           bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 hover:from-purple-600 hover:via-pink-600 hover:to-red-600
-                           text-white font-semibold"
-            >
-              <ListFilter className="mr-2 h-4 w-4" /> Apply
-            </Button>
-            <Button 
-                onClick={handleClearFilters} 
-                variant="outline" 
-                className="flex-1 transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-md shadow-sm hover:shadow-md
-                           border-pink-500/80 text-pink-600 hover:bg-pink-500/10 dark:border-pink-400/80 dark:text-pink-400 dark:hover:bg-pink-400/10"
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
-         {error && error.includes("price") && (
-            <p className="text-sm text-red-500 dark:text-red-400 mt-3 pl-1">{error}</p>
-         )}
-      </motion.div>
+          {error && error.includes("price") && (
+              <p className="text-sm text-red-500 dark:text-red-400 mt-3 pl-1">{error}</p>
+          )}
+        </motion.div>
+      </div>
       
       {error && !error.includes("price") && (
         <Alert variant="destructive" className="mb-6 shadow-lg rounded-lg max-w-2xl mx-auto bg-red-500/10 dark:bg-red-700/20 border-red-500/30 dark:border-red-600/40">

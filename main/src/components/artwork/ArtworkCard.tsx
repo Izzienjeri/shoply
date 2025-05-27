@@ -147,10 +147,10 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
         </CardContent>
 
         {!isAdmin && (
-          <CardFooter className="p-4 pt-2 flex justify-between items-center mt-auto">
+          <CardFooter className="p-4 pt-2 flex flex-wrap justify-between items-center gap-x-2 gap-y-1 mt-auto">
             <span className="text-xl font-bold font-serif
                              text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500
-                             dark:from-emerald-400 dark:to-teal-300">
+                             dark:from-emerald-400 dark:to-teal-300 whitespace-nowrap">
               {formatPrice(artwork.price)}
             </span>
             <Button
@@ -164,23 +164,27 @@ export function ArtworkCard({ artwork, isPriority }: ArtworkCardProps) {
               disabled={authIsLoading || isCartLoading || !isPubliclyAvailableForPurchase || isOutOfStock || !!isInCart}
               aria-label={!isPubliclyAvailableForPurchase ? 'Unavailable' : isOutOfStock ? 'Out of Stock' : isInCart ? 'In Cart' : 'Add to Cart'}
               className={cn(
-                "transition-all duration-200 ease-out transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg rounded-md text-xs py-2 px-3.5",
+                "transition-all duration-200 ease-out transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg rounded-md",
+                "text-xs leading-none whitespace-nowrap", 
+                "px-3 py-2",
+                                
                 (isPubliclyAvailableForPurchase && !isOutOfStock && !isInCart) && 
                 "bg-fuchsia-600 hover:bg-fuchsia-700 dark:bg-fuchsia-500 dark:hover:bg-fuchsia-600 text-white", 
+                
                 isInCart && "bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700",
                 !isPubliclyAvailableForPurchase && "border-muted-foreground/30 text-muted-foreground/70 cursor-not-allowed",
                 isOutOfStock && "bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-not-allowed"
               )}
             >
               {!isPubliclyAvailableForPurchase ? (
-                <> <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Unavailable</>
+                <> <EyeOff className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Unavailable</>
               ) : isOutOfStock ? (
                 'Out of Stock'
               ) : isInCart ? (
                 'In Cart'
               ) : (
                 <>
-                  <ShoppingCartIcon className="mr-1.5 h-3.5 w-3.5" /> Add to Cart
+                  <ShoppingCartIcon className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Add to Cart
                 </>
               )}
             </Button>

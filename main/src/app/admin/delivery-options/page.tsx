@@ -17,8 +17,6 @@ import {
   ColumnFiltersState,
   Row,
   Column,
-  HeaderGroup,
-  Cell,
 } from '@tanstack/react-table';
 
 import { DeliveryOption as DeliveryOptionType, ApiErrorResponse } from '@/lib/types';
@@ -209,22 +207,26 @@ export default function AdminDeliveryOptionsPage() {
   const columns: ColumnDef<DeliveryOptionType>[] = useMemo(() => [
     {
       accessorKey: "name",
-      header: ({ column }: { column: Column<DeliveryOptionType, unknown> }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Name <ArrowUpDown className="ml-2 h-4 w-4" />
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="px-2 text-xs sm:text-sm">
+          Name <ArrowUpDown className="ml-1.5 h-3.5 w-3.5" />
         </Button>
       ),
+      cell: ({ row }) => <span className="text-sm font-medium text-foreground">{row.original.name}</span>,
     },
     {
       accessorKey: "price",
       header: "Price",
-      cell: ({ row }: { row: Row<DeliveryOptionType> }) => formatPrice(row.original.price),
+      cell: ({ row }) => <span className="text-sm">{formatPrice(row.original.price)}</span>,
     },
     {
       accessorKey: "is_pickup",
       header: "Type",
-      cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
-        <Badge variant={row.original.is_pickup ? "outline" : "default"} className="text-xs">
+      cell: ({ row }) => (
+        <Badge variant={row.original.is_pickup ? "outline" : "default"} 
+               className={cn("text-xs capitalize",
+                 row.original.is_pickup ? "border-purple-500 text-purple-600 dark:border-purple-400 dark:text-purple-400" : "bg-fuchsia-500 dark:bg-fuchsia-600 text-white dark:text-fuchsia-50"
+               )}>
           {row.original.is_pickup ? "Pickup" : "Delivery"}
         </Badge>
       ),
@@ -232,8 +234,11 @@ export default function AdminDeliveryOptionsPage() {
     {
       accessorKey: "active",
       header: "Status",
-      cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
-        <Badge variant={row.original.active ? "default" : "secondary"} className="text-xs">
+      cell: ({ row }) => (
+        <Badge variant={row.original.active ? "default" : "secondary"} 
+               className={cn("text-xs capitalize",
+                row.original.active ? "bg-green-500 dark:bg-green-600 text-white dark:text-green-50" : "bg-muted text-muted-foreground"
+               )}>
           {row.original.active ? "Active" : "Inactive"}
         </Badge>
       ),
@@ -241,17 +246,18 @@ export default function AdminDeliveryOptionsPage() {
     {
       accessorKey: "sort_order",
       header: "Sort Order",
+      cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.sort_order}</span>,
     },
     {
       id: "actions",
-      header: "Actions",
-      cell: ({ row }: { row: Row<DeliveryOptionType> }) => (
-        <div className="flex space-x-2">
-          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit">
-            <Edit3 className="h-4 w-4" />
+      header: () => <div className="text-right text-xs sm:text-sm">Actions</div>,
+      cell: ({ row }) => (
+        <div className="flex space-x-1 justify-end">
+          <Button variant="ghost" size="icon" onClick={() => openEditDialog(row.original)} title="Edit" className="h-8 w-8 hover:bg-accent group">
+            <Edit3 className="h-4 w-4 text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete">
-            <Trash2 className="h-4 w-4 text-destructive" />
+          <Button variant="ghost" size="icon" onClick={() => setOptionToDelete(row.original)} title="Delete" className="h-8 w-8 hover:bg-destructive/10 group">
+            <Trash2 className="h-4 w-4 text-destructive/70 group-hover:text-destructive" />
           </Button>
         </div>
       ),
@@ -275,13 +281,15 @@ export default function AdminDeliveryOptionsPage() {
 
    if (isLoading && deliveryOptions.length === 0) {
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <div className="flex justify-between items-center">
-                 <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><Settings className="mr-3 h-7 w-7"/>Manage Delivery Options</h1>
-                <Skeleton className="h-10 w-36 rounded-md" />
+                 <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><Settings className="mr-3 h-7 w-7"/>Manage Delivery Options</h1>
+                <Skeleton className="h-10 w-40 rounded-md bg-muted" />
             </div>
-            <Skeleton className="h-10 w-full rounded-md" />
-            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-md" />)}
+            <Skeleton className="h-10 w-full max-w-sm rounded-md bg-muted" />
+            <div className="rounded-lg border bg-card">
+                 {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 w-full border-b border-border/70 bg-card" />)}
+            </div>
         </div>
     );
   }
@@ -289,8 +297,11 @@ export default function AdminDeliveryOptionsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight font-serif text-primary flex items-center"><Settings className="mr-3 h-7 w-7"/>Manage Delivery Options</h1>
-        <Button onClick={openNewDialog} className="rounded-md shadow hover:shadow-md transition-shadow">
+        <h1 className="text-3xl font-bold tracking-tight font-serif text-purple-600 dark:text-purple-400 flex items-center"><Settings className="mr-3 h-7 w-7"/>Manage Delivery Options</h1>
+        <Button 
+            onClick={openNewDialog} 
+            className="rounded-md bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:from-purple-700 hover:via-fuchsia-600 hover:to-pink-600 text-white shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:scale-[1.02] active:scale-95"
+        >
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Option
         </Button>
       </div>
@@ -302,18 +313,18 @@ export default function AdminDeliveryOptionsPage() {
             placeholder="Filter by name..."
             value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
             onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
-            className="pl-10 rounded-md"
+            className="pl-10 rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600"
           />
         </div>
       </div>
 
-      <div className="rounded-lg border bg-card shadow-md">
+      <div className="rounded-lg border bg-card shadow-md overflow-x-auto">
         <Table>
           <TableHeader className="bg-muted/50">
-            {table.getHeaderGroups().map((headerGroup: HeaderGroup<DeliveryOptionType>) => (
+            {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="px-3 py-3 text-sm font-semibold text-muted-foreground">
+                  <TableHead key={header.id} className="px-3 py-3 text-sm font-semibold text-muted-foreground whitespace-nowrap">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -322,10 +333,10 @@ export default function AdminDeliveryOptionsPage() {
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row: Row<DeliveryOptionType>) => (
-                <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
-                  {row.getVisibleCells().map((cell: Cell<DeliveryOptionType, unknown>) => (
-                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle">
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} className="hover:bg-muted/30 dark:hover:bg-muted/20 transition-colors">
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="px-3 py-2.5 align-middle text-sm">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -333,7 +344,7 @@ export default function AdminDeliveryOptionsPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
                   No delivery options found.
                 </TableCell>
               </TableRow>
@@ -353,7 +364,7 @@ export default function AdminDeliveryOptionsPage() {
       }}>
         <DialogContent className="sm:max-w-md rounded-lg">
           <DialogHeader>
-            <DialogTitle className="font-serif text-lg">{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
+            <DialogTitle className="font-serif text-lg text-purple-600 dark:text-purple-400">{editingOption ? 'Edit Delivery Option' : 'Add New Delivery Option'}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
@@ -363,7 +374,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Option Name</FormLabel>
-                    <FormControl><Input placeholder="e.g., Nairobi CBD Delivery" {...field} className="rounded-md" /></FormControl>
+                    <FormControl><Input placeholder="e.g., Nairobi CBD Delivery" {...field} className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -374,7 +385,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Price (Ksh)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 200.00" {...field} className="rounded-md" /></FormControl>
+                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 200.00" {...field} className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -385,7 +396,7 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Description (Optional)</FormLabel>
-                    <FormControl><Textarea placeholder="Details about this option..." {...field} value={field.value || ""} className="min-h-[80px] rounded-md" /></FormControl>
+                    <FormControl><Textarea placeholder="Details about this option..." {...field} value={field.value || ""} className="min-h-[80px] rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -396,8 +407,8 @@ export default function AdminDeliveryOptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Sort Order</FormLabel>
-                    <FormControl><Input type="number" placeholder="0" {...field} className="rounded-md" /></FormControl>
-                    <FormDescription>Lower numbers appear first.</FormDescription>
+                    <FormControl><Input type="number" placeholder="0" {...field} className="rounded-md focus-visible:ring-purple-500 dark:focus-visible:ring-purple-600" /></FormControl>
+                    <FormDescription className="text-xs">Lower numbers appear first.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -407,9 +418,9 @@ export default function AdminDeliveryOptionsPage() {
                     control={form.control}
                     name="is_pickup"
                     render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
-                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
-                        <FormLabel className="font-normal">Is Pickup Location?</FormLabel>
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm bg-muted/30 dark:bg-muted/20">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} id={`is_pickup_field_${editingOption?.id || 'new'}`}/></FormControl>
+                        <FormLabel htmlFor={`is_pickup_field_${editingOption?.id || 'new'}`} className="font-normal cursor-pointer">Is Pickup Location?</FormLabel>
                     </FormItem>
                     )}
                 />
@@ -417,16 +428,20 @@ export default function AdminDeliveryOptionsPage() {
                     control={form.control}
                     name="active"
                     render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm">
-                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
-                        <FormLabel className="font-normal">Active</FormLabel>
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 shadow-sm bg-muted/30 dark:bg-muted/20">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} id={`active_field_${editingOption?.id || 'new'}`}/></FormControl>
+                        <FormLabel htmlFor={`active_field_${editingOption?.id || 'new'}`} className="font-normal cursor-pointer">Active</FormLabel>
                     </FormItem>
                     )}
                 />
               </div>
               <DialogFooter className="pt-4">
-                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting} className="rounded-md shadow hover:shadow-md">
+                <DialogClose asChild><Button type="button" variant="outline" className="rounded-md border-purple-500/70 text-purple-600 hover:bg-purple-500/10 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-400/10">Cancel</Button></DialogClose>
+                <Button 
+                    type="submit" 
+                    disabled={isSubmitting} 
+                    className="rounded-md bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:from-purple-700 hover:via-fuchsia-600 hover:to-pink-600 text-white shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:scale-[1.02] active:scale-95"
+                >
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {editingOption ? 'Save Changes' : 'Create Option'}
                 </Button>
@@ -439,7 +454,7 @@ export default function AdminDeliveryOptionsPage() {
       <AlertDialog open={!!optionToDelete} onOpenChange={(isOpen) => !isOpen && setOptionToDelete(null)}>
         <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-serif">Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle className="font-serif text-destructive">Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the delivery option "{optionToDelete?.name}".
             </AlertDialogDescription>
@@ -449,7 +464,7 @@ export default function AdminDeliveryOptionsPage() {
             <AlertDialogAction
               onClick={handleDeleteOption}
               disabled={isSubmitting}
-              className={cn("rounded-md", isSubmitting && "opacity-50 cursor-not-allowed", "bg-destructive hover:bg-destructive/90")}
+              className={cn("rounded-md bg-destructive hover:bg-destructive/90 text-destructive-foreground", isSubmitting && "opacity-50 cursor-not-allowed")}
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete

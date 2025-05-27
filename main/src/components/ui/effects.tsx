@@ -1,5 +1,8 @@
+'use client';
+
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import React from 'react';
 
 const FloatingBlob = ({ className, animateProps, transitionProps, gradientClass }: {
   className?: string;
@@ -24,3 +27,5 @@ const FloatingBlob = ({ className, animateProps, transitionProps, gradientClass 
     }}
   />
 );
+
+export { FloatingBlob };
