@@ -1,8 +1,8 @@
 """done
 
-Revision ID: dcdd112a2d77
+Revision ID: 434351ac22af
 Revises: 
-Create Date: 2025-05-26 02:45:59.565704
+Create Date: 2025-05-27 07:25:35.835536
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = 'dcdd112a2d77'
+revision = '434351ac22af'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -74,6 +74,21 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('user_id')
     )
+    op.create_table('notifications',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('user_id', sa.String(length=36), nullable=True),
+    sa.Column('message', sa.Text(), nullable=False),
+    sa.Column('type', sa.String(length=50), nullable=False),
+    sa.Column('read_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('link', sa.String(length=255), nullable=True),
+    sa.Column('for_admin_audience', sa.Boolean(), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('notifications', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_notifications_user_id'), ['user_id'], unique=False)
+
     op.create_table('cart_items',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('cart_id', sa.String(length=36), nullable=False),
@@ -156,6 +171,10 @@ def downgrade():
 
     op.drop_table('payment_transactions')
     op.drop_table('cart_items')
+    with op.batch_alter_table('notifications', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_notifications_user_id'))
+
+    op.drop_table('notifications')
     op.drop_table('carts')
     op.drop_table('artworks')
     op.drop_table('users')

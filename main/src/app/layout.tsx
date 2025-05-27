@@ -1,4 +1,3 @@
-
 import type { Metadata } from "next";
 import "./globals.css";
 import { Playfair_Display, Montserrat } from 'next/font/google';
@@ -40,6 +39,7 @@ export default function RootLayout({
       <body
         className={cn(
           "min-h-screen font-sans antialiased flex flex-col",
+          "bg-[url('/images/backgroundimage.jpg')] bg-cover bg-center bg-no-repeat bg-fixed",
           montserrat.variable,
           playfair.variable
         )}
