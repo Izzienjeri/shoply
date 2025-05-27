@@ -5,7 +5,7 @@ import { Artwork } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { ArtworkCard, ArtworkCardSkeleton } from '@/components/artwork/ArtworkCard';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Palette, Terminal, ListFilter, SearchX } from "lucide-react";
+import { Palette, Terminal, ListFilter, SearchX, Wind } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -17,6 +17,32 @@ import {
 } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+
+const FloatingBlob = ({ className, animateProps, transitionProps, gradientClass }: {
+  className?: string;
+  animateProps: any;
+  transitionProps?: any;
+  gradientClass: string;
+}) => (
+  <motion.div
+    className={cn(
+      "absolute rounded-full opacity-20 md:opacity-25 mix-blend-multiply dark:mix-blend-screen filter blur-3xl -z-10",
+      gradientClass,
+      className
+    )}
+    initial={{ scale: 0.8, opacity: 0 }}
+    animate={{ ...animateProps, opacity: [0.05, 0.25, 0.1, 0.25, 0.05] }}
+    transition={{
+      duration: 30 + Math.random() * 20,
+      repeat: Infinity,
+      repeatType: "mirror",
+      ease: "easeInOut",
+      ...transitionProps,
+    }}
+  />
+);
+
 
 interface FiltersState {
   min_price: string;
@@ -122,8 +148,8 @@ export default function ArtworksPage() {
   ], []);
 
   const pageVariants = {
-    initial: { opacity: 0 },
-    animate: { opacity: 1, transition: { duration: 0.5, ease: "easeInOut" } },
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeInOut" } },
   };
 
   const gridVariants = {
@@ -131,7 +157,7 @@ export default function ArtworksPage() {
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.07,
+        staggerChildren: 0.08,
         delayChildren: 0.2,
       },
     },
@@ -142,44 +168,74 @@ export default function ArtworksPage() {
       variants={pageVariants}
       initial="initial"
       animate="animate"
-      className="space-y-10"
+      className="space-y-10 py-8 md:py-12 relative isolate"
     >
+      <FloatingBlob
+        className="w-[500px] h-[500px] md:w-[700px] md:h-[700px] top-[-10%] left-[-20%] opacity-20 md:opacity-25"
+        gradientClass="bg-gradient-to-br from-pink-400/70 to-purple-500/70 dark:from-pink-600/50 dark:to-purple-700/50"
+        animateProps={{ x: [0, 60, -40, 0], y: [0, -50, 70, 0], scale: [1, 1.1, 0.9, 1], rotate: [0, 20, -15, 0] }}
+      />
+      <FloatingBlob
+        className="w-[400px] h-[400px] md:w-[600px] md:h-[600px] bottom-[-5%] right-[-15%] opacity-20 md:opacity-25"
+        gradientClass="bg-gradient-to-tr from-sky-400/70 to-lime-300/70 dark:from-sky-600/50 dark:to-lime-500/50"
+        animateProps={{ x: [0, -70, 50, 0], y: [0, 60, -40, 0], scale: [1, 0.9, 1.1, 1], rotate: [0, -25, 10, 0] }}
+        transitionProps={{ duration: 35 }}
+      />
+       <FloatingBlob
+        className="hidden lg:block w-[350px] h-[350px] top-[20%] right-[10%] opacity-15 md:opacity-20"
+        gradientClass="bg-gradient-to-tl from-yellow-300/60 to-red-400/60 dark:from-yellow-500/40 dark:to-red-600/40"
+        animateProps={{ x: [0, 40, -30, 0], y: [0, -30, 50, 0], scale: [1, 1.1, 0.95, 1] }}
+        transitionProps={{ duration: 40 }}
+      />
+
       <motion.h1
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="text-4xl font-bold tracking-tight font-serif text-center md:text-left text-primary flex items-center"
+        transition={{ duration: 0.6, delay: 0.1, type: "spring", stiffness:100 }}
+        className="text-4xl sm:text-5xl font-bold tracking-tight font-serif text-center relative"
       >
-        <Palette className="mr-3 h-9 w-9"/> Explore Our Artwork
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-fuchsia-500 to-indigo-600
+                         dark:from-rose-400 dark:via-fuchsia-400 dark:to-indigo-500">
+          Explore Our Artwork
+        </span>
+        <Palette className="inline-block ml-3 h-9 w-9 text-pink-500 dark:text-pink-400 transform -translate-y-1" />
       </motion.h1>
 
       <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-        className="p-6 border border-border/70 rounded-xl bg-card shadow-lg"
+        initial={{ opacity: 0, y: -20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, delay: 0.25 }}
+        className="p-6 border border-pink-500/20 dark:border-pink-400/20 rounded-xl 
+                   bg-card/70 dark:bg-neutral-800/60 backdrop-blur-md shadow-xl shadow-fuchsia-500/10 dark:shadow-fuchsia-600/10
+                   mx-auto max-w-4xl" 
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5 items-end">
-          <div>
-            <Label htmlFor="sort_by_order" className="text-sm font-medium text-muted-foreground">Sort By</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-5 items-end">
+          <div className="lg:col-span-1">
+            <Label htmlFor="sort_by_order" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Sort By</Label>
             <Select
               value={`${filters.sort_by}-${filters.sort_order}`}
               onValueChange={handleSortChange}
             >
-              <SelectTrigger id="sort_by_order" aria-label="Sort artworks by" className="mt-1.5 rounded-md">
+              <SelectTrigger 
+                id="sort_by_order" 
+                aria-label="Sort artworks by" 
+                className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 
+                           focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
+              >
                 <SelectValue placeholder="Select sort order" />
               </SelectTrigger>
-              <SelectContent className="rounded-md">
+              <SelectContent className="rounded-md bg-popover/90 dark:bg-neutral-800/90 backdrop-blur-sm border-border/80 dark:border-neutral-700">
                 {sortOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value} value={option.value} className="focus:bg-pink-500/10 dark:focus:bg-pink-400/10">
                     {option.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label htmlFor="min_price" className="text-sm font-medium text-muted-foreground">Min Price (Ksh)</Label>
+
+          <div className="lg:col-span-1">
+            <Label htmlFor="min_price" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Min Price (Ksh)</Label>
             <Input
               type="number"
               id="min_price"
@@ -189,11 +245,12 @@ export default function ArtworksPage() {
               onChange={handleInputChange}
               min="0"
               step="100"
-              className="mt-1.5 rounded-md"
+              className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
             />
           </div>
-          <div>
-            <Label htmlFor="max_price" className="text-sm font-medium text-muted-foreground">Max Price (Ksh)</Label>
+
+          <div className="lg:col-span-1">
+            <Label htmlFor="max_price" className="text-sm font-medium text-muted-foreground dark:text-neutral-300">Max Price (Ksh)</Label>
             <Input
               type="number"
               id="max_price"
@@ -203,28 +260,39 @@ export default function ArtworksPage() {
               onChange={handleInputChange}
               min="0"
               step="100"
-              className="mt-1.5 rounded-md"
+              className="mt-1.5 rounded-md bg-background/70 dark:bg-neutral-700/50 focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 border-border/70 dark:border-neutral-600/80"
             />
           </div>
-          <div className="flex space-x-2.5 md:col-start-4 self-end pt-2 md:pt-0">
-            <Button onClick={handleApplyFilters} className="w-full transition-all duration-150 ease-out hover:scale-105 active:scale-95 rounded-md shadow hover:shadow-md">
+          
+          <div className="flex space-x-2.5 w-full md:col-span-3 lg:col-span-1 md:pt-4 lg:pt-0 items-end">
+            <Button 
+                onClick={handleApplyFilters} 
+                className="flex-1 transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-md shadow-lg hover:shadow-pink-500/30
+                           bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 hover:from-purple-600 hover:via-pink-600 hover:to-red-600
+                           text-white font-semibold"
+            >
               <ListFilter className="mr-2 h-4 w-4" /> Apply
             </Button>
-            <Button onClick={handleClearFilters} variant="outline" className="w-full transition-all duration-150 ease-out hover:scale-105 active:scale-95 rounded-md shadow-sm hover:shadow">
+            <Button 
+                onClick={handleClearFilters} 
+                variant="outline" 
+                className="flex-1 transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-md shadow-sm hover:shadow-md
+                           border-pink-500/80 text-pink-600 hover:bg-pink-500/10 dark:border-pink-400/80 dark:text-pink-400 dark:hover:bg-pink-400/10"
+            >
               Clear
             </Button>
           </div>
         </div>
          {error && error.includes("price") && (
-            <p className="text-sm text-destructive mt-3 pl-1">{error}</p>
+            <p className="text-sm text-red-500 dark:text-red-400 mt-3 pl-1">{error}</p>
          )}
       </motion.div>
       
       {error && !error.includes("price") && (
-        <Alert variant="destructive" className="mb-6 shadow-md rounded-lg">
-          <Terminal className="h-4 w-4" />
-          <AlertTitle className="font-serif">Error Fetching Artwork</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+        <Alert variant="destructive" className="mb-6 shadow-lg rounded-lg max-w-2xl mx-auto bg-red-500/10 dark:bg-red-700/20 border-red-500/30 dark:border-red-600/40">
+          <Terminal className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <AlertTitle className="font-serif text-red-700 dark:text-red-300">Error Fetching Artwork</AlertTitle>
+          <AlertDescription className="text-red-600/90 dark:text-red-400/90">{error}</AlertDescription>
         </Alert>
       )}
 
@@ -232,10 +300,11 @@ export default function ArtworksPage() {
         {isLoading ? (
           <motion.div
             key="skeleton-grid"
-            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8 px-4 md:px-0"
             variants={gridVariants}
             initial="hidden"
             animate="visible"
+            exit={{ opacity: 0 }}
           >
             {Array.from({ length: 8 }).map((_, index) => (
               <ArtworkCardSkeleton key={index} />
@@ -244,10 +313,11 @@ export default function ArtworksPage() {
         ) : artworks.length > 0 ? (
           <motion.div
             key="artworks-grid"
-            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8 px-4 md:px-0"
             variants={gridVariants}
             initial="hidden"
             animate="visible"
+            exit={{ opacity: 0 }}
           >
             {artworks.map((artwork, index) => (
               <ArtworkCard key={artwork.id} artwork={artwork} isPriority={index < 4} />
@@ -257,15 +327,30 @@ export default function ArtworksPage() {
           !error && (
             <motion.div
               key="no-results"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, y: 30, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
               transition={{ duration: 0.4, ease: "circOut" }}
-              className="col-span-full text-center py-16 text-muted-foreground flex flex-col items-center justify-center space-y-4"
+              className="col-span-full text-center py-16 flex flex-col items-center justify-center space-y-6"
             >
-              <SearchX className="h-20 w-20 text-primary/30" />
-              <p className="text-xl font-medium text-foreground/80 font-serif">No artwork found matching your criteria.</p>
-              <p className="text-md text-muted-foreground">Try adjusting your filters or explore our full collection!</p>
+              <SearchX className="h-24 w-24 text-pink-500/30 dark:text-pink-400/30" strokeWidth={1.5} />
+              <p className="text-2xl font-serif 
+                            text-transparent bg-clip-text bg-gradient-to-r from-slate-600 via-slate-500 to-slate-400
+                            dark:from-neutral-400 dark:via-neutral-300 dark:to-neutral-200">
+                No Artworks Found
+              </p>
+              <p className="text-md text-muted-foreground dark:text-neutral-400 max-w-md">
+                We couldn't find any artwork matching your current filters. Try adjusting them or explore our full collection!
+              </p>
+              <Button 
+                onClick={handleClearFilters} 
+                variant="outline" 
+                className="transition-all duration-200 ease-out hover:scale-105 active:scale-95 rounded-full shadow-sm hover:shadow-md
+                           border-pink-500/80 text-pink-600 hover:bg-pink-500/10 dark:border-pink-400/80 dark:text-pink-400 dark:hover:bg-pink-400/10
+                           px-6 py-2.5 text-sm"
+              >
+                <Wind className="mr-2 h-4 w-4" /> Clear Filters & Retry
+              </Button>
             </motion.div>
           )
         )}
